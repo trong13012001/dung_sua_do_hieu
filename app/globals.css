@@ -146,8 +146,9 @@ body.sidebar-open {
 /* Print: only #print-root (cloned invoices). One order per page. */
 @media print {
   @page {
-    size: A5;
-    margin: 12mm;
+    /* Thermal receipt style: ~80mm width, small margins */
+    size: 80mm auto;
+    margin: 4mm;
   }
   html, body {
     margin: 0 !important;

@@ -17,6 +17,7 @@ import { useCreateOrder } from '@/api/orders';
 import { useEmployees } from '@/api/users';
 import { Toast, useToast } from '@/components/ui/Toast';
 import { Modal } from '@/components/ui/Modal';
+import { ItemLabelsPrint } from '@/components/ui/ItemLabelsPrint';
 import { useDebounce } from '@/hooks/useDebounce';
 import { Customer, Order, User, Role } from '@/lib/types';
 import { validateRequired, validateNumber, validatePhone, validateMaxLength } from '@/lib/validation';
@@ -41,6 +42,16 @@ export default function POSPage() {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const { toast, showToast, hideToast } = useToast();
   const [items, setItems] = useState<PosItem[]>([]);
+
+  // Optional return appointment time
+  const [returnDate, setReturnDate] = useState('');
+  const [returnClock, setReturnClock] = useState('');
+
+  // Label printing after creating order
+  const [labelOrderId, setLabelOrderId] = useState<number | null>(null);
+  const [labelItems, setLabelItems] = useState<PosItem[]>([]);
+  const [labelCustomerName, setLabelCustomerName] = useState<string | null>(null);
+  const [labelReceiveTime, setLabelReceiveTime] = useState<string | null>(null);
 
   const [addCustomerOpen, setAddCustomerOpen] = useState(false);
   const [newCustomerForm, setNewCustomerForm] = useState({ name: '', phone: '', address: '' });
@@ -115,11 +126,21 @@ export default function POSPage() {
       }
     }
     try {
-      await createOrder.mutateAsync({
+      let return_time: string | null = null;
+      if (returnDate) {
+        const time = returnClock && returnClock.length > 0 ? returnClock : '18:00';
+        const combined = new Date(`${returnDate}T${time}:00`);
+        if (!Number.isNaN(combined.getTime())) {
+          return_time = combined.toISOString();
+        }
+      }
+
+      const created = await createOrder.mutateAsync({
         order: {
           customer_id: selectedCustomer.id,
           total_amount: totalAmount,
           status: 'New',
+          return_time,
         } as Partial<Order>,
         items: items.filter(i => i.name.trim() !== '' && Number(i.price) > 0).map(i => ({
           name: i.name.trim(),
@@ -129,8 +150,14 @@ export default function POSPage() {
         })),
       });
       showToast('Đơn hàng đã được tạo thành công!', 'success');
+      setLabelOrderId(created.id);
+      setLabelItems(filled);
+      setLabelCustomerName(selectedCustomer.name);
+      setLabelReceiveTime(created.receive_time || null);
       setItems([]);
       setSelectedCustomer(null);
+      setReturnDate('');
+      setReturnClock('');
     } catch (error: any) {
       showToast('Lỗi: ' + error.message, 'error');
     }
@@ -157,17 +184,44 @@ export default function POSPage() {
           </div>
 
           {selectedCustomer ? (
-            <div className="flex items-center justify-between p-3 md:p-4 bg-primary/5 border border-primary/20 rounded-lg">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
-                  <Users size={20} />
+            <div className="space-y-3">
+              <div className="flex items-center justify-between p-3 md:p-4 bg-primary/5 border border-primary/20 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                    <Users size={20} />
+                  </div>
+                  <div>
+                    <p className="font-bold text-foreground text-sm">{selectedCustomer.name}</p>
+                    <p className="text-xs text-muted-foreground flex items-center gap-1"><Phone size={11} />{selectedCustomer.phone || 'N/A'}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="font-bold text-foreground text-sm">{selectedCustomer.name}</p>
-                  <p className="text-xs text-muted-foreground flex items-center gap-1"><Phone size={11} />{selectedCustomer.phone || 'N/A'}</p>
+                <button onClick={() => setSelectedCustomer(null)} className="p-1.5 rounded-md text-muted-foreground hover:text-danger hover:bg-danger/10 transition-colors"><X size={16} /></button>
+              </div>
+
+              {/* Return appointment (optional) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
+                <div className="space-y-1">
+                  <label htmlFor="pos-return-date" className="text-[11px] font-bold text-muted-foreground uppercase">Ngày hẹn trả (tùy chọn)</label>
+                  <input
+                    id="pos-return-date"
+                    type="date"
+                    className="w-full bg-muted/20 border border-border rounded-md px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-primary"
+                    value={returnDate}
+                    onChange={e => setReturnDate(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label htmlFor="pos-return-clock" className="text-[11px] font-bold text-muted-foreground uppercase">Giờ hẹn trả</label>
+                  <input
+                    id="pos-return-clock"
+                    type="time"
+                    className="w-full bg-muted/20 border border-border rounded-md px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-primary"
+                    value={returnClock}
+                    onChange={e => setReturnClock(e.target.value)}
+                  />
+                  <p className="text-[11px] text-muted-foreground">Nếu bỏ trống giờ, hệ thống sẽ lấy mặc định 18:00.</p>
                 </div>
               </div>
-              <button onClick={() => setSelectedCustomer(null)} className="p-1.5 rounded-md text-muted-foreground hover:text-danger hover:bg-danger/10 transition-colors"><X size={16} /></button>
             </div>
           ) : (
             <div className="relative">
@@ -340,6 +394,24 @@ export default function POSPage() {
             </button>
           </div>
         </form>
+      </Modal>
+
+      {/* Item labels print modal after creating order */}
+      <Modal
+        isOpen={labelOrderId != null && labelItems.length > 0}
+        onClose={() => { setLabelOrderId(null); setLabelItems([]); setLabelCustomerName(null); setLabelReceiveTime(null); }}
+        title={labelOrderId ? `In tem barcode đơn #${labelOrderId.toString().padStart(5, '0')}` : 'In tem barcode'}
+        maxWidth="max-w-lg"
+      >
+        {labelOrderId != null && labelItems.length > 0 && (
+          <ItemLabelsPrint
+            orderId={labelOrderId}
+            items={labelItems.map(i => ({ name: i.name, description: i.description }))}
+            customerName={labelCustomerName ?? undefined}
+            receiveTime={labelReceiveTime ?? undefined}
+            onClose={() => { setLabelOrderId(null); setLabelItems([]); setLabelCustomerName(null); setLabelReceiveTime(null); }}
+          />
+        )}
       </Modal>
 
       {toast && <Toast message={toast.message} type={toast.type} onClose={hideToast} />}

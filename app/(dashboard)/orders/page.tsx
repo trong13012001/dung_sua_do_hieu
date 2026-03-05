@@ -32,6 +32,9 @@ import { useCurrentUserId } from '@/hooks/useCurrentUserId';
 import { Modal } from '@/components/ui/Modal';
 import { Toast, useToast } from '@/components/ui/Toast';
 import { InvoicePrint, InvoicePrintContent } from '@/components/ui/InvoicePrint';
+import { ItemLabelsPrint } from '@/components/ui/ItemLabelsPrint';
+import { OrderDetailModal } from '@/components/ui/OrderDetailModal';
+import { decodeBarcode } from '@/lib/barcode';
 import { useDebounce } from '@/hooks/useDebounce';
 import { Can } from '@/components/auth/Can';
 import { Order, OrderDetail, User, Role } from '@/lib/types';
@@ -113,6 +116,8 @@ export default function OrdersPage() {
   const [deletingDetailId, setDeletingDetailId] = useState<number | null>(null);
   const [payingOrder, setPayingOrder] = useState<Order | null>(null);
   const [invoiceOrder, setInvoiceOrder] = useState<Order | null>(null);
+  const [detailModalOrderId, setDetailModalOrderId] = useState<number | string | null>(null);
+  const [labelOrder, setLabelOrder] = useState<Order | null>(null);
   const [selectedForPrint, setSelectedForPrint] = useState<Set<number>>(new Set());
   const [batchPrintOpen, setBatchPrintOpen] = useState(false);
   const [payForm, setPayForm] = useState<{ amount: string; method: 'Cash' | 'Card' | 'Transfer' }>({ amount: '', method: 'Cash' });
@@ -169,7 +174,13 @@ export default function OrdersPage() {
 
   const ordersRaw = data?.pages.flat() ?? [];
   const orders = ordersRaw.filter((o, i, arr) => arr.findIndex(x => x.id === o.id) === i);
+
+  // If search looks like a barcode, try to decode to order id and prioritize that match.
+  const decoded = debouncedSearch ? decodeBarcode(debouncedSearch) : null;
+  const barcodeOrderId = decoded && decoded.kind === 'invoice' ? decoded.orderId : null;
+
   const filtered = orders.filter(o => {
+    if (barcodeOrderId != null) return o.id === barcodeOrderId;
     const matchSearch = !debouncedSearch ||
       o.id.toString().includes(debouncedSearch) ||
       o.customer?.name?.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
@@ -397,13 +408,18 @@ export default function OrdersPage() {
               const debt = order.total_amount - (order.paid_amount || 0);
               const isPaid = debt <= 0;
               return (
-                <div key={order.id} className="vuexy-card p-4 md:p-5 hover:shadow-md transition-all">
+                <div
+                  key={order.id}
+                  className="vuexy-card p-4 md:p-5 hover:shadow-md transition-all cursor-pointer"
+                  onClick={() => setDetailModalOrderId(order.id)}
+                >
                   <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
                     <div className="flex items-start gap-3 md:gap-4 flex-1 min-w-0">
                       <label className="w-10 h-10 md:w-11 md:h-11 flex items-center justify-center shrink-0 cursor-pointer rounded-lg border-0">
                         <input
                           type="checkbox"
                           checked={selectedForPrint.has(order.id)}
+                          onClick={e => e.stopPropagation()}
                           onChange={() => toggleSelectForPrint(order.id)}
                           className="w-5 h-5 rounded-md border-2 border-border bg-background text-primary accent-primary focus:ring-2 focus:ring-primary/30 focus:ring-offset-0 transition-colors cursor-pointer"
                         />
@@ -442,14 +458,52 @@ export default function OrdersPage() {
                       <div className="flex gap-1.5">
                         {debt > 0 && (
                           <Can permission="process_payment">
-                            <button type="button" onClick={() => { setPayingOrder(order); setPayForm({ amount: String(debt), method: 'Cash' }); }} className="p-2 rounded-md text-success hover:bg-success/10 transition-colors" title="Thanh toán"><DollarSign size={16} /></button>
+                            <button
+                              type="button"
+                              onClick={e => { e.stopPropagation(); setPayingOrder(order); setPayForm({ amount: String(debt), method: 'Cash' }); }}
+                              className="p-2 rounded-md text-success hover:bg-success/10 transition-colors"
+                              title="Thanh toán"
+                            >
+                              <DollarSign size={16} />
+                            </button>
                           </Can>
                         )}
                         {isPaid && (
-                          <button onClick={() => setInvoiceOrder(order)} className="p-2 rounded-md text-primary hover:bg-primary/10 transition-colors" title="In phiếu"><Printer size={16} /></button>
+                          <button
+                            type="button"
+                            onClick={e => { e.stopPropagation(); setInvoiceOrder(order); }}
+                            className="p-2 rounded-md text-primary hover:bg-primary/10 transition-colors"
+                            title="In phiếu"
+                          >
+                            <Printer size={16} />
+                          </button>
                         )}
-                        <button onClick={() => openEditModal(order)} className="p-2 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors" title="Sửa"><Edit2 size={16} /></button>
-                        <button onClick={() => setDeletingOrder(order)} className="p-2 rounded-md text-muted-foreground hover:text-danger hover:bg-danger/10 transition-colors" title="Xóa"><Trash2 size={16} /></button>
+                        {order.details && order.details.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={e => { e.stopPropagation(); setLabelOrder(order); }}
+                            className="p-2 rounded-md text-info hover:bg-info/10 transition-colors"
+                            title="In tem barcode từng món"
+                          >
+                            <Printer size={16} className="scale-90" />
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={e => { e.stopPropagation(); openEditModal(order); }}
+                          className="p-2 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                          title="Sửa"
+                        >
+                          <Edit2 size={16} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={e => { e.stopPropagation(); setDeletingOrder(order); }}
+                          className="p-2 rounded-md text-muted-foreground hover:text-danger hover:bg-danger/10 transition-colors"
+                          title="Xóa"
+                        >
+                          <Trash2 size={16} />
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -709,7 +763,7 @@ export default function OrdersPage() {
       </Modal>
 
       {/* Invoice Print Modal (single) – 1 đơn = 1 trang khi in */}
-      <Modal isOpen={!!invoiceOrder} onClose={() => setInvoiceOrder(null)} title={invoiceOrder ? `Phiếu thanh toán #${invoiceOrder.id.toString().padStart(5, '0')}` : 'Phiếu thanh toán'} maxWidth="max-w-lg">
+      <Modal isOpen={!!invoiceOrder} onClose={() => setInvoiceOrder(null)} title={invoiceOrder ? `Phiếu thanh toán #${invoiceOrder.id.toString().padStart(5, '0')}` : 'Phiếu thanh toán'} maxWidth="max-w-2xl">
         <div className="print:block pb-4">
           {invoiceOrder && (
             <InvoicePrint
@@ -752,6 +806,31 @@ export default function OrdersPage() {
           </div>
         </div>
       </Modal>
+
+      {/* Item labels print modal from Orders page */}
+      <Modal
+        isOpen={!!labelOrder && !!labelOrder.details && labelOrder.details.length > 0}
+        onClose={() => setLabelOrder(null)}
+        title={labelOrder ? `In tem barcode đơn #${labelOrder.id.toString().padStart(5, '0')}` : 'In tem barcode'}
+        maxWidth="max-w-lg"
+      >
+        {labelOrder && labelOrder.details && labelOrder.details.length > 0 && (
+          <ItemLabelsPrint
+            orderId={labelOrder.id}
+            items={labelOrder.details.map(d => ({ name: d.item_name, description: d.description || undefined }))}
+            customerName={labelOrder.customer?.name}
+            receiveTime={labelOrder.receive_time}
+            onClose={() => setLabelOrder(null)}
+          />
+        )}
+      </Modal>
+
+      {/* Order detail view (read-only, full info) */}
+      <OrderDetailModal
+        isOpen={detailModalOrderId != null}
+        onClose={() => setDetailModalOrderId(null)}
+        orderId={detailModalOrderId}
+      />
 
       {toast && <Toast message={toast.message} type={toast.type} onClose={hideToast} />}
     </div>
