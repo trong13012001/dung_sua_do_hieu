@@ -143,18 +143,58 @@ body.sidebar-open {
   }
 }
 
-/* Print: only show invoice content */
+/* Print: only #print-root (cloned invoices). One order per page. */
 @media print {
-  body * { visibility: hidden; }
-  .invoice-print-area,
-  .invoice-print-area * { visibility: visible; }
+  @page {
+    size: A5;
+    margin: 12mm;
+  }
+  html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: white !important;
+    overflow: visible !important;
+  }
+  /* Hide all direct children of body except the print root */
+  body > *:not(#print-root) {
+    display: none !important;
+  }
+  #print-root {
+    display: block !important;
+    width: 100% !important;
+  }
   .invoice-print-area {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 100%;
-    background: white;
-    color: black;
+    width: 100% !important;
+    max-width: none !important;
+    background: white !important;
+    color: black !important;
+    box-shadow: none !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  /* Single invoice: exactly 1 page */
+  .invoice-print-area.invoice-single {
+    page-break-after: avoid;
+    page-break-before: avoid;
+    break-after: avoid;
+    break-before: avoid;
+  }
+  /* Batch: force new page for each invoice */
+  .invoice-print-area.invoice-page {
+    page-break-before: always;
+    page-break-after: always;
+    break-before: page;
+    break-after: page;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  .invoice-print-area.invoice-page:first-of-type {
+    page-break-before: avoid;
+    break-before: avoid;
+  }
+  .invoice-print-area.invoice-page:last-child {
+    page-break-after: avoid;
+    break-after: avoid;
   }
   .non-print { display: none !important; }
 }

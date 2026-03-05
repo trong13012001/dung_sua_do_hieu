@@ -31,7 +31,7 @@ import { useEmployees } from '@/api/users';
 import { useCurrentUserId } from '@/hooks/useCurrentUserId';
 import { Modal } from '@/components/ui/Modal';
 import { Toast, useToast } from '@/components/ui/Toast';
-import { InvoicePrint } from '@/components/ui/InvoicePrint';
+import { InvoicePrint, InvoicePrintContent } from '@/components/ui/InvoicePrint';
 import { useDebounce } from '@/hooks/useDebounce';
 import { Can } from '@/components/auth/Can';
 import { Order, OrderDetail, User, Role } from '@/lib/types';
@@ -113,6 +113,8 @@ export default function OrdersPage() {
   const [deletingDetailId, setDeletingDetailId] = useState<number | null>(null);
   const [payingOrder, setPayingOrder] = useState<Order | null>(null);
   const [invoiceOrder, setInvoiceOrder] = useState<Order | null>(null);
+  const [selectedForPrint, setSelectedForPrint] = useState<Set<number>>(new Set());
+  const [batchPrintOpen, setBatchPrintOpen] = useState(false);
   const [payForm, setPayForm] = useState<{ amount: string; method: 'Cash' | 'Card' | 'Transfer' }>({ amount: '', method: 'Cash' });
   const [exporting, setExporting] = useState(false);
   type DetailEdit = { item_name: string; unit_price: string; description: string; status: string; assigned_tailor_id: string };
@@ -328,6 +330,16 @@ export default function OrdersPage() {
 
   const selectClass = 'w-full bg-muted/20 border border-border rounded-md px-3 py-2 text-sm appearance-none outline-none focus:ring-1 focus:ring-primary';
 
+  const toggleSelectForPrint = (orderId: number) => {
+    setSelectedForPrint(prev => {
+      const next = new Set(prev);
+      if (next.has(orderId)) next.delete(orderId);
+      else next.add(orderId);
+      return next;
+    });
+  };
+  const batchOrders = filtered.filter(o => selectedForPrint.has(o.id));
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
@@ -362,6 +374,15 @@ export default function OrdersPage() {
               <FileDown size={16} /> {exporting ? 'Đang xuất...' : 'Xuất Excel'}
             </button>
           </Can>
+          {selectedForPrint.size > 0 && (
+            <button
+              type="button"
+              onClick={() => setBatchPrintOpen(true)}
+              className="flex items-center gap-2 px-4 py-2.5 bg-primary/10 text-primary border border-primary/30 rounded-md font-bold text-sm hover:bg-primary/20"
+            >
+              <Printer size={16} /> In phiếu đã chọn ({selectedForPrint.size})
+            </button>
+          )}
         </div>
       </div>
 
@@ -379,6 +400,15 @@ export default function OrdersPage() {
                 <div key={order.id} className="vuexy-card p-4 md:p-5 hover:shadow-md transition-all">
                   <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
                     <div className="flex items-start gap-3 md:gap-4 flex-1 min-w-0">
+                      <label className="w-10 h-10 md:w-11 md:h-11 flex items-center justify-center shrink-0 cursor-pointer rounded-lg border-0">
+                        <input
+                          type="checkbox"
+                          checked={selectedForPrint.has(order.id)}
+                          onChange={() => toggleSelectForPrint(order.id)}
+                          className="w-5 h-5 rounded-md border-2 border-border bg-background text-primary accent-primary focus:ring-2 focus:ring-primary/30 focus:ring-offset-0 transition-colors cursor-pointer"
+                        />
+                        <span className="sr-only">Chọn để in phiếu</span>
+                      </label>
                       <div className="w-10 h-10 md:w-11 md:h-11 rounded-lg bg-primary/10 flex items-center justify-center text-primary shrink-0">
                         <ShoppingBag size={20} />
                       </div>
@@ -678,10 +708,48 @@ export default function OrdersPage() {
         </div>
       </Modal>
 
-      {/* Invoice Print Modal */}
-      <Modal isOpen={!!invoiceOrder} onClose={() => setInvoiceOrder(null)} title="Phiếu thanh toán" maxWidth="max-w-lg">
-        <div className="print:block">
-          {invoiceOrder && <InvoicePrint order={invoiceOrder} onClose={() => setInvoiceOrder(null)} />}
+      {/* Invoice Print Modal (single) – 1 đơn = 1 trang khi in */}
+      <Modal isOpen={!!invoiceOrder} onClose={() => setInvoiceOrder(null)} title={invoiceOrder ? `Phiếu thanh toán #${invoiceOrder.id.toString().padStart(5, '0')}` : 'Phiếu thanh toán'} maxWidth="max-w-lg">
+        <div className="print:block pb-4">
+          {invoiceOrder && (
+            <InvoicePrint
+              order={invoiceOrder}
+              onClose={() => setInvoiceOrder(null)}
+            />
+          )}
+        </div>
+      </Modal>
+
+      {/* Batch Print Modal (many invoices) */}
+      <Modal isOpen={batchPrintOpen} onClose={() => setBatchPrintOpen(false)} title={`In ${batchOrders.length} phiếu thanh toán`} maxWidth="max-w-2xl">
+        <div className="space-y-4 print:space-y-0 pb-4">
+          <div className="non-print space-y-3 shrink-0">
+            <p className="text-sm text-muted-foreground">
+              Bạn đã chọn <strong>{batchOrders.length} đơn</strong>. In sẽ tạo <strong>{batchOrders.length} trang giấy</strong> (mỗi đơn một trang). Chỉ cần in 1 phiếu? Đóng và nhấn nút &quot;In phiếu&quot; trên từng đơn.
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Đơn sẽ in: {batchOrders.map(o => `#${o.id.toString().padStart(5, '0')}`).join(', ')}
+            </p>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setBatchPrintOpen(false)} className="px-4 py-2 border border-border rounded-md font-bold text-sm hover:bg-muted/50">
+                Đóng
+              </button>
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="px-4 py-2 bg-primary text-white rounded-md font-bold text-sm hover:opacity-90"
+              >
+                In {batchOrders.length} phiếu ({batchOrders.length} trang)
+              </button>
+            </div>
+          </div>
+          <div className="print:block space-y-6 print:space-y-0">
+            {batchOrders.map(order => (
+              <div key={order.id} className="invoice-print-area invoice-page bg-white text-black p-4 rounded-lg border border-border max-w-lg mx-auto print:p-6 print:max-w-none print:border-0 print:rounded-none">
+                <InvoicePrintContent order={order} />
+              </div>
+            ))}
+          </div>
         </div>
       </Modal>
 

@@ -18,6 +18,7 @@ export const metadata: Metadata = {
 };
 
 import QueryProvider from "@/components/providers/QueryProvider";
+import { PrintRoot } from "@/components/print/PrintRoot";
 
 export default function RootLayout({
   children,
@@ -31,6 +32,7 @@ export default function RootLayout({
       >
         <QueryProvider>
           {children}
+          <PrintRoot />
         </QueryProvider>
       </body>
     </html>
