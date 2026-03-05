@@ -99,7 +99,7 @@ export function useOrderItems(tailorId?: number | null) {
         .from('order_details')
         .select('id, order_id, item_name, description, unit_price, status, assigned_tailor_id')
         .eq('assigned_tailor_id', tailorId!)
-        .in('status', ['New', 'In Progress', 'Ready'])
+        .in('status', ['New', 'In Progress', 'Ready', 'Completed'])
         .limit(100);
       if (error) throw error;
       if (!details || details.length === 0) return [];

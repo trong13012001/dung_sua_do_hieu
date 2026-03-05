@@ -34,6 +34,7 @@ import { InvoicePrint } from '@/components/ui/InvoicePrint';
 import { useDebounce } from '@/hooks/useDebounce';
 import { Can } from '@/components/auth/Can';
 import { Order, OrderDetail, User, Role } from '@/lib/types';
+import { validateRequired, validateNumber } from '@/lib/validation';
 
 const statusOptions = [
   { value: 'New', label: 'Mới', color: 'bg-info/10 text-info' },
@@ -199,6 +200,19 @@ export default function OrdersPage() {
           await updateDetail.mutateAsync({ id: detail.id, detail: patch, updated_by: currentUserId ?? undefined });
         }
       }
+      for (let i = 0; i < newItems.length; i++) {
+        const row = newItems[i];
+        const hasName = row.name.trim() !== '';
+        const priceErr = validateNumber(row.price, { min: 1, required: hasName, fieldName: 'Đơn giá' });
+        if (hasName && priceErr) {
+          showToast(`Dòng ${i + 1} (${row.name.trim()}): ${priceErr}`, 'error');
+          return;
+        }
+        if (!hasName && row.price.trim() !== '' && Number(row.price) > 0) {
+          showToast(`Dòng ${i + 1}: Nhập tên sản phẩm`, 'error');
+          return;
+        }
+      }
       const toAdd: NewOrderDetailItem[] = newItems
         .filter(row => row.name.trim() !== '' && Number(row.price) > 0)
         .map(row => ({
@@ -230,7 +244,9 @@ export default function OrdersPage() {
 
   const handlePayment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!payingOrder || !payForm.amount) return;
+    if (!payingOrder) return;
+    const amountErr = validateNumber(payForm.amount, { min: 1, fieldName: 'Số tiền thanh toán' });
+    if (amountErr) { showToast(amountErr, 'error'); return; }
     try {
       await processPayment.mutateAsync({
         order_id: payingOrder.id,

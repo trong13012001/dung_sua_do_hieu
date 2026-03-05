@@ -17,6 +17,7 @@ import { useRoles } from '@/api/roles';
 import { Modal } from '@/components/ui/Modal';
 import { Toast, useToast } from '@/components/ui/Toast';
 import { User, Role } from '@/lib/types';
+import { validateRequired, validateEmail, validatePassword, validatePhone } from '@/lib/validation';
 
 export default function EmployeesPage() {
   const { data: employees, isLoading } = useEmployees();
@@ -51,10 +52,15 @@ export default function EmployeesPage() {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (createForm.password.length < 6) { showToast('Mật khẩu phải có ít nhất 6 ký tự', 'error'); return; }
+    const nameErr = validateRequired(createForm.name, 'Họ và tên');
+    const emailErr = validateEmail(createForm.email);
+    const passwordErr = validatePassword(createForm.password, 6);
+    const phoneErr = validatePhone(createForm.phone, false);
+    const err = nameErr || emailErr || passwordErr || phoneErr;
+    if (err) { showToast(err, 'error'); return; }
     try {
       const { password, ...employeeData } = createForm;
-      await createEmployee.mutateAsync({ employee: employeeData, password });
+      await createEmployee.mutateAsync({ employee: { ...employeeData, name: employeeData.name.trim(), phone: employeeData.phone?.trim() || undefined, address: employeeData.address?.trim() || undefined, id_card: employeeData.id_card?.trim() || undefined }, password });
       setIsAdding(false);
       showToast('Tạo tài khoản nhân viên thành công', 'success');
     } catch (err: any) { showToast('Lỗi: ' + err.message, 'error'); }
@@ -63,8 +69,12 @@ export default function EmployeesPage() {
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingEmp) return;
+    const nameErr = validateRequired(editForm.name, 'Họ và tên');
+    const phoneErr = validatePhone(editForm.phone, false);
+    const err = nameErr || phoneErr;
+    if (err) { showToast(err, 'error'); return; }
     try {
-      await updateEmployee.mutateAsync({ id: editingEmp.id, employee: editForm });
+      await updateEmployee.mutateAsync({ id: editingEmp.id, employee: { ...editForm, name: editForm.name.trim(), phone: editForm.phone?.trim() || undefined, address: editForm.address?.trim() || undefined, id_card: editForm.id_card?.trim() || undefined } });
       setEditingEmp(null);
       showToast('Cập nhật nhân viên thành công', 'success');
     } catch (err: any) { showToast('Lỗi: ' + err.message, 'error'); }

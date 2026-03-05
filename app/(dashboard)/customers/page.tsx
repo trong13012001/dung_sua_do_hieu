@@ -23,6 +23,7 @@ import { Toast, useToast } from '@/components/ui/Toast';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useRouter } from 'next/navigation';
 import { Customer } from '@/lib/types';
+import { validateRequired, validatePhone, validateMaxLength } from '@/lib/validation';
 
 export default function CustomersPage() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -48,15 +49,23 @@ export default function CustomersPage() {
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [deletingCustomer, setDeletingCustomer] = useState<Customer | null>(null);
   const [formData, setFormData] = useState({ name: '', phone: '', address: '' });
+  const [formErrors, setFormErrors] = useState<{ name?: string; phone?: string; address?: string }>({});
 
   const totalPages = Math.ceil(totalCount / pageSize);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
+    const nameErr = validateRequired(formData.name, 'Họ và tên');
+    const phoneErr = validatePhone(formData.phone, true);
+    const addressErr = validateMaxLength(formData.address, 500, 'Địa chỉ');
+    const errs = { name: nameErr || undefined, phone: phoneErr || undefined, address: addressErr || undefined };
+    setFormErrors(errs);
+    if (nameErr || phoneErr || addressErr) return;
     try {
-      await createCustomer.mutateAsync(formData);
+      await createCustomer.mutateAsync({ name: formData.name.trim(), phone: formData.phone.trim() || undefined, address: formData.address.trim() || undefined });
       setIsAdding(false);
       setFormData({ name: '', phone: '', address: '' });
+      setFormErrors({});
       showToast('Thêm khách hàng thành công', 'success');
     } catch (error: any) {
       showToast('Lỗi: ' + error.message, 'error');
@@ -65,12 +74,19 @@ export default function CustomersPage() {
 
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
+    const nameErr = validateRequired(formData.name, 'Họ và tên');
+    const phoneErr = validatePhone(formData.phone, false);
+    const addressErr = validateMaxLength(formData.address, 500, 'Địa chỉ');
+    const errs = { name: nameErr || undefined, phone: phoneErr || undefined, address: addressErr || undefined };
+    setFormErrors(errs);
+    if (nameErr || phoneErr || addressErr) return;
     try {
       if (editingCustomer) {
-        await updateCustomer.mutateAsync({ id: editingCustomer.id, customer: formData });
+        await updateCustomer.mutateAsync({ id: editingCustomer.id, customer: { name: formData.name.trim(), phone: formData.phone.trim() || undefined, address: formData.address.trim() || undefined } });
       }
       setEditingCustomer(null);
       setFormData({ name: '', phone: '', address: '' });
+      setFormErrors({});
       showToast('Cập nhật khách hàng thành công', 'success');
     } catch (error: any) {
       showToast('Lỗi: ' + error.message, 'error');
@@ -91,6 +107,7 @@ export default function CustomersPage() {
   const openEdit = (customer: Customer) => {
     setEditingCustomer(customer);
     setFormData({ name: customer.name, phone: customer.phone || '', address: customer.address || '' });
+    setFormErrors({});
   };
 
   return (
@@ -101,6 +118,7 @@ export default function CustomersPage() {
           onClick={() => {
             setIsAdding(true);
             setFormData({ name: '', phone: '', address: '' });
+            setFormErrors({});
           }}
           className="w-full sm:w-auto btn-primary px-5 py-2 md:py-2.5 rounded-md font-bold text-sm"
         >
@@ -217,33 +235,34 @@ export default function CustomersPage() {
       >
         <form onSubmit={editingCustomer ? handleUpdate : handleCreate} className="space-y-5">
           <div className="space-y-1.5">
-            <label className="text-[11px] font-bold text-muted-foreground uppercase opacity-80">Họ và tên</label>
+            <label className="text-[11px] font-bold text-muted-foreground uppercase opacity-80">Họ và tên *</label>
             <input
-              required
               placeholder="Nguyễn Văn A"
-              className="w-full bg-muted/20 border border-border rounded-md px-4 py-2.5 outline-none focus:ring-1 focus:ring-primary text-sm transition-all"
+              className={`w-full bg-muted/20 border rounded-md px-4 py-2.5 outline-none focus:ring-1 focus:ring-primary text-sm transition-all ${formErrors.name ? 'border-danger' : 'border-border'}`}
               value={formData.name}
-              onChange={e => setFormData({ ...formData, name: e.target.value })}
+              onChange={e => { setFormData({ ...formData, name: e.target.value }); if (formErrors.name) setFormErrors({ ...formErrors, name: undefined }); }}
             />
+            {formErrors.name && <p className="text-xs text-danger">{formErrors.name}</p>}
           </div>
           <div className="space-y-1.5">
-            <label className="text-[11px] font-bold text-muted-foreground uppercase opacity-80">Số điện thoại</label>
+            <label className="text-[11px] font-bold text-muted-foreground uppercase opacity-80">Số điện thoại {editingCustomer ? '' : '*'}</label>
             <input
-              required
               placeholder="091..."
-              className="w-full bg-muted/20 border border-border rounded-md px-4 py-2.5 outline-none focus:ring-1 focus:ring-primary text-sm transition-all"
+              className={`w-full bg-muted/20 border rounded-md px-4 py-2.5 outline-none focus:ring-1 focus:ring-primary text-sm transition-all ${formErrors.phone ? 'border-danger' : 'border-border'}`}
               value={formData.phone}
-              onChange={e => setFormData({ ...formData, phone: e.target.value })}
+              onChange={e => { setFormData({ ...formData, phone: e.target.value }); if (formErrors.phone) setFormErrors({ ...formErrors, phone: undefined }); }}
             />
+            {formErrors.phone && <p className="text-xs text-danger">{formErrors.phone}</p>}
           </div>
           <div className="space-y-1.5">
             <label className="text-[11px] font-bold text-muted-foreground uppercase opacity-80">Địa chỉ</label>
             <input
               placeholder="Hà Nội, Việt Nam"
-              className="w-full bg-muted/20 border border-border rounded-md px-4 py-2.5 outline-none focus:ring-1 focus:ring-primary text-sm transition-all"
+              className={`w-full bg-muted/20 border rounded-md px-4 py-2.5 outline-none focus:ring-1 focus:ring-primary text-sm transition-all ${formErrors.address ? 'border-danger' : 'border-border'}`}
               value={formData.address}
-              onChange={e => setFormData({ ...formData, address: e.target.value })}
+              onChange={e => { setFormData({ ...formData, address: e.target.value }); if (formErrors.address) setFormErrors({ ...formErrors, address: undefined }); }}
             />
+            {formErrors.address && <p className="text-xs text-danger">{formErrors.address}</p>}
           </div>
           <div className="flex gap-4 mt-10">
             <button

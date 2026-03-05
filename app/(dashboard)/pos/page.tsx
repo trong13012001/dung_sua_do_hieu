@@ -16,6 +16,7 @@ import { useEmployees } from '@/api/users';
 import { Toast, useToast } from '@/components/ui/Toast';
 import { useDebounce } from '@/hooks/useDebounce';
 import { Customer, Order, User, Role } from '@/lib/types';
+import { validateRequired, validateNumber } from '@/lib/validation';
 
 interface PosItem {
   name: string;
@@ -61,9 +62,23 @@ export default function POSPage() {
   };
 
   const handleSubmit = async () => {
-    if (!selectedCustomer || items.length === 0) {
-      showToast('Vui lòng chọn khách hàng và thêm ít nhất một sản phẩm.', 'error');
+    if (!selectedCustomer) {
+      showToast('Vui lòng chọn khách hàng.', 'error');
       return;
+    }
+    const filled = items.filter(i => i.name.trim() !== '' || Number(i.price) > 0);
+    if (filled.length === 0) {
+      showToast('Vui lòng thêm ít nhất một sản phẩm (tên và đơn giá).', 'error');
+      return;
+    }
+    for (let i = 0; i < filled.length; i++) {
+      const item = filled[i];
+      const nameErr = validateRequired(item.name, 'Tên sản phẩm');
+      const priceErr = validateNumber(item.price, { min: 1, fieldName: 'Đơn giá' });
+      if (nameErr || priceErr) {
+        showToast(`Sản phẩm ${i + 1}: ${nameErr || priceErr}`, 'error');
+        return;
+      }
     }
     try {
       await createOrder.mutateAsync({
@@ -72,10 +87,10 @@ export default function POSPage() {
           total_amount: totalAmount,
           status: 'New',
         } as Partial<Order>,
-        items: items.map(i => ({
-          name: i.name,
-          price: i.price,
-          description: i.description,
+        items: items.filter(i => i.name.trim() !== '' && Number(i.price) > 0).map(i => ({
+          name: i.name.trim(),
+          price: Number(i.price),
+          description: i.description?.trim() ?? '',
           assigned_tailor_id: i.assigned_tailor_id || null,
         })),
       });

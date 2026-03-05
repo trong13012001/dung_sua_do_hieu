@@ -22,24 +22,14 @@ export function useCreateEmployee() {
     mutationFn: async ({ employee, password }: { employee: Partial<User>; password: string }) => {
       if (!employee.email) throw new Error('Email là bắt buộc');
 
-      // 1. Create Supabase Auth account
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: employee.email,
-        password,
-        options: {
-          data: { display_name: employee.name },
-        },
+      // Create auth user + insert into users via API (service role). Avoids session takeover and RLS errors.
+      const res = await fetch('/api/users/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ employee, password }),
       });
-      if (authError) throw authError;
-
-      // 2. Insert employee record into users table
-      const { data, error } = await supabase
-        .from('users')
-        .insert(employee)
-        .select()
-        .single();
-      if (error) throw error;
-
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Tạo tài khoản thất bại');
       return data as User;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['employees'] }),
@@ -78,7 +68,7 @@ export function useResetEmployeePassword() {
   return useMutation({
     mutationFn: async (email: string) => {
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/login`,
+        redirectTo: `${window.location.origin}/reset-password`,
       });
       if (error) throw error;
     },

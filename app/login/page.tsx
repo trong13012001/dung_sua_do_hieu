@@ -1,25 +1,37 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Lock, Mail, Loader2, Circle } from 'lucide-react';
+import { validateEmail, validatePassword } from '@/lib/validation';
 
 export default function LoginPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const router = useRouter();
+  const [resetSuccess, setResetSuccess] = useState(false);
+
+  useEffect(() => {
+    if (searchParams.get('reset') === 'success') setResetSuccess(true);
+  }, [searchParams]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     setError(null);
-
+    const emailErr = validateEmail(email);
+    const passwordErr = validatePassword(password, 1);
+    if (emailErr || passwordErr) {
+      setError(emailErr || passwordErr || null);
+      return;
+    }
+    setLoading(true);
     try {
       const { error } = await supabase.auth.signInWithPassword({
-        email,
+        email: email.trim(),
         password,
       });
 
@@ -53,6 +65,11 @@ export default function LoginPage() {
             <p className="text-sm text-muted-foreground mt-1">Vui lòng đăng nhập vào tài khoản của bạn để bắt đầu</p>
           </div>
 
+          {resetSuccess && (
+            <div className="bg-success/10 border border-success/20 text-success p-3 rounded-md text-[13px] mb-6 font-medium">
+              Đặt lại mật khẩu thành công. Bạn có thể đăng nhập bằng mật khẩu mới.
+            </div>
+          )}
           {error && (
             <div className="bg-danger/10 border border-danger/20 text-danger p-3 rounded-md text-[13px] mb-6 font-medium">
               {error}
