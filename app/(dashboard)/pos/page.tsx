@@ -8,15 +8,18 @@ import {
   ChevronDown,
   Users,
   Phone,
-  X
+  X,
+  UserPlus
 } from 'lucide-react';
 import { useGetCustomer } from '@/hooks/customer/useGetCustomer';
+import { useCreateCustomer } from '@/hooks/customer/useCreateCustomer';
 import { useCreateOrder } from '@/api/orders';
 import { useEmployees } from '@/api/users';
 import { Toast, useToast } from '@/components/ui/Toast';
+import { Modal } from '@/components/ui/Modal';
 import { useDebounce } from '@/hooks/useDebounce';
 import { Customer, Order, User, Role } from '@/lib/types';
-import { validateRequired, validateNumber } from '@/lib/validation';
+import { validateRequired, validateNumber, validatePhone, validateMaxLength } from '@/lib/validation';
 
 interface PosItem {
   name: string;
@@ -34,9 +37,14 @@ export default function POSPage() {
   const customers = customerData?.data || [];
   const { data: employees } = useEmployees();
   const createOrder = useCreateOrder();
+  const createCustomer = useCreateCustomer();
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const { toast, showToast, hideToast } = useToast();
   const [items, setItems] = useState<PosItem[]>([]);
+
+  const [addCustomerOpen, setAddCustomerOpen] = useState(false);
+  const [newCustomerForm, setNewCustomerForm] = useState({ name: '', phone: '', address: '' });
+  const [newCustomerErrors, setNewCustomerErrors] = useState<{ name?: string; phone?: string; address?: string }>({});
 
   const tailors = useMemo(() =>
     employees?.filter((e: User & { role: Role | null }) =>
@@ -59,6 +67,32 @@ export default function POSPage() {
     setSelectedCustomer(customer);
     setShowCustomerList(false);
     setSearchTerm('');
+  };
+
+  const handleAddCustomerSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const nameErr = validateRequired(newCustomerForm.name, 'Họ và tên');
+    const phoneErr = validatePhone(newCustomerForm.phone, true);
+    const addressErr = validateMaxLength(newCustomerForm.address, 500, 'Địa chỉ');
+    const errs = { name: nameErr || undefined, phone: phoneErr || undefined, address: addressErr || undefined };
+    setNewCustomerErrors(errs);
+    if (nameErr || phoneErr || addressErr) return;
+    try {
+      const created = await createCustomer.mutateAsync({
+        name: newCustomerForm.name.trim(),
+        phone: newCustomerForm.phone.trim() || undefined,
+        address: newCustomerForm.address.trim() || undefined,
+      });
+      setSelectedCustomer(created);
+      setSearchTerm('');
+      setShowCustomerList(false);
+      setAddCustomerOpen(false);
+      setNewCustomerForm({ name: '', phone: '', address: '' });
+      setNewCustomerErrors({});
+      showToast('Đã thêm khách hàng và chọn cho đơn hàng.', 'success');
+    } catch (error: any) {
+      showToast('Lỗi: ' + error.message, 'error');
+    }
   };
 
   const handleSubmit = async () => {
@@ -107,8 +141,19 @@ export default function POSPage() {
       <div className="lg:col-span-2 space-y-4 md:space-y-6">
         {/* Customer Selection */}
         <div className="vuexy-card p-4 md:p-6">
-          <div className="flex justify-between items-center mb-4 md:mb-6">
+          <div className="flex flex-wrap justify-between items-center gap-2 mb-4 md:mb-6">
             <h4 className="text-base md:text-lg font-bold text-foreground">Thông tin khách hàng</h4>
+            <button
+              type="button"
+              onClick={() => {
+                setAddCustomerOpen(true);
+                setNewCustomerForm({ name: '', phone: '', address: '' });
+                setNewCustomerErrors({});
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md border border-primary text-primary hover:bg-primary/10 transition-colors"
+            >
+              <UserPlus size={16} /> Thêm khách hàng
+            </button>
           </div>
 
           {selectedCustomer ? (
@@ -249,6 +294,53 @@ export default function POSPage() {
           </div>
         </div>
       </div>
+
+      {/* Add customer modal */}
+      <Modal isOpen={addCustomerOpen} onClose={() => setAddCustomerOpen(false)} title="Thêm khách hàng mới">
+        <form onSubmit={handleAddCustomerSubmit} className="space-y-4">
+          <div>
+            <label htmlFor="pos-new-customer-name" className="block text-xs font-bold text-muted-foreground uppercase mb-1">Họ và tên *</label>
+            <input
+              id="pos-new-customer-name"
+              className={`w-full bg-muted/20 border rounded-md px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-primary ${newCustomerErrors.name ? 'border-danger' : 'border-border'}`}
+              value={newCustomerForm.name}
+              onChange={e => { setNewCustomerForm({ ...newCustomerForm, name: e.target.value }); if (newCustomerErrors.name) setNewCustomerErrors({ ...newCustomerErrors, name: undefined }); }}
+              placeholder="Nguyễn Văn A"
+            />
+            {newCustomerErrors.name && <p className="text-xs text-danger mt-0.5">{newCustomerErrors.name}</p>}
+          </div>
+          <div>
+            <label htmlFor="pos-new-customer-phone" className="block text-xs font-bold text-muted-foreground uppercase mb-1">Số điện thoại *</label>
+            <input
+              id="pos-new-customer-phone"
+              className={`w-full bg-muted/20 border rounded-md px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-primary ${newCustomerErrors.phone ? 'border-danger' : 'border-border'}`}
+              value={newCustomerForm.phone}
+              onChange={e => { setNewCustomerForm({ ...newCustomerForm, phone: e.target.value }); if (newCustomerErrors.phone) setNewCustomerErrors({ ...newCustomerErrors, phone: undefined }); }}
+              placeholder="0912345678"
+            />
+            {newCustomerErrors.phone && <p className="text-xs text-danger mt-0.5">{newCustomerErrors.phone}</p>}
+          </div>
+          <div>
+            <label htmlFor="pos-new-customer-address" className="block text-xs font-bold text-muted-foreground uppercase mb-1">Địa chỉ</label>
+            <input
+              id="pos-new-customer-address"
+              className={`w-full bg-muted/20 border rounded-md px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-primary ${newCustomerErrors.address ? 'border-danger' : 'border-border'}`}
+              value={newCustomerForm.address}
+              onChange={e => { setNewCustomerForm({ ...newCustomerForm, address: e.target.value }); if (newCustomerErrors.address) setNewCustomerErrors({ ...newCustomerErrors, address: undefined }); }}
+              placeholder="Địa chỉ (tùy chọn)"
+            />
+            {newCustomerErrors.address && <p className="text-xs text-danger mt-0.5">{newCustomerErrors.address}</p>}
+          </div>
+          <div className="flex gap-3 pt-2">
+            <button type="button" onClick={() => setAddCustomerOpen(false)} className="flex-1 py-2.5 rounded-md font-bold text-sm border border-border bg-muted/40 hover:bg-muted transition-colors">
+              Hủy
+            </button>
+            <button type="submit" disabled={createCustomer.isPending} className="flex-1 btn-primary py-2.5 rounded-md font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2">
+              {createCustomer.isPending ? 'Đang tạo...' : 'Thêm'}
+            </button>
+          </div>
+        </form>
+      </Modal>
 
       {toast && <Toast message={toast.message} type={toast.type} onClose={hideToast} />}
     </div>
