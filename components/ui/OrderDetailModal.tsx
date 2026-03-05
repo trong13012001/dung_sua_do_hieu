@@ -93,13 +93,33 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
                 </div>
               </div>
             </div>
-            <div className="text-left sm:text-right w-full sm:w-auto border-t sm:border-none pt-3 sm:pt-0">
-              <p className="text-[9px] md:text-[10px] font-bold text-muted-foreground uppercase tracking-widest leading-none mb-1">Ngày nhận</p>
-              <div className="flex items-center gap-1.5 font-bold text-foreground text-xs md:text-sm">
-                <Calendar size={14} className="text-primary md:w-4 md:h-4" />
-                <span>{new Date(order.receive_time).toLocaleDateString('vi-VN')}</span>
-                <span className="text-muted-foreground opacity-50 ml-1 font-medium">{new Date(order.receive_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</span>
+            <div className="text-left sm:text-right w-full sm:w-auto border-t sm:border-none pt-3 sm:pt-0 space-y-1">
+              <div>
+                <p className="text-[9px] md:text-[10px] font-bold text-muted-foreground uppercase tracking-widest leading-none mb-1">
+                  Ngày nhận
+                </p>
+                <div className="flex items-center gap-1.5 font-bold text-foreground text-xs md:text-sm">
+                  <Calendar size={14} className="text-primary md:w-4 md:h-4" />
+                  <span>{new Date(order.receive_time).toLocaleDateString('vi-VN')}</span>
+                  <span className="text-muted-foreground opacity-50 ml-1 font-medium">
+                    {new Date(order.receive_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </div>
               </div>
+              {order.return_time && (
+                <div>
+                  <p className="text-[9px] md:text-[10px] font-bold text-muted-foreground uppercase tracking-widest leading-none mb-1">
+                    Hẹn trả
+                  </p>
+                  <div className="flex items-center gap-1.5 font-bold text-foreground text-xs md:text-sm">
+                    <Calendar size={14} className="text-primary md:w-4 md:h-4" />
+                    <span>{new Date(order.return_time).toLocaleDateString('vi-VN')}</span>
+                    <span className="text-muted-foreground opacity-50 ml-1 font-medium">
+                      {new Date(order.return_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
