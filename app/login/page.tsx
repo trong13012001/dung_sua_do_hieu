@@ -53,13 +53,6 @@ function LoginForm() {
 
       <div className="w-full max-w-[450px] space-y-8 relative z-10">
         <div className="vuexy-card p-10">
-          <div className="flex items-center gap-3 mb-8">
-            <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center text-white shadow-lg">
-              <Circle size={24} fill="currentColor" />
-            </div>
-            <h1 className="text-2xl font-black text-foreground tracking-tight">Vuexy</h1>
-          </div>
-
           <div className="mb-8">
             <h2 className="text-xl font-bold text-foreground">Chào mừng bạn đến với Dũng Sửa Đồ Hiệu! 👋</h2>
             <p className="text-sm text-muted-foreground mt-1">Vui lòng đăng nhập vào tài khoản của bạn để bắt đầu</p>
@@ -92,7 +85,6 @@ function LoginForm() {
             <div className="space-y-1.5">
               <div className="flex justify-between items-center">
                 <label className="text-[11px] font-bold text-muted-foreground uppercase opacity-80">Mật khẩu</label>
-                <a href="#" className="text-[11px] font-bold text-primary hover:underline">Quên mật khẩu?</a>
               </div>
               <input
                 type="password"
@@ -121,18 +113,6 @@ function LoginForm() {
               )}
             </button>
           </form>
-
-          <div className="mt-8 text-center">
-            <p className="text-sm text-muted-foreground">
-              Chưa có tài khoản? <a href="#" className="text-primary font-bold hover:underline">Tạo một cái mới</a>
-            </p>
-          </div>
-        </div>
-
-        <div className="text-center">
-          <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest opacity-60">
-            &copy; 2024 Dũng Sửa Đồ Hiệu. Được làm với ❤️
-          </p>
         </div>
       </div>
     </div>
