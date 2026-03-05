@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useCallback } from 'react';
 import {
   Calendar,
   Package,
@@ -13,9 +13,9 @@ import {
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import { useOrderItems, useUpdateOrderDetail } from '@/api/orders';
 import { Toast, useToast } from '@/components/ui/Toast';
-import { supabase } from '@/lib/supabase';
+import { useCurrentUserId } from '@/hooks/useCurrentUserId';
 import { useEmployees } from '@/api/users';
-import { OrderDetail, User, Role } from '@/lib/types';
+import { OrderDetail } from '@/lib/types';
 
 const COLUMNS = [
   { id: 'New', label: 'Mới', color: 'bg-info/10 text-info border-info/20' },
@@ -32,25 +32,10 @@ const statusMap: Record<string, { label: string; color: string }> = {
 };
 
 export default function MyTasksPage() {
-  const { data: employees } = useEmployees();
+  const { isLoading: employeesLoading } = useEmployees();
+  const currentUserId = useCurrentUserId();
   const updateDetail = useUpdateOrderDetail();
   const { toast, showToast, hideToast } = useToast();
-
-  const [currentUserId, setCurrentUserId] = useState<number | null>(null);
-  const [loadingUser, setLoadingUser] = useState(true);
-
-  useEffect(() => {
-    async function findCurrentUser() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user?.email && employees) {
-        const match = employees.find((e: User & { role: Role | null }) => e.email === user.email);
-        if (match) setCurrentUserId(match.id);
-      }
-      setLoadingUser(false);
-    }
-    if (employees) findCurrentUser();
-  }, [employees]);
-
   const { data: myTasks, isLoading: tasksLoading } = useOrderItems(currentUserId);
 
   const tasksByColumn = COLUMNS.reduce((acc, col) => {
@@ -93,7 +78,7 @@ export default function MyTasksPage() {
     }
   }, [updateDetail, showToast]);
 
-  if (loadingUser || tasksLoading) {
+  if (employeesLoading || tasksLoading) {
     return (
       <div className="flex items-center justify-center py-20">
         <Loader2 className="animate-spin text-primary" size={32} />

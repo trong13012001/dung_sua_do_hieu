@@ -90,7 +90,7 @@ export interface OrderLog {
   entity_id: number | null;
   old_value: Record<string, unknown> | null;
   new_value: Record<string, unknown> | null;
-  updated_by: number | null;
+  updated_by: string | null;
   created_at: string;
   user?: Partial<User>;
 }

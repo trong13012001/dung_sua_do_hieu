@@ -22,7 +22,7 @@ export function useProcessPayment() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (payload: Partial<Payment> & { updated_by?: number | null }) => {
+    mutationFn: async (payload: Partial<Payment> & { updated_by?: string | null }) => {
       const { updated_by, ...payment } = payload;
       const { data, error } = await supabase.from('payments').insert(payment).select().single();
       if (error) throw error;

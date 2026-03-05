@@ -20,6 +20,7 @@ import {
   useUpdateOrderDetail,
   useAddOrderDetails,
   useDeleteOrder,
+  useDeleteOrderDetail,
   fetchOrdersForExport,
   type OrdersFilters,
   type NewOrderDetailItem,
@@ -98,6 +99,7 @@ export default function OrdersPage() {
   const updateDetail = useUpdateOrderDetail();
   const addOrderDetails = useAddOrderDetails();
   const deleteOrder = useDeleteOrder();
+  const deleteDetail = useDeleteOrderDetail();
   const processPayment = useProcessPayment();
   const { toast, showToast, hideToast } = useToast();
 
@@ -108,24 +110,36 @@ export default function OrdersPage() {
   const [endDate, setEndDate] = useState('');
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [deletingOrder, setDeletingOrder] = useState<Order | null>(null);
+  const [deletingDetailId, setDeletingDetailId] = useState<number | null>(null);
   const [payingOrder, setPayingOrder] = useState<Order | null>(null);
   const [invoiceOrder, setInvoiceOrder] = useState<Order | null>(null);
   const [payForm, setPayForm] = useState<{ amount: string; method: 'Cash' | 'Card' | 'Transfer' }>({ amount: '', method: 'Cash' });
   const [exporting, setExporting] = useState(false);
-  const [detailEdits, setDetailEdits] = useState<Record<number, { status: string; assigned_tailor_id: string }>>({});
-  const [newItems, setNewItems] = useState<Array<{ name: string; price: string; description: string;  assigned_tailor_id: string }>>([]);
+  type DetailEdit = { item_name: string; unit_price: string; description: string; status: string; assigned_tailor_id: string };
+  const [detailEdits, setDetailEdits] = useState<Record<number, DetailEdit>>({});
+  const [newItems, setNewItems] = useState<Array<{ name: string; price: string; description: string; assigned_tailor_id: string }>>([]);
 
   const openEditModal = (order: Order) => {
     setEditingOrder(order);
-    const edits: Record<number, { status: string; assigned_tailor_id: string }> = {};
+    const edits: Record<number, DetailEdit> = {};
     order.details?.forEach(d => {
       edits[d.id] = {
+        item_name: d.item_name ?? '',
+        unit_price: String(d.unit_price ?? ''),
+        description: d.description ?? '',
         status: d.status,
         assigned_tailor_id: d.assigned_tailor_id ? String(d.assigned_tailor_id) : '',
       };
     });
     setDetailEdits(edits);
     setNewItems([]);
+  };
+
+  const setDetailEdit = (detailId: number, field: keyof DetailEdit, value: string) => {
+    setDetailEdits(prev => ({
+      ...prev,
+      [detailId]: { ...(prev[detailId] ?? {} as DetailEdit), [field]: value },
+    }));
   };
 
   const addNewItemRow = () => {
@@ -192,10 +206,18 @@ export default function OrdersPage() {
       for (const detail of editingOrder.details || []) {
         const edit = detailEdits[detail.id];
         if (!edit) continue;
+        const priceNum = Number(edit.unit_price);
+        if (edit.unit_price.trim() !== '' && (Number.isNaN(priceNum) || priceNum < 0)) {
+          showToast(`Sản phẩm "${edit.item_name || detail.item_name}": Đơn giá không hợp lệ`, 'error');
+          return;
+        }
         const patch: Partial<OrderDetail> = {};
+        if (edit.item_name.trim() !== detail.item_name) patch.item_name = edit.item_name.trim();
+        if (edit.unit_price.trim() !== '' && priceNum !== Number(detail.unit_price)) patch.unit_price = priceNum;
+        if (edit.description !== (detail.description ?? '')) patch.description = edit.description.trim() || null;
         if (edit.status !== detail.status) patch.status = edit.status as OrderDetail['status'];
         const origTailor = detail.assigned_tailor_id ? String(detail.assigned_tailor_id) : '';
-        if (edit.assigned_tailor_id !== origTailor) patch.assigned_tailor_id = edit.assigned_tailor_id || null;
+        if (edit.assigned_tailor_id !== origTailor) patch.assigned_tailor_id = edit.assigned_tailor_id ? edit.assigned_tailor_id : null;
         if (Object.keys(patch).length > 0) {
           await updateDetail.mutateAsync({ id: detail.id, detail: patch, updated_by: currentUserId ?? undefined });
         }
@@ -219,7 +241,7 @@ export default function OrdersPage() {
           item_name: row.name.trim(),
           unit_price: Number(row.price),
           description: row.description.trim() || null,
-          assigned_tailor_id: row.assigned_tailor_id ? row.assigned_tailor_id : null,
+          assigned_tailor_id: row.assigned_tailor_id?.trim() ? row.assigned_tailor_id.trim() : null,
         }));
       if (toAdd.length > 0) {
         await addOrderDetails.mutateAsync({
@@ -239,6 +261,28 @@ export default function OrdersPage() {
       await deleteOrder.mutateAsync({ id: deletingOrder.id, updated_by: currentUserId ?? undefined });
       setDeletingOrder(null);
       showToast('Xóa đơn hàng thành công', 'success');
+    } catch (err: any) { showToast('Lỗi: ' + err.message, 'error'); }
+  };
+
+  const handleDeleteDetail = async (detailId: number) => {
+    if (!editingOrder) return;
+    try {
+      await deleteDetail.mutateAsync({ id: detailId, updated_by: currentUserId ?? undefined });
+      const d = editingOrder.details?.find(x => x.id === detailId);
+      const newDetails = (editingOrder.details ?? []).filter(x => x.id !== detailId);
+      const subtract = d ? Number(d.unit_price) || 0 : 0;
+      setEditingOrder({
+        ...editingOrder,
+        details: newDetails,
+        total_amount: Math.max(0, editingOrder.total_amount - subtract),
+      });
+      setDetailEdits(prev => {
+        const next = { ...prev };
+        delete next[detailId];
+        return next;
+      });
+      setDeletingDetailId(null);
+      showToast('Đã xóa dòng sản phẩm', 'success');
     } catch (err: any) { showToast('Lỗi: ' + err.message, 'error'); }
   };
 
@@ -395,9 +439,9 @@ export default function OrdersPage() {
       </div>
 
       {/* Edit Order Modal */}
-      <Modal isOpen={!!editingOrder} onClose={() => setEditingOrder(null)} title={`Cập nhật đơn #${editingOrder?.id}`} maxWidth="max-w-2xl">
+      <Modal isOpen={!!editingOrder} onClose={() => { setEditingOrder(null); setDeletingDetailId(null); }} title={`Cập nhật đơn #${editingOrder?.id}`} maxWidth="max-w-4xl">
         <OrderLogSection orderId={editingOrder?.id ?? null} />
-        <form onSubmit={handleUpdate} className="space-y-5">
+        <form onSubmit={handleUpdate} className="space-y-4">
           <div className="space-y-1.5">
             <label className="text-[11px] font-bold text-muted-foreground uppercase">Trạng thái đơn hàng</label>
             <div className="relative">
@@ -407,51 +451,105 @@ export default function OrdersPage() {
               <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" size={14} />
             </div>
           </div>
+
           {editingOrder?.details && editingOrder.details.length > 0 && (
-            <div className="space-y-3">
-              <p className="text-[11px] font-bold text-muted-foreground uppercase">Chi tiết sản phẩm</p>
-              {editingOrder.details.map(d => (
-                <div key={d.id} className="p-3 border border-border rounded-lg bg-muted/5 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-bold text-foreground">{d.item_name}</span>
-                    <span className="text-xs text-muted-foreground">{new Intl.NumberFormat('vi-VN').format(d.unit_price)}đ</span>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-muted-foreground uppercase">Trạng thái</label>
-                      <div className="relative">
-                        <select
-                          name={`detail-status-${d.id}`}
-                          className={selectClass}
-                          value={detailEdits[d.id]?.status ?? d.status}
-                          onChange={e => setDetailEdits(prev => ({ ...prev, [d.id]: { ...(prev[d.id] ?? { status: d.status, assigned_tailor_id: d.assigned_tailor_id ? String(d.assigned_tailor_id) : '' }), status: e.target.value } }))}
-                        >
-                          {detailStatusOptions.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-                        </select>
-                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" size={14} />
-                      </div>
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-muted-foreground uppercase">Phân công thợ</label>
-                      <div className="relative">
-                        <select
-                          name={`detail-tailor-${d.id}`}
-                          className={selectClass}
-                          value={detailEdits[d.id]?.assigned_tailor_id ?? (d.assigned_tailor_id ? String(d.assigned_tailor_id) : '')}
-                          onChange={e => setDetailEdits(prev => ({ ...prev, [d.id]: { ...(prev[d.id] ?? { status: d.status, assigned_tailor_id: d.assigned_tailor_id ? String(d.assigned_tailor_id) : '' }), assigned_tailor_id: e.target.value } }))}
-                        >
-                          <option value="">Chưa phân công</option>
-                          {tailors.map((t: User & { role: Role | null }) => <option key={t.id} value={String(t.id)}>{t.name}</option>)}
-                        </select>
-                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" size={14} />
-                      </div>
-                    </div>
-                  </div>
+            <div className="space-y-2">
+              <p className="text-[11px] font-bold text-muted-foreground uppercase">Chi tiết sản phẩm ({editingOrder.details.length})</p>
+              <div className="border border-border rounded-lg overflow-hidden">
+                <div className="max-h-[min(50vh,400px)] overflow-y-auto">
+                  <table className="w-full text-sm border-collapse">
+                    <thead className="sticky top-0 bg-muted/30 border-b border-border z-10">
+                      <tr>
+                        <th className="text-left p-2 font-bold text-[10px] uppercase text-muted-foreground w-[22%]">Tên SP</th>
+                        <th className="text-left p-2 font-bold text-[10px] uppercase text-muted-foreground w-[12%]">Đơn giá (đ)</th>
+                        <th className="text-left p-2 font-bold text-[10px] uppercase text-muted-foreground w-[18%]">Mô tả</th>
+                        <th className="text-left p-2 font-bold text-[10px] uppercase text-muted-foreground w-[18%]">Trạng thái</th>
+                        <th className="text-left p-2 font-bold text-[10px] uppercase text-muted-foreground w-[22%]">Thợ</th>
+                        <th className="w-10 p-2"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {editingOrder.details.map(d => {
+                        const edit = detailEdits[d.id];
+                        if (!edit) return null;
+                        return (
+                          <tr key={d.id} className="border-b border-border/50 last:border-0 hover:bg-muted/10">
+                            <td className="p-1.5">
+                              <input
+                                type="text"
+                                value={edit.item_name}
+                                onChange={e => setDetailEdit(d.id, 'item_name', e.target.value)}
+                                placeholder="Tên sản phẩm"
+                                className={selectClass + ' min-w-0'}
+                              />
+                            </td>
+                            <td className="p-1.5">
+                              <input
+                                type="number"
+                                min="0"
+                                value={edit.unit_price}
+                                onChange={e => setDetailEdit(d.id, 'unit_price', e.target.value)}
+                                placeholder="0"
+                                className={selectClass + ' min-w-0'}
+                              />
+                            </td>
+                            <td className="p-1.5">
+                              <input
+                                type="text"
+                                value={edit.description}
+                                onChange={e => setDetailEdit(d.id, 'description', e.target.value)}
+                                placeholder="Tùy chọn"
+                                className={selectClass + ' min-w-0'}
+                              />
+                            </td>
+                            <td className="p-1.5">
+                              <div className="relative">
+                                <select
+                                  value={edit.status}
+                                  onChange={e => setDetailEdit(d.id, 'status', e.target.value)}
+                                  className={selectClass + ' min-w-0'}
+                                >
+                                  {detailStatusOptions.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                                </select>
+                                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" size={12} />
+                              </div>
+                            </td>
+                            <td className="p-1.5">
+                              <div className="relative">
+                                <select
+                                  value={edit.assigned_tailor_id}
+                                  onChange={e => setDetailEdit(d.id, 'assigned_tailor_id', e.target.value)}
+                                  className={selectClass + ' min-w-0'}
+                                >
+                                  <option value="">Chưa phân công</option>
+                                  {tailors.map((t: User & { role: Role | null }) => (
+                                    <option key={String(t.id)} value={String(t.id)}>{t.name}</option>
+                                  ))}
+                                </select>
+                                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" size={12} />
+                              </div>
+                            </td>
+                            <td className="p-1.5">
+                              <button
+                                type="button"
+                                onClick={() => setDeletingDetailId(d.id)}
+                                className="p-1.5 rounded text-muted-foreground hover:text-danger hover:bg-danger/10 transition-colors"
+                                title="Xóa dòng"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
-              ))}
+              </div>
             </div>
           )}
-          <div className="space-y-3">
+
+          <div className="space-y-2">
             <div className="flex items-center justify-between">
               <p className="text-[11px] font-bold text-muted-foreground uppercase">Thêm sản phẩm</p>
               <button type="button" onClick={addNewItemRow} className="text-xs font-bold text-primary hover:underline">
@@ -459,70 +557,87 @@ export default function OrdersPage() {
               </button>
             </div>
             {newItems.length > 0 && (
-              <div className="space-y-2 p-3 border border-border rounded-lg bg-muted/5">
-                {newItems.map((row, idx) => (
-                  <div key={idx} className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
-                    <div className="sm:col-span-4 space-y-1">
-                      <label className="text-[10px] font-bold text-muted-foreground uppercase">Tên SP</label>
-                      <input
-                        type="text"
-                        value={row.name}
-                        onChange={e => updateNewItem(idx, 'name', e.target.value)}
-                        placeholder="Tên sản phẩm"
-                        className={selectClass}
-                      />
+              <div className="border border-border rounded-lg overflow-hidden">
+                <div className="max-h-[200px] overflow-y-auto p-2 space-y-2 bg-muted/5">
+                  {newItems.map((row, idx) => (
+                    <div key={idx} className="grid grid-cols-12 gap-2 items-center">
+                      <div className="col-span-3">
+                        <input
+                          type="text"
+                          value={row.name}
+                          onChange={e => updateNewItem(idx, 'name', e.target.value)}
+                          placeholder="Tên sản phẩm"
+                          className={selectClass}
+                        />
+                      </div>
+                      <div className="col-span-2">
+                        <input
+                          type="number"
+                          min="0"
+                          value={row.price}
+                          onChange={e => updateNewItem(idx, 'price', e.target.value)}
+                          placeholder="Đơn giá"
+                          className={selectClass}
+                        />
+                      </div>
+                      <div className="col-span-2">
+                        <input
+                          type="text"
+                          value={row.description}
+                          onChange={e => updateNewItem(idx, 'description', e.target.value)}
+                          placeholder="Mô tả"
+                          className={selectClass}
+                        />
+                      </div>
+                      <div className="col-span-4">
+                        <select
+                          value={row.assigned_tailor_id}
+                          onChange={e => updateNewItem(idx, 'assigned_tailor_id', e.target.value)}
+                          className={selectClass}
+                        >
+                          <option value="">Chưa phân công</option>
+                          {tailors.map((t: User & { role: Role | null }) => (
+                            <option key={String(t.id)} value={String(t.id)}>{t.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="col-span-1 flex justify-end">
+                        <button type="button" onClick={() => removeNewItem(idx)} className="p-2 text-muted-foreground hover:text-danger" title="Xóa dòng">
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
                     </div>
-                    <div className="sm:col-span-2 space-y-1">
-                      <label className="text-[10px] font-bold text-muted-foreground uppercase">Đơn giá (đ)</label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={row.price}
-                        onChange={e => updateNewItem(idx, 'price', e.target.value)}
-                        placeholder="0"
-                        className={selectClass}
-                      />
-                    </div>
-                    <div className="sm:col-span-3 space-y-1">
-                      <label className="text-[10px] font-bold text-muted-foreground uppercase">Mô tả</label>
-                      <input
-                        type="text"
-                        value={row.description}
-                        onChange={e => updateNewItem(idx, 'description', e.target.value)}
-                        placeholder="Tùy chọn"
-                        className={selectClass}
-                      />
-                    </div>
-                    <div className="sm:col-span-2 space-y-1">
-                      <label className="text-[10px] font-bold text-muted-foreground uppercase">Thợ</label>
-                      <select
-                        value={row.assigned_tailor_id}
-                        onChange={e => updateNewItem(idx, 'assigned_tailor_id', e.target.value)}
-                        className={selectClass}
-                      >
-                        <option value="">Chưa phân công</option>
-                        {tailors.map((t: User & { role: Role | null }) => (
-                          <option key={t.id} value={String(t.id)}>{t.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="sm:col-span-1 flex justify-end">
-                      <button type="button" onClick={() => removeNewItem(idx)} className="p-2 text-muted-foreground hover:text-danger" title="Xóa dòng">
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             )}
           </div>
-          <div className="flex gap-4 mt-8">
-            <button type="button" onClick={() => setEditingOrder(null)} className="flex-1 bg-muted/40 text-foreground py-2.5 rounded-md font-bold text-sm border border-border">Hủy</button>
+
+          <div className="flex gap-4 pt-2">
+            <button type="button" onClick={() => { setEditingOrder(null); setDeletingDetailId(null); }} className="flex-1 bg-muted/40 text-foreground py-2.5 rounded-md font-bold text-sm border border-border">Hủy</button>
             <button type="submit" disabled={updateOrder.isPending || updateDetail.isPending || addOrderDetails.isPending} className="flex-1 btn-primary py-2.5 rounded-md font-bold text-sm disabled:opacity-50">
               {(updateOrder.isPending || updateDetail.isPending || addOrderDetails.isPending) ? 'Đang lưu...' : 'Cập nhật'}
             </button>
           </div>
         </form>
+      </Modal>
+
+      {/* Confirm delete order detail */}
+      <Modal isOpen={deletingDetailId !== null} onClose={() => setDeletingDetailId(null)} title="Xóa dòng sản phẩm">
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">Bạn có chắc muốn xóa dòng sản phẩm này? Tổng tiền đơn sẽ được cập nhật trừ đi giá trị dòng.</p>
+          <div className="flex gap-3">
+            <button type="button" onClick={() => setDeletingDetailId(null)} className="flex-1 bg-muted/40 text-foreground py-2.5 rounded-md font-bold text-sm border border-border">Hủy</button>
+            <button
+              type="button"
+              onClick={() => deletingDetailId != null && handleDeleteDetail(deletingDetailId)}
+              disabled={deleteDetail.isPending}
+              className="flex-1 bg-danger text-white py-2.5 rounded-md font-bold text-sm disabled:opacity-50"
+            >
+              {deleteDetail.isPending ? 'Đang xóa...' : 'Xóa'}
+            </button>
+          </div>
+        </div>
       </Modal>
 
       {/* Payment Modal */}

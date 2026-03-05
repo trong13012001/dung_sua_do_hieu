@@ -16,23 +16,23 @@ async function enrichOrders(orders: any[]): Promise<Order[]> {
   const customerMap: Record<number, { id: number; name: string; phone: string | null }> = {};
   if (customersRes.data) for (const c of customersRes.data) customerMap[c.id] = c;
   const detailsByOrder: Record<number, any[]> = {};
-  const tailorIds = new Set<number>();
+  const tailorIds = new Set<string | number>();
   if (detailsRes.data) {
     for (const d of detailsRes.data) {
       if (!detailsByOrder[d.order_id]) detailsByOrder[d.order_id] = [];
       detailsByOrder[d.order_id].push(d);
-      if (d.assigned_tailor_id) tailorIds.add(d.assigned_tailor_id);
+      if (d.assigned_tailor_id != null) tailorIds.add(d.assigned_tailor_id);
     }
   }
-  let tailorMap: Record<number, { id: number; name: string }> = {};
+  const tailorMap: Record<string, { id: string; name: string }> = {};
   if (tailorIds.size > 0) {
     const { data: tailors } = await supabase.from('users').select('id, name').in('id', [...tailorIds]);
-    if (tailors) for (const t of tailors) tailorMap[t.id] = t;
+    if (tailors) for (const t of tailors) tailorMap[String(t.id)] = { id: String(t.id), name: t.name };
   }
   return orders.map(o => ({
     ...o,
     customer: customerMap[o.customer_id] || null,
-    details: (detailsByOrder[o.id] || []).map((d: any) => ({ ...d, tailor: d.assigned_tailor_id ? tailorMap[d.assigned_tailor_id] || null : null })),
+    details: (detailsByOrder[o.id] || []).map((d: any) => ({ ...d, tailor: d.assigned_tailor_id ? tailorMap[String(d.assigned_tailor_id)] || null : null })),
   })) as Order[];
 }
 
@@ -89,12 +89,12 @@ export async function fetchOrdersForExport(filters: OrdersFilters): Promise<Orde
   return enrichOrders(orders || []);
 }
 
-export function useOrderItems(tailorId?: number | null) {
+export function useOrderItems(tailorId?: string | number | null) {
   return useQuery({
     queryKey: ['order-items', tailorId],
-    enabled: !!tailorId,
+    enabled: tailorId != null && tailorId !== '',
     queryFn: async () => {
-      // Step 1: fetch details for this tailor
+      // Step 1: fetch details for this tailor (assigned_tailor_id is UUID)
       const { data: details, error } = await supabase
         .from('order_details')
         .select('id, order_id, item_name, description, unit_price, status, assigned_tailor_id')
@@ -144,7 +144,7 @@ export function useAllOrderItems() {
 
       // Step 2: fetch related orders + customers + tailors in parallel
       const orderIds = [...new Set(details.map(d => d.order_id))];
-      const tailorIds = [...new Set(details.map(d => d.assigned_tailor_id).filter(Boolean))] as number[];
+      const tailorIds = [...new Set(details.map((d: any) => d.assigned_tailor_id).filter(Boolean))];
 
       const [ordersRes, tailorsRes] = await Promise.all([
         supabase.from('orders').select('id, status, created_at, customer_id').in('id', orderIds),
@@ -162,12 +162,12 @@ export function useAllOrderItems() {
       if (customers) for (const c of customers) customerMap[c.id] = c.name;
       const orderMap: Record<number, any> = {};
       if (ordersRes.data) for (const o of ordersRes.data) orderMap[o.id] = { ...o, customerName: customerMap[o.customer_id] || 'Vãng lai' };
-      const tailorMap: Record<number, { id: number; name: string }> = {};
-      if (tailorsRes.data) for (const t of tailorsRes.data) tailorMap[t.id] = t;
+      const tailorMap: Record<string, { id: string; name: string }> = {};
+      if (tailorsRes.data) for (const t of tailorsRes.data) tailorMap[String(t.id)] = { id: String(t.id), name: t.name };
 
       return details.map((d: any) => ({
         ...d,
-        tailor: d.assigned_tailor_id ? tailorMap[d.assigned_tailor_id] || null : null,
+        tailor: d.assigned_tailor_id ? tailorMap[String(d.assigned_tailor_id)] || null : null,
         orderNumber: d.order_id,
         customerName: orderMap[d.order_id]?.customerName || 'Vãng lai',
         orderCreatedAt: orderMap[d.order_id]?.created_at || '',
@@ -183,7 +183,7 @@ export function useCreateOrder() {
     mutationFn: async ({ order, items, updated_by }: {
       order: Partial<Order>;
       items: { name: string; price: number; description: string; assigned_tailor_id?: string | null }[];
-      updated_by?: number | null;
+      updated_by?: string | null;
     }) => {
       const { data: orderData, error: orderError } = await supabase
         .from('orders')
@@ -224,7 +224,7 @@ export function useCreateOrder() {
 export function useUpdateOrder() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, order, updated_by }: { id: number; order: Partial<Order>; updated_by?: number | null }) => {
+    mutationFn: async ({ id, order, updated_by }: { id: number; order: Partial<Order>; updated_by?: string | null }) => {
       const { data, error } = await supabase
         .from('orders')
         .update({ ...order, updated_at: new Date().toISOString() })
@@ -295,11 +295,11 @@ export function useUpdateOrderStatus() {
 export function useUpdateOrderDetail() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, detail, updated_by }: { id: number; detail: Partial<OrderDetail>; updated_by?: number | null }) => {
+    mutationFn: async ({ id, detail, updated_by }: { id: number; detail: Partial<OrderDetail>; updated_by?: string | null }) => {
       const payload: Record<string, unknown> = { ...detail, updated_at: new Date().toISOString() };
       if ('assigned_tailor_id' in detail) {
         const v = detail.assigned_tailor_id;
-        payload.assigned_tailor_id = v == null || v === '' ? null : Number(v);
+        payload.assigned_tailor_id = v == null || v === '' ? null : String(v);
       }
       const { data, error } = await supabase
         .from('order_details')
@@ -317,6 +317,23 @@ export function useUpdateOrderDetail() {
         new_value: detail as Record<string, unknown>,
         updated_by,
       });
+
+      // If price or other fields that affect total changed, recalc order total from sum of details
+      if ('unit_price' in detail || 'item_name' in detail) {
+        const { data: allDetails } = await supabase
+          .from('order_details')
+          .select('unit_price')
+          .eq('order_id', data.order_id);
+        const newTotal = (allDetails || []).reduce((s, d) => s + Number(d.unit_price || 0), 0);
+        await supabase
+          .from('orders')
+          .update({ total_amount: newTotal, updated_at: new Date().toISOString() })
+          .eq('id', data.order_id);
+        const { data: orderRow } = await supabase.from('orders').select('customer_id').eq('id', data.order_id).single();
+        if (orderRow?.customer_id != null) {
+          await supabase.rpc('recalculate_customer_debt', { customer_id: Number(orderRow.customer_id) });
+        }
+      }
 
       // Auto-sync parent order status based on all sibling item statuses
       if (detail.status) {
@@ -377,7 +394,8 @@ export type NewOrderDetailItem = {
   item_name: string;
   unit_price: number;
   description?: string | null;
-  assigned_tailor_id?: number | string | null;
+  /** UUID string (users.id when id is UUID) */
+  assigned_tailor_id?: string | null;
 };
 
 export function useAddOrderDetails() {
@@ -390,7 +408,7 @@ export function useAddOrderDetails() {
     }: {
       orderId: number;
       items: NewOrderDetailItem[];
-      updated_by?: number | null;
+      updated_by?: string | null;
     }) => {
       if (items.length === 0) return [];
       const rows = items.map((item) => ({
@@ -399,7 +417,9 @@ export function useAddOrderDetails() {
         description: item.description ?? null,
         unit_price: Number(item.unit_price),
         status: 'New',
-        assigned_tailor_id: item.assigned_tailor_id ? Number(item.assigned_tailor_id) : null,
+        assigned_tailor_id: item.assigned_tailor_id == null || item.assigned_tailor_id === ''
+          ? null
+          : String(item.assigned_tailor_id),
       }));
       const { data: inserted, error: insertErr } = await supabase
         .from('order_details')
@@ -448,10 +468,62 @@ export function useAddOrderDetails() {
   });
 }
 
+export function useDeleteOrderDetail() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, updated_by }: { id: number; updated_by?: string | null }) => {
+      const { data: detail, error: fetchErr } = await supabase
+        .from('order_details')
+        .select('order_id, unit_price')
+        .eq('id', id)
+        .single();
+      if (fetchErr || !detail) throw fetchErr || new Error('Chi tiết không tồn tại');
+      const { error: delErr } = await supabase.from('order_details').delete().eq('id', id);
+      if (delErr) throw delErr;
+      const orderId = detail.order_id;
+      const subtract = Number(detail.unit_price) || 0;
+      const { data: order, error: orderErr } = await supabase
+        .from('orders')
+        .select('total_amount, customer_id')
+        .eq('id', orderId)
+        .single();
+      if (orderErr) throw orderErr;
+      const newTotal = Math.max(0, (Number(order?.total_amount) || 0) - subtract);
+      const { error: updateErr } = await supabase
+        .from('orders')
+        .update({ total_amount: newTotal, updated_at: new Date().toISOString() })
+        .eq('id', orderId);
+      if (updateErr) throw updateErr;
+      const customerId = order?.customer_id == null ? null : Number(order.customer_id);
+      if (customerId !== null) {
+        const { error: debtErr } = await supabase.rpc('recalculate_customer_debt', { customer_id: customerId });
+        if (debtErr) throw debtErr;
+      }
+      await insertOrderLog({
+        order_id: orderId,
+        action: 'detail_updated',
+        entity_type: 'order_detail',
+        entity_id: id,
+        new_value: { deleted: true } as Record<string, unknown>,
+        updated_by,
+      });
+      return { id, orderId };
+    },
+    onSuccess: (_data) => {
+      qc.invalidateQueries({ queryKey: ['orders'] });
+      qc.invalidateQueries({ queryKey: ['orders-infinite'] });
+      qc.invalidateQueries({ queryKey: ['all-order-items'] });
+      qc.invalidateQueries({ queryKey: ['order-items'] });
+      qc.invalidateQueries({ queryKey: ['customers'] });
+      qc.invalidateQueries({ queryKey: ['stats'] });
+    },
+  });
+}
+
 export function useDeleteOrder() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (arg: number | { id: number; updated_by?: number | null }) => {
+    mutationFn: async (arg: number | { id: number; updated_by?: string | null }) => {
       const id = typeof arg === 'number' ? arg : arg.id;
       const updated_by = typeof arg === 'number' ? null : arg.updated_by;
       const { error } = await supabase.from('orders').delete().eq('id', id);
@@ -518,15 +590,15 @@ export async function getOrder(orderId: number | string): Promise<Order> {
 
   const details = detailsRes.data || [];
   const tailorIds = [...new Set(details.map((d: any) => d.assigned_tailor_id).filter(Boolean))];
-  let tailorMap: Record<number, { id: number; name: string }> = {};
+  const tailorMap: Record<string, { id: string; name: string }> = {};
   if (tailorIds.length > 0) {
     const { data: tailors } = await supabase.from('users').select('id, name').in('id', tailorIds);
-    if (tailors) for (const t of tailors) tailorMap[t.id] = t;
+    if (tailors) for (const t of tailors) tailorMap[String(t.id)] = { id: String(t.id), name: t.name };
   }
 
   const detailsWithTailor = details.map((d: any) => ({
     ...d,
-    tailor: d.assigned_tailor_id ? tailorMap[d.assigned_tailor_id] || null : null,
+    tailor: d.assigned_tailor_id ? tailorMap[String(d.assigned_tailor_id)] || null : null,
   }));
 
   return {
