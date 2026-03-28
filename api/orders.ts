@@ -10,6 +10,46 @@ import { insertOrderLog } from "@/api/orderLogs";
 
 const PAGE_SIZE = 25;
 
+/** Dòng cache của useAllOrderItems / useOrderItems (bảng Công việc) */
+type CachedOrderTaskRow = {
+    id: number;
+    order_id: number;
+    item_name: string;
+    description?: string | null;
+    unit_price: number;
+    status: string;
+    assigned_tailor_id: string | null;
+    tailor?: { id: string; name: string } | null;
+    orderNumber: number;
+    customerName: string;
+    orderCreatedAt: string;
+    orderStatus?: string;
+    created_at?: string;
+};
+
+function applyDetailPatchToTaskRows(
+    rows: CachedOrderTaskRow[],
+    detailId: number,
+    patch: Partial<OrderDetail>,
+): CachedOrderTaskRow[] {
+    return rows.map((row) => {
+        if (row.id !== detailId) return row;
+        const next: CachedOrderTaskRow = { ...row };
+        (Object.keys(patch) as (keyof OrderDetail)[]).forEach((k) => {
+            const v = patch[k];
+            if (v !== undefined) (next as Record<string, unknown>)[k as string] = v;
+        });
+        if (
+            patch.assigned_tailor_id === null ||
+            patch.assigned_tailor_id === ""
+        ) {
+            next.assigned_tailor_id = null;
+            next.tailor = null;
+        }
+        return next;
+    });
+}
+
 async function enrichOrders(orders: any[]): Promise<Order[]> {
     if (!orders || orders.length === 0) return [];
     const orderIds = orders.map((o) => o.id);
@@ -161,10 +201,11 @@ export function useOrderItems(tailorId?: string | number | null) {
             const { data: details, error } = await supabase
                 .from("order_details")
                 .select(
-                    "id, order_id, item_name, description, unit_price, status, assigned_tailor_id",
+                    "id, order_id, item_name, description, unit_price, status, assigned_tailor_id, created_at",
                 )
                 .eq("assigned_tailor_id", tailorId!)
                 .in("status", ["New", "In Progress", "Ready", "Completed"])
+                .order("created_at", { ascending: false })
                 .limit(100);
             if (error) throw error;
             if (!details || details.length === 0) return [];
@@ -216,9 +257,10 @@ export function useAllOrderItems() {
             const { data: details, error } = await supabase
                 .from("order_details")
                 .select(
-                    "id, order_id, item_name, description, unit_price, status, assigned_tailor_id",
+                    "id, order_id, item_name, description, unit_price, status, assigned_tailor_id, created_at",
                 )
                 .in("status", ["New", "In Progress", "Ready", "Completed"])
+                .order("created_at", { ascending: false })
                 .limit(500);
             if (error) throw error;
             if (!details || details.length === 0) return [];
@@ -355,6 +397,8 @@ export function useCreateOrder() {
             qc.invalidateQueries({ queryKey: ["orders-infinite"] });
             qc.invalidateQueries({ queryKey: ["customers"] });
             qc.invalidateQueries({ queryKey: ["stats"] });
+            qc.invalidateQueries({ queryKey: ["all-order-items"] });
+            qc.invalidateQueries({ queryKey: ["order-items"] });
         },
     });
 }
@@ -575,10 +619,41 @@ export function useUpdateOrderDetail() {
                     })),
                 );
             }
-            return { prev };
+
+            const prevAllOrderItems = qc.getQueryData<CachedOrderTaskRow[]>([
+                "all-order-items",
+            ]);
+            const prevOrderItemsQueries = qc.getQueriesData<CachedOrderTaskRow[]>(
+                { queryKey: ["order-items"] },
+            );
+
+            if (prevAllOrderItems !== undefined) {
+                qc.setQueryData(
+                    ["all-order-items"],
+                    applyDetailPatchToTaskRows(prevAllOrderItems, id, detail),
+                );
+            }
+            for (const [queryKey, data] of prevOrderItemsQueries) {
+                if (data !== undefined) {
+                    qc.setQueryData(
+                        queryKey,
+                        applyDetailPatchToTaskRows(data, id, detail),
+                    );
+                }
+            }
+
+            return { prev, prevAllOrderItems, prevOrderItemsQueries };
         },
         onError: (_err, _vars, ctx) => {
             if (ctx?.prev) qc.setQueryData(["orders"], ctx.prev);
+            if (ctx?.prevAllOrderItems !== undefined) {
+                qc.setQueryData(["all-order-items"], ctx.prevAllOrderItems);
+            }
+            if (ctx?.prevOrderItemsQueries) {
+                for (const [queryKey, data] of ctx.prevOrderItemsQueries) {
+                    qc.setQueryData(queryKey, data);
+                }
+            }
         },
         onSettled: () => {
             qc.invalidateQueries({ queryKey: ["orders"] });
