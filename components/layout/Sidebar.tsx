@@ -10,7 +10,6 @@ import {
   Scissors,
   UserPen,
   LogOut,
-  Circle,
   X,
   User,
   Shield,
@@ -23,6 +22,7 @@ import {
 import { supabase } from '@/lib/supabase';
 import { useCurrentUserPermissions } from '@/hooks/useCurrentUserPermissions';
 import { canAccessRoute } from '@/lib/permissions';
+import { BrandLogo } from '@/components/ui/BrandLogo';
 
 const navSections = [
   {
@@ -84,13 +84,11 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           ${isOpen ? 'translate-x-0' : '-translate-x-full'}
         `}
       >
-        <div className="p-6 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center text-white shadow-lg">
-              <Circle size={20} fill="currentColor" />
-            </div>
-            <h1 className="text-lg font-bold text-foreground tracking-tight">Dũng Sửa Đồ Hiệu</h1>
-          </div>
+        <div className="p-6 flex items-center justify-between gap-2">
+          <Link href="/dashboard" onClick={onClose} className="flex items-center gap-3 min-w-0 group">
+            <BrandLogo className="h-11 w-auto shrink-0 object-contain object-left group-hover:opacity-90 transition-opacity" />
+            <h1 className="text-lg font-bold text-foreground tracking-tight leading-tight line-clamp-2">Dũng Sửa Đồ Hiệu</h1>
+          </Link>
           <button onClick={onClose} className="lg:hidden p-1.5 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
             <X size={20} />
           </button>

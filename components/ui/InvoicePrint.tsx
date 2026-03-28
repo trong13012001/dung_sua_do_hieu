@@ -1,137 +1,253 @@
-'use client';
+"use client";
 
-import React from 'react';
-import { Order } from '@/lib/types';
-import { OrderBarcode } from '@/components/ui/OrderBarcode';
-import { encodeInvoiceBarcode } from '@/lib/barcode';
+import React from "react";
+import { Order, OrderDetail } from "@/lib/types";
+import { OrderBarcode } from "@/components/ui/OrderBarcode";
+import { BrandLogo } from "@/components/ui/BrandLogo";
+import {
+    invoiceBarcodeFromOrder,
+    invoiceDisplayNoFromBarcodeCode,
+} from "@/lib/barcode";
+import { wrapDetailLines } from "@/lib/invoicePrintLayout";
+import { QzPrintButton } from "@/components/print/QzPrintButton";
+import { PRINT_TARGET_INVOICE_XP80C } from "@/lib/printTargets";
+
+/** Mặc định giống template C# (trước khi gọi getInfo); có thể thay bằng cấu hình sau. */
+const SHOP_HOTLINE = "0904672288";
+const BANK_NAME = "Techcombank";
+const BANK_ACCOUNT_SPACED = "1902 9116 9690 16";
+const BANK_ACCOUNT_HOLDER = "Nguyễn Thu Hằng";
+
+function formatInvoiceDetailLine(d: OrderDetail): string {
+    const name = d.item_name?.trim() ?? "";
+    const desc = d.description?.trim() ?? "";
+    if (name && desc) return `${name}: ${desc}`;
+    return name || desc || "—";
+}
+
+function collectStaffNames(details: OrderDetail[] | undefined): string {
+    if (!details?.length) return "";
+    const names = [
+        ...new Set(
+            details.map((d) => d.tailor?.name).filter(Boolean) as string[],
+        ),
+    ];
+    return names.join(", ");
+}
+
+/** Ngày trên phiếu giống C# ngayGD: yyyy-MM-dd theo múi giờ VN. */
+function formatInvoiceDateYmdVn(iso: string): string {
+    const d = new Date(iso);
+    return new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Ho_Chi_Minh",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+    }).format(d);
+}
 
 export interface InvoicePrintProps {
-  readonly order: Order;
-  readonly onClose?: () => void;
-  readonly multiPage?: boolean;
+    readonly order: Order;
+    readonly onClose?: () => void;
+    readonly multiPage?: boolean;
 }
 
 /** Single invoice: one page. For batch, use InvoicePrintContent + invoice-page class. */
-export function InvoicePrint({ order, onClose, multiPage }: Readonly<InvoicePrintProps>) {
-  const handlePrint = () => {
-    globalThis.print();
-  };
+export function InvoicePrint({
+    order,
+    onClose,
+    multiPage,
+}: Readonly<InvoicePrintProps>) {
+    const handlePrint = () => {
+        globalThis.print();
+    };
 
-  return (
-    <div className={`invoice-print-area bg-white text-black p-4 md:p-6 max-w-xl mx-auto rounded-lg border border-border print:p-6 print:max-w-none print:border-0 print:rounded-none ${multiPage ? 'invoice-page' : 'invoice-single'}`}>
-      <div className="non-print flex flex-wrap justify-end gap-2 mb-4 shrink-0">
-        <button type="button" onClick={handlePrint} className="px-4 py-2 bg-primary text-white rounded-md font-bold text-sm hover:opacity-90">
-          In phiếu
-        </button>
-        {onClose && (
-          <button type="button" onClick={onClose} className="px-4 py-2 border border-border rounded-md font-bold text-sm hover:bg-muted/50">
-            Đóng
-          </button>
-        )}
-      </div>
-      <div className="min-w-0">
-        <InvoicePrintContent order={order} />
-      </div>
-    </div>
-  );
+    return (
+        <div
+            data-print-target={PRINT_TARGET_INVOICE_XP80C}
+            className={`invoice-print-area invoice-xp80c invoice-cs-receipt bg-white text-black m-0 max-w-xl p-0 print:max-w-none ${multiPage ? "invoice-page" : "invoice-single"}`}
+        >
+            <div className="non-print space-y-3 mb-3 px-1 shrink-0">
+                <div className="flex flex-wrap justify-end gap-2">
+                    <button
+                        type="button"
+                        onClick={handlePrint}
+                        className="px-4 py-2 bg-primary text-white rounded-md font-bold text-sm hover:opacity-90"
+                    >
+                        In XP-80C (80mm)
+                    </button>
+                    <QzPrintButton
+                        target={PRINT_TARGET_INVOICE_XP80C}
+                        className="px-4 py-2 bg-zinc-800 text-white rounded-md font-bold text-sm hover:opacity-90"
+                    >
+                        In QZ (XP-80C)
+                    </QzPrintButton>
+                    {onClose && (
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            className="px-4 py-2 border border-border rounded-md font-bold text-sm hover:bg-muted/50"
+                        >
+                            Đóng
+                        </button>
+                    )}
+                </div>
+            </div>
+            <div className="min-w-0">
+                <InvoicePrintContent order={order} />
+            </div>
+        </div>
+    );
 }
 
 export interface InvoicePrintContentProps {
-  readonly order: Order;
+    readonly order: Order;
 }
 
-/** Invoice body only (for single or batch). */
-export function InvoicePrintContent({ order }: Readonly<InvoicePrintContentProps>) {
-  const debt = order.total_amount - (order.paid_amount || 0);
-  const isPaid = debt <= 0;
-  const orderCode = encodeInvoiceBarcode(order.id);
+/** Nội dung hóa đơn — convert từ pd_PrintPage1 (C#). */
+export function InvoicePrintContent({
+    order,
+}: Readonly<InvoicePrintContentProps>) {
+    const orderCode = invoiceBarcodeFromOrder(order);
+    const invoiceNo = invoiceDisplayNoFromBarcodeCode(orderCode);
+    const invoiceDate = formatInvoiceDateYmdVn(order.created_at);
+    const staffLine = collectStaffNames(order.details);
+    const details = order.details ?? [];
 
-  return (
-    <>
-      <div className="border border-gray-300 rounded-lg p-4 md:p-6 print:p-4">
-        <div className="flex items-start justify-between gap-4 mb-3 md:mb-4">
-          <div>
-            <p className="text-sm md:text-base font-semibold text-gray-800">Dũng sửa đồ hiệu</p>
-            <p className="text-[11px] md:text-xs text-gray-600 leading-tight">Hotline: 0904672288</p>
-            <p className="text-[11px] md:text-xs text-gray-600 leading-tight">Địa chỉ: 3 P. Phan Bội Châu, Cửa Nam, Hoàn Kiếm, Hà Nội</p>
-            <h1 className="text-lg md:text-xl font-black text-left mt-2">PHIẾU THANH TOÁN</h1>
-          </div>
-          <OrderBarcode value={orderCode} />
-        </div>
+    return (
+        <>
+            <div className="m-0 p-0 print:p-0">
+                <div className="invoice-xp80c-header flex flex-row items-start justify-between gap-2 sm:gap-3 mb-2">
+                    <div className="shrink-0">
+                        <BrandLogo
+                            unoptimized
+                            className="invoice-brand-mark h-[65px] w-[65px] sm:h-[65px] sm:w-[65px] object-contain object-left print:h-[17mm] print:w-[17mm] print:max-h-[17mm] print:max-w-[17mm]"
+                        />
+                    </div>
+                    <OrderBarcode value={orderCode} />
+                </div>
 
-        <div className="grid grid-cols-2 gap-1.5 md:gap-2 text-xs md:text-sm mb-3 md:mb-4">
-          <span className="text-gray-600">Mã đơn:</span>
-          <span className="font-bold">#{order.id.toString().padStart(5, '0')}</span>
-          <span className="text-gray-600">Ngày tạo:</span>
-          <span>{new Date(order.created_at).toLocaleDateString('vi-VN')}</span>
-          <span className="text-gray-600">Ngày nhận:</span>
-          <span>
-            {new Date(order.receive_time).toLocaleDateString('vi-VN')}{' '}
-            <span className="text-[11px] text-gray-500">
-              {new Date(order.receive_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
-            </span>
-          </span>
-          {order.return_time && (
-            <>
-              <span className="text-gray-600">Hẹn trả:</span>
-              <span>
-                {new Date(order.return_time).toLocaleDateString('vi-VN')}{' '}
-                <span className="text-[11px] text-gray-500">
-                  {new Date(order.return_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
-                </span>
-              </span>
-            </>
-          )}
-          <span className="text-gray-600">Khách hàng:</span>
-          <span className="font-bold">{order.customer?.name || 'Vãng lai'}</span>
-          {order.customer?.phone && (
-            <>
-              <span className="text-gray-600">SĐT:</span>
-              <span>{order.customer.phone}</span>
-            </>
-          )}
-        </div>
+                <p className="text-center text-[14px] font-bold text-black leading-tight">
+                    DŨNG SỬA ĐỒ HIỆU
+                </p>
+                <p className="text-center text-[10px] font-bold text-black mt-1">
+                    Hotline: {SHOP_HOTLINE}
+                </p>
 
-        <table className="w-full text-xs md:text-sm border-collapse border border-gray-300 mt-3 md:mt-4">
-          <thead>
-            <tr className="bg-gray-100">
-              <th className="border border-gray-300 p-1.5 md:p-2 text-left">Sản phẩm</th>
-              <th className="border border-gray-300 p-1.5 md:p-2 text-right w-20 md:w-24">Đơn giá</th>
-            </tr>
-          </thead>
-          <tbody>
-            {order.details?.map(d => (
-              <tr key={d.id}>
-                <td className="border border-gray-300 p-1.5 md:p-2">{d.item_name}</td>
-                <td className="border border-gray-300 p-1.5 md:p-2 text-right">{new Intl.NumberFormat('vi-VN').format(d.unit_price)}đ</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                <p className="text-center text-[12px]  font-bold text-black mt-3">
+                    HÓA ĐƠN GIAO DỊCH
+                </p>
 
-        <div className="mt-3 md:mt-4 space-y-0.5 md:space-y-1 text-xs md:text-sm text-right">
-          <div className="flex justify-end gap-4">
-            <span className="text-gray-600">Tổng cộng:</span>
-            <span className="font-bold">
-              {new Intl.NumberFormat('vi-VN').format(order.total_amount)}đ
-            </span>
-          </div>
-          <div className="flex justify-end gap-4">
-            <span className="text-gray-600">Đã thanh toán:</span>
-            <span className="font-bold text-green-700">
-              {new Intl.NumberFormat('vi-VN').format(order.paid_amount || 0)}đ
-            </span>
-          </div>
-          <div className="flex justify-end gap-4">
-            <span className="text-gray-600">Còn lại:</span>
-            <span className={`font-bold ${isPaid ? 'text-green-700' : 'text-orange-600'}`}>
-              {new Intl.NumberFormat('vi-VN').format(Math.max(debt, 0))}đ
-            </span>
-          </div>
-        </div>
-      </div>
+                <div className="flex flex-row justify-between items-start gap-2  mt-2 text-black">
+                    <p className="min-w-0 font-semibold text-[9px]">
+                        Khách hàng: {order.customer?.name || "Vãng lai"}
+                    </p>
+                    <p className="shrink-0 text-right font-s whitespace-nowrap font-semibold text-[9px]">
+                        No {invoiceNo} Ngày: {invoiceDate}
+                    </p>
+                </div>
 
-      <p className="text-center text-gray-500 text-xs mt-4 md:mt-6 print:mt-4">Cảm ơn quý khách!</p>
-    </>
-  );
+                <div className="mt-1 space-y-0.5   text-black">
+                    <p className="font-semibold text-[9px]">
+                        SĐT: {order.customer?.phone || "—"}
+                    </p>
+                    <p className="font-semibold text-[9px]">
+                        Địa chỉ: {order.customer?.address?.trim() || "—"}
+                    </p>
+                    <p className="font-semibold text-[9px]">
+                        Nhân viên: {staffLine || "—"}
+                    </p>
+                    <p className="font-semibold text-[10px]">
+                        Hẹn trả đồ:{" "}
+                        <span className="font-bold">
+                            {order.return_time
+                                ? `${new Date(order.return_time).toLocaleDateString("vi-VN")} ${new Date(order.return_time).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`
+                                : "—"}
+                        </span>
+                    </p>
+                </div>
+
+                <table className="invoice-cs-table w-full border-collapse   mt-3 text-black">
+                    <thead>
+                        <tr className="border-b-2 border-black">
+                            <th className="py-1 pr-1 text-left w-8 font-bold align-bottom text-[10px]">
+                                STT
+                            </th>
+                            <th className="py-1 px-1 text-left font-bold align-bottom text-[10px]">
+                                Chi Tiết giao dịch
+                            </th>
+                            <th className="py-1 pl-1 text-right font-bold align-bottom whitespace-nowrap text-[10px]">
+                                Đơn giá
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {details.length === 0 ? (
+                            <tr className="border-b-[0.25px] border-black">
+                                <td className="py-1 pr-1 text-center font-bold text-[10px]">
+                                    —
+                                </td>
+                                <td className="py-1 px-1 font-semibold text-[10px]">
+                                    —
+                                </td>
+                                <td className="py-1 pl-1 text-right font-semibold text-[10px]">
+                                    —
+                                </td>
+                            </tr>
+                        ) : (
+                            details.map((d, idx) => (
+                                <tr
+                                    key={d.id}
+                                    className="border-b-[0.1px] border-black align-top"
+                                >
+                                    <td className="py-1 pr-1 text-center font-bold text-[10px]">
+                                        {idx + 1}
+                                    </td>
+                                    <td className="py-1 px-1  leading-snug text-[10px]">
+                                        {wrapDetailLines(
+                                            formatInvoiceDetailLine(d),
+                                            30,
+                                        ).map((line, i) => (
+                                            <div
+                                                key={`detail-${d.id}-line-${i}`}
+                                            >
+                                                {line}
+                                            </div>
+                                        ))}
+                                    </td>
+                                    <td className="py-1 pl-1 text-right  whitespace-nowrap text-[10px]">
+                                        {new Intl.NumberFormat("vi-VN").format(
+                                            d.unit_price,
+                                        )}
+                                    </td>
+                                </tr>
+                            ))
+                        )}
+                    </tbody>
+                </table>
+
+                <p className="text-right text-[10px]  font-bold text-black mt-2">
+                    Tổng tiền:{" "}
+                    {new Intl.NumberFormat("vi-VN").format(order.total_amount)}{" "}
+                    VNĐ
+                </p>
+
+                <div className="mt-4 text-left   text-black space-y-1">
+                    <p className="font-bold text-[12px]">
+                        Quét mã QR để thanh toán
+                    </p>
+                    <p className="font-semibold text-[10px]">
+                        {BANK_NAME} {BANK_ACCOUNT_SPACED}
+                    </p>
+                    <p className="font-semibold text-[10px]">
+                        {BANK_ACCOUNT_HOLDER}
+                    </p>
+                </div>
+            </div>
+
+            <p className="text-center text-black text-[12px] font-bold mt-6 print:mt-5 uppercase tracking-wide">
+                Trân trọng cảm ơn quý khách!
+            </p>
+        </>
+    );
 }

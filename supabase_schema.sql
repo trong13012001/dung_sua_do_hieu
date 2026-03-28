@@ -51,6 +51,7 @@ CREATE TABLE orders (
     status TEXT DEFAULT 'New', -- New, In Progress, Ready, Completed, Delivered
     receive_time TIMESTAMPTZ DEFAULT NOW(),
     return_time TIMESTAMPTZ,
+    transaction_code TEXT, -- mã 11 số WPF; sinh bởi trigger (xem supabase_migration_order_transaction_code.sql)
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );

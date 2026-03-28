@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useLayoutEffect } from 'react';
+import { flushSync } from 'react-dom';
 import {
   Plus,
   Search,
@@ -18,6 +19,8 @@ import { useEmployees } from '@/api/users';
 import { Toast, useToast } from '@/components/ui/Toast';
 import { Modal } from '@/components/ui/Modal';
 import { ItemLabelsPrint } from '@/components/ui/ItemLabelsPrint';
+import { InvoicePrint } from '@/components/ui/InvoicePrint';
+import { buildOrderForInvoicePrint } from '@/lib/buildOrderForInvoicePrint';
 import { useDebounce } from '@/hooks/useDebounce';
 import { Customer, Order, User, Role } from '@/lib/types';
 import { validateRequired, validateNumber, validatePhone, validateMaxLength } from '@/lib/validation';
@@ -27,6 +30,19 @@ interface PosItem {
   price: number;
   description: string;
   assigned_tailor_id: string;
+}
+
+type PosPrintStep = 'labels' | 'invoice';
+
+interface PosPrintQueue {
+  step: PosPrintStep;
+  orderId: number;
+  transactionCode: string | null;
+  labelItems: PosItem[];
+  customerName: string | null;
+  customerAddress: string | null;
+  returnTime: string | null;
+  invoiceOrder: Order;
 }
 
 export default function POSPage() {
@@ -47,11 +63,55 @@ export default function POSPage() {
   const [returnDate, setReturnDate] = useState('');
   const [returnClock, setReturnClock] = useState('');
 
-  // Label printing after creating order
-  const [labelOrderId, setLabelOrderId] = useState<number | null>(null);
-  const [labelItems, setLabelItems] = useState<PosItem[]>([]);
-  const [labelCustomerName, setLabelCustomerName] = useState<string | null>(null);
-  const [labelReceiveTime, setLabelReceiveTime] = useState<string | null>(null);
+  /** Hàng đợi in sau tạo đơn: 1) tem XP-235B → 2) hóa đơn XP-80C */
+  const [printQueue, setPrintQueue] = useState<PosPrintQueue | null>(null);
+  /** Chỉ tự chuyển bước sau afterprint khi print() do hàng đợi gọi (không áp dụng khi bấm "In lại"). */
+  const printQueueAdvanceRef = useRef<PosPrintStep | null>(null);
+
+  const closePrintQueue = () => setPrintQueue(null);
+
+  const skipPrintStep = () => {
+    setPrintQueue((q) => {
+      if (!q) return null;
+      if (q.step === 'labels') return { ...q, step: 'invoice' };
+      return null;
+    });
+  };
+
+  useEffect(() => {
+    const onAfterPrint = () => {
+      const expected = printQueueAdvanceRef.current;
+      printQueueAdvanceRef.current = null;
+      if (!expected) return;
+      setPrintQueue((q) => {
+        if (!q) return null;
+        if (expected === 'labels' && q.step === 'labels') return { ...q, step: 'invoice' };
+        if (expected === 'invoice' && q.step === 'invoice') return null;
+        return q;
+      });
+    };
+    globalThis.addEventListener('afterprint', onAfterPrint);
+    return () => globalThis.removeEventListener('afterprint', onAfterPrint);
+  }, []);
+
+  /**
+   * Bước 2 (hóa đơn): tự mở `window.print()` sau khi chuyển step.
+   */
+  useLayoutEffect(() => {
+    if (!printQueue || printQueue.step !== 'invoice') return;
+    printQueueAdvanceRef.current = 'invoice';
+    let id0 = 0;
+    let id1 = 0;
+    id0 = globalThis.requestAnimationFrame(() => {
+      id1 = globalThis.requestAnimationFrame(() => {
+        globalThis.print();
+      });
+    });
+    return () => {
+      globalThis.cancelAnimationFrame(id0);
+      globalThis.cancelAnimationFrame(id1);
+    };
+  }, [printQueue?.step, printQueue?.orderId]);
 
   const [addCustomerOpen, setAddCustomerOpen] = useState(false);
   const [newCustomerForm, setNewCustomerForm] = useState({ name: '', phone: '', address: '' });
@@ -150,10 +210,30 @@ export default function POSPage() {
         })),
       });
       showToast('Đơn hàng đã được tạo thành công!', 'success');
-      setLabelOrderId(created.id);
-      setLabelItems(filled);
-      setLabelCustomerName(selectedCustomer.name);
-      setLabelReceiveTime(created.receive_time || null);
+      const invoiceOrder = buildOrderForInvoicePrint(
+        created as Order,
+        selectedCustomer,
+        filled,
+        tailors,
+      );
+      flushSync(() => {
+        setPrintQueue({
+          step: 'labels',
+          orderId: created.id,
+          transactionCode: (created as Order).transaction_code ?? null,
+          labelItems: filled,
+          customerName: selectedCustomer.name,
+          customerAddress: selectedCustomer.address ?? null,
+          returnTime: created.return_time ?? null,
+          invoiceOrder,
+        });
+      });
+      printQueueAdvanceRef.current = 'labels';
+      globalThis.requestAnimationFrame(() => {
+        globalThis.requestAnimationFrame(() => {
+          globalThis.print();
+        });
+      });
       setItems([]);
       setSelectedCustomer(null);
       setReturnDate('');
@@ -396,21 +476,65 @@ export default function POSPage() {
         </form>
       </Modal>
 
-      {/* Item labels print modal after creating order */}
+      {/* Hàng đợi in: tem XP-235B → hóa đơn XP-80C */}
       <Modal
-        isOpen={labelOrderId != null && labelItems.length > 0}
-        onClose={() => { setLabelOrderId(null); setLabelItems([]); setLabelCustomerName(null); setLabelReceiveTime(null); }}
-        title={labelOrderId ? `In tem barcode đơn #${labelOrderId.toString().padStart(5, '0')}` : 'In tem barcode'}
-        maxWidth="max-w-lg"
+        isOpen={printQueue != null && printQueue.labelItems.length > 0}
+        onClose={closePrintQueue}
+        title={
+          printQueue
+            ? printQueue.step === 'labels'
+              ? `Hàng đợi 1/2 · Tem XP-235B · Đơn #${printQueue.orderId.toString().padStart(5, '0')}`
+              : `Hàng đợi 2/2 · Hóa đơn XP-80C · Đơn #${printQueue.orderId.toString().padStart(5, '0')}`
+            : 'In sau tạo đơn'
+        }
+        maxWidth="max-w-xl"
       >
-        {labelOrderId != null && labelItems.length > 0 && (
-          <ItemLabelsPrint
-            orderId={labelOrderId}
-            items={labelItems.map(i => ({ name: i.name, description: i.description }))}
-            customerName={labelCustomerName ?? undefined}
-            receiveTime={labelReceiveTime ?? undefined}
-            onClose={() => { setLabelOrderId(null); setLabelItems([]); setLabelCustomerName(null); setLabelReceiveTime(null); }}
-          />
+        {printQueue != null && printQueue.labelItems.length > 0 && (
+          <div className="space-y-4">
+            <div className="non-print rounded-lg border border-border bg-muted/20 p-3 text-xs text-muted-foreground leading-relaxed">
+              {printQueue.step === 'labels' ? (
+                <>
+                  <span className="font-bold text-foreground">Bước 1 — Xprinter XP-235B:</span>{' '}
+                  cửa sổ in <span className="font-bold text-foreground">tự mở</span> ngay sau khi tạo đơn. Sau khi bạn in xong và đóng hộp thoại, hệ thống tự mở{' '}
+                  <span className="font-bold text-foreground">bước 2 — XP-80C</span> cho hóa đơn.
+                </>
+              ) : (
+                <>
+                  <span className="font-bold text-foreground">Bước 2 — Xprinter XP-80C (80mm):</span>{' '}
+                  cửa sổ in tự mở — chọn máy nhiệt 80mm và in. Đóng hộp thoại in để kết thúc hàng đợi.
+                </>
+              )}
+            </div>
+            <div className="non-print flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={skipPrintStep}
+                className="px-3 py-1.5 text-xs font-bold rounded-md border border-border hover:bg-muted/50"
+              >
+                Bỏ qua bước này
+              </button>
+              <button
+                type="button"
+                onClick={closePrintQueue}
+                className="px-3 py-1.5 text-xs font-bold rounded-md border border-border hover:bg-muted/50"
+              >
+                Đóng hàng đợi
+              </button>
+            </div>
+            {printQueue.step === 'labels' ? (
+              <ItemLabelsPrint
+                orderId={printQueue.orderId}
+                transactionCode={printQueue.transactionCode}
+                items={printQueue.labelItems.map((i) => ({ name: i.name, description: i.description }))}
+                customerName={printQueue.customerName ?? undefined}
+                customerAddress={printQueue.customerAddress ?? undefined}
+                returnTime={printQueue.returnTime ?? undefined}
+                onClose={closePrintQueue}
+              />
+            ) : (
+              <InvoicePrint order={printQueue.invoiceOrder} onClose={closePrintQueue} />
+            )}
+          </div>
         )}
       </Modal>
 

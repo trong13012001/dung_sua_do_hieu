@@ -2,6 +2,7 @@
 
 import React, { useState, useCallback } from 'react';
 import { Sidebar } from './Sidebar';
+import { BrandLogo } from '@/components/ui/BrandLogo';
 import { Menu } from 'lucide-react';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 
@@ -25,7 +26,10 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
           >
             <Menu size={22} />
           </button>
-          <span className="text-sm font-bold text-foreground">Dũng Sửa Đồ Hiệu</span>
+          <span className="flex items-center gap-2 min-w-0">
+            <BrandLogo className="h-8 w-auto shrink-0 object-contain object-left" />
+            <span className="text-sm font-bold text-foreground truncate">Dũng Sửa Đồ Hiệu</span>
+          </span>
         </div>
 
         <main className="flex-1 px-4 md:px-8 py-6 max-w-[1440px] mx-auto w-full">
