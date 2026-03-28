@@ -84,6 +84,47 @@ export interface MonthlyRevenue {
     revenue: number;
 }
 
+/** Chọn kỳ xem thống kê trên dashboard */
+export type DashboardPeriodMode = "day" | "month" | "year";
+
+export interface DashboardPeriodSelection {
+    mode: DashboardPeriodMode;
+    /** Ngày: YYYY-MM-DD, tháng: YYYY-MM, năm: YYYY */
+    value: string;
+}
+
+/** Một dòng hàng (order_detail) kèm ngữ cảnh đơn / khách */
+export interface DashboardPeriodItemRow {
+    id: number;
+    order_id: number;
+    item_name: string;
+    status: string;
+    created_at: string;
+    customer_name: string;
+    /** Chỉ có khi là hàng theo ngày trả đơn */
+    return_time?: string | null;
+}
+
+export interface DashboardPeriodOrderRow {
+    id: number;
+    created_at: string;
+    return_time: string | null;
+    status: string;
+    customer_name: string;
+    total_amount: number;
+}
+
+export interface DashboardPeriodAnalytics {
+    ordersCreatedCount: number;
+    ordersReturnedCount: number;
+    itemsCreatedCount: number;
+    itemsReturnedCount: number;
+    ordersCreated: DashboardPeriodOrderRow[];
+    ordersReturned: DashboardPeriodOrderRow[];
+    itemsCreated: DashboardPeriodItemRow[];
+    itemsReturned: DashboardPeriodItemRow[];
+}
+
 export interface OrderLog {
     id: number;
     order_id: number;
