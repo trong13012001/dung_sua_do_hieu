@@ -34,7 +34,7 @@ const statusMap: Record<string, { label: string; color: string }> = {
 export default function MyTasksPage() {
   const { isLoading: employeesLoading } = useEmployees();
   const currentUserId = useCurrentUserId();
-  const updateDetail = useUpdateOrderDetail();
+  const { mutateAsync: mutateAsyncUpdateDetail } = useUpdateOrderDetail();
   const { toast, showToast, hideToast } = useToast();
   const { data: myTasks, isLoading: tasksLoading } = useOrderItems(currentUserId);
 
@@ -52,7 +52,7 @@ export default function MyTasksPage() {
     if (!task || task.status === newStatus) return;
 
     try {
-      await updateDetail.mutateAsync({
+      await mutateAsyncUpdateDetail({
         id: taskId,
         detail: { status: newStatus },
       });
@@ -63,11 +63,11 @@ export default function MyTasksPage() {
     } catch (error: any) {
       showToast('Lỗi: ' + error.message, 'error');
     }
-  }, [myTasks, updateDetail, showToast]);
+  }, [myTasks, mutateAsyncUpdateDetail, showToast]);
 
   const handleStatusUpdate = useCallback(async (detailId: number, status: string) => {
     try {
-      await updateDetail.mutateAsync({ id: detailId, detail: { status: status as OrderDetail['status'] } });
+      await mutateAsyncUpdateDetail({ id: detailId, detail: { status: status as OrderDetail['status'] } });
       showToast(
         status === 'In Progress' ? 'Đã bắt đầu công việc' :
           status === 'Ready' ? 'Đã hoàn thành công việc' : 'Đã cập nhật trạng thái',
@@ -76,7 +76,7 @@ export default function MyTasksPage() {
     } catch (error: any) {
       showToast('Lỗi: ' + error.message, 'error');
     }
-  }, [updateDetail, showToast]);
+  }, [mutateAsyncUpdateDetail, showToast]);
 
   if (employeesLoading || tasksLoading) {
     return (

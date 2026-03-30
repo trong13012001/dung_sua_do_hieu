@@ -53,8 +53,14 @@ export default function POSPage() {
   const { data: customerData } = useGetCustomer(0, 100, debouncedSearchTerm);
   const customers = customerData?.data || [];
   const { data: employees } = useEmployees();
-  const createOrder = useCreateOrder();
-  const createCustomer = useCreateCustomer();
+  const {
+    mutateAsync: mutateAsyncCreateOrder,
+    isPending: isPendingCreateOrder,
+  } = useCreateOrder();
+  const {
+    mutateAsync: mutateAsyncCreateCustomer,
+    isPending: isPendingCreateCustomer,
+  } = useCreateCustomer();
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const { toast, showToast, hideToast } = useToast();
   const [items, setItems] = useState<PosItem[]>([]);
@@ -149,7 +155,7 @@ export default function POSPage() {
     setNewCustomerErrors(errs);
     if (nameErr || phoneErr || addressErr) return;
     try {
-      const created = await createCustomer.mutateAsync({
+      const created = await mutateAsyncCreateCustomer({
         name: newCustomerForm.name.trim(),
         phone: newCustomerForm.phone.trim() || undefined,
         address: newCustomerForm.address.trim() || undefined,
@@ -195,7 +201,7 @@ export default function POSPage() {
         }
       }
 
-      const created = await createOrder.mutateAsync({
+      const created = await mutateAsyncCreateOrder({
         order: {
           customer_id: selectedCustomer.id,
           total_amount: totalAmount,
@@ -419,8 +425,8 @@ export default function POSPage() {
             </div>
           </div>
 
-          <button onClick={handleSubmit} disabled={createOrder.isPending} className="w-full btn-primary py-3 rounded-md font-bold mb-3 disabled:opacity-50">
-            {createOrder.isPending ? 'Đang xử lý...' : 'Đặt hàng'}
+          <button onClick={handleSubmit} disabled={isPendingCreateOrder} className="w-full btn-primary py-3 rounded-md font-bold mb-3 disabled:opacity-50">
+            {isPendingCreateOrder ? 'Đang xử lý...' : 'Đặt hàng'}
           </button>
           <div className="flex items-center gap-2 p-3 bg-info/10 rounded border border-info/20">
             <CheckCircle2 size={16} className="text-info shrink-0" />
@@ -469,8 +475,8 @@ export default function POSPage() {
             <button type="button" onClick={() => setAddCustomerOpen(false)} className="flex-1 py-2.5 rounded-md font-bold text-sm border border-border bg-muted/40 hover:bg-muted transition-colors">
               Hủy
             </button>
-            <button type="submit" disabled={createCustomer.isPending} className="flex-1 btn-primary py-2.5 rounded-md font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2">
-              {createCustomer.isPending ? 'Đang tạo...' : 'Thêm'}
+            <button type="submit" disabled={isPendingCreateCustomer} className="flex-1 btn-primary py-2.5 rounded-md font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2">
+              {isPendingCreateCustomer ? 'Đang tạo...' : 'Thêm'}
             </button>
           </div>
         </form>

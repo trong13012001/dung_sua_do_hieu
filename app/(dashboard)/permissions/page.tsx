@@ -9,9 +9,18 @@ import { Permission } from '@/lib/types';
 
 export default function PermissionsPage() {
   const { data: permissions, isLoading } = usePermissions();
-  const createPerm = useCreatePermission();
-  const updatePerm = useUpdatePermission();
-  const deletePerm = useDeletePermission();
+  const {
+    mutateAsync: mutateAsyncCreatePerm,
+    isPending: isPendingCreatePerm,
+  } = useCreatePermission();
+  const {
+    mutateAsync: mutateAsyncUpdatePerm,
+    isPending: isPendingUpdatePerm,
+  } = useUpdatePermission();
+  const {
+    mutateAsync: mutateAsyncDeletePerm,
+    isPending: isPendingDeletePerm,
+  } = useDeletePermission();
   const { toast, showToast, hideToast } = useToast();
 
   const [isAdding, setIsAdding] = useState(false);
@@ -22,7 +31,7 @@ export default function PermissionsPage() {
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await createPerm.mutateAsync(permName);
+      await mutateAsyncCreatePerm(permName);
       setIsAdding(false);
       setPermName('');
       showToast('Tạo quyền thành công', 'success');
@@ -33,7 +42,7 @@ export default function PermissionsPage() {
     e.preventDefault();
     if (!editingPerm) return;
     try {
-      await updatePerm.mutateAsync({ id: editingPerm.id, name: permName });
+      await mutateAsyncUpdatePerm({ id: editingPerm.id, name: permName });
       setEditingPerm(null);
       setPermName('');
       showToast('Cập nhật quyền thành công', 'success');
@@ -43,7 +52,7 @@ export default function PermissionsPage() {
   const handleDelete = async () => {
     if (!deletingPerm) return;
     try {
-      await deletePerm.mutateAsync(deletingPerm.id);
+      await mutateAsyncDeletePerm(deletingPerm.id);
       setDeletingPerm(null);
       showToast('Xóa quyền thành công', 'success');
     } catch (err: any) { showToast('Lỗi: ' + err.message, 'error'); }
@@ -129,8 +138,8 @@ export default function PermissionsPage() {
           </div>
           <div className="flex gap-4 mt-8">
             <button type="button" onClick={() => { setIsAdding(false); setEditingPerm(null); }} className="flex-1 bg-muted/40 text-foreground py-2.5 rounded-md font-bold text-sm border border-border">Hủy</button>
-            <button type="submit" disabled={createPerm.isPending || updatePerm.isPending} className="flex-1 btn-primary py-2.5 rounded-md font-bold text-sm disabled:opacity-50">
-              {(createPerm.isPending || updatePerm.isPending) ? 'Đang lưu...' : editingPerm ? 'Cập nhật' : 'Thêm'}
+            <button type="submit" disabled={isPendingCreatePerm || isPendingUpdatePerm} className="flex-1 btn-primary py-2.5 rounded-md font-bold text-sm disabled:opacity-50">
+              {(isPendingCreatePerm || isPendingUpdatePerm) ? 'Đang lưu...' : editingPerm ? 'Cập nhật' : 'Thêm'}
             </button>
           </div>
         </form>
@@ -142,8 +151,8 @@ export default function PermissionsPage() {
           <p className="text-muted-foreground text-sm">Bạn có chắc chắn muốn xóa quyền <span className="font-bold text-foreground">{deletingPerm?.name}</span>?</p>
           <div className="flex gap-4">
             <button onClick={() => setDeletingPerm(null)} className="flex-1 bg-muted/40 text-foreground py-2.5 rounded-md font-bold text-sm border border-border">Giữ lại</button>
-            <button onClick={handleDelete} disabled={deletePerm.isPending} className="flex-1 bg-danger text-white hover:bg-danger/90 py-2.5 rounded-md font-bold text-sm disabled:opacity-50">
-              {deletePerm.isPending ? 'Đang xóa...' : 'Xóa vĩnh viễn'}
+            <button onClick={handleDelete} disabled={isPendingDeletePerm} className="flex-1 bg-danger text-white hover:bg-danger/90 py-2.5 rounded-md font-bold text-sm disabled:opacity-50">
+              {isPendingDeletePerm ? 'Đang xóa...' : 'Xóa vĩnh viễn'}
             </button>
           </div>
         </div>

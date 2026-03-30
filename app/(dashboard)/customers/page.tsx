@@ -40,9 +40,18 @@ export default function CustomersPage() {
     setPage(0);
   }, [debouncedSearchTerm]);
 
-  const createCustomer = useCreateCustomer();
-  const updateCustomer = useUpdateCustomer();
-  const deleteCustomer = useDeleteCustomer();
+  const {
+    mutateAsync: mutateAsyncCreateCustomer,
+    isPending: isPendingCreateCustomer,
+  } = useCreateCustomer();
+  const {
+    mutateAsync: mutateAsyncUpdateCustomer,
+    isPending: isPendingUpdateCustomer,
+  } = useUpdateCustomer();
+  const {
+    mutateAsync: mutateAsyncDeleteCustomer,
+    isPending: isPendingDeleteCustomer,
+  } = useDeleteCustomer();
   const { toast, showToast, hideToast } = useToast();
 
   const [isAdding, setIsAdding] = useState(false);
@@ -62,7 +71,7 @@ export default function CustomersPage() {
     setFormErrors(errs);
     if (nameErr || phoneErr || addressErr) return;
     try {
-      await createCustomer.mutateAsync({ name: formData.name.trim(), phone: formData.phone.trim() || undefined, address: formData.address.trim() || undefined });
+      await mutateAsyncCreateCustomer({ name: formData.name.trim(), phone: formData.phone.trim() || undefined, address: formData.address.trim() || undefined });
       setIsAdding(false);
       setFormData({ name: '', phone: '', address: '' });
       setFormErrors({});
@@ -82,7 +91,7 @@ export default function CustomersPage() {
     if (nameErr || phoneErr || addressErr) return;
     try {
       if (editingCustomer) {
-        await updateCustomer.mutateAsync({ id: editingCustomer.id, customer: { name: formData.name.trim(), phone: formData.phone.trim() || undefined, address: formData.address.trim() || undefined } });
+        await mutateAsyncUpdateCustomer({ id: editingCustomer.id, customer: { name: formData.name.trim(), phone: formData.phone.trim() || undefined, address: formData.address.trim() || undefined } });
       }
       setEditingCustomer(null);
       setFormData({ name: '', phone: '', address: '' });
@@ -96,7 +105,7 @@ export default function CustomersPage() {
   const handleDelete = async () => {
     if (!deletingCustomer) return;
     try {
-      await deleteCustomer.mutateAsync(deletingCustomer.id);
+      await mutateAsyncDeleteCustomer(deletingCustomer.id);
       setDeletingCustomer(null);
       showToast('Xóa khách hàng thành công', 'success');
     } catch (error: any) {
@@ -277,15 +286,15 @@ export default function CustomersPage() {
             </button>
             <button
               type="submit"
-              disabled={createCustomer.isPending || updateCustomer.isPending}
+              disabled={isPendingCreateCustomer || isPendingUpdateCustomer}
               className="flex-1 btn-primary py-2.5 rounded-md font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2"
             >
-              {(createCustomer.isPending || updateCustomer.isPending) && (
+              {(isPendingCreateCustomer || isPendingUpdateCustomer) && (
                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
               )}
               {editingCustomer
-                ? (updateCustomer.isPending ? 'Đang lưu...' : 'Cập nhật')
-                : (createCustomer.isPending ? 'Đang tạo...' : 'Thêm khách hàng')}
+                ? (isPendingUpdateCustomer ? 'Đang lưu...' : 'Cập nhật')
+                : (isPendingCreateCustomer ? 'Đang tạo...' : 'Thêm khách hàng')}
             </button>
           </div>
         </form>
@@ -311,13 +320,13 @@ export default function CustomersPage() {
             </button>
             <button
               onClick={handleDelete}
-              disabled={deleteCustomer.isPending}
+              disabled={isPendingDeleteCustomer}
               className="flex-1 bg-danger text-white hover:bg-danger/90 py-2.5 rounded-md font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2"
             >
-              {deleteCustomer.isPending && (
+              {isPendingDeleteCustomer && (
                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
               )}
-              {deleteCustomer.isPending ? 'Đang xóa...' : 'Xóa vĩnh viễn'}
+              {isPendingDeleteCustomer ? 'Đang xóa...' : 'Xóa vĩnh viễn'}
             </button>
           </div>
         </div>

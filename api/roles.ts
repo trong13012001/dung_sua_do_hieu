@@ -87,6 +87,7 @@ export function useSetRolePermissions() {
     },
     onSuccess: (_, vars) => {
       qc.invalidateQueries({ queryKey: ['role_permissions', vars.roleId] });
+      qc.invalidateQueries({ queryKey: ['permissions-for-role', vars.roleId] });
     },
   });
 }

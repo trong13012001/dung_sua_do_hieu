@@ -11,10 +11,22 @@ import { Role } from '@/lib/types';
 export default function RolesPage() {
   const { data: roles, isLoading } = useRoles();
   const { data: permissions } = usePermissions();
-  const createRole = useCreateRole();
-  const updateRole = useUpdateRole();
-  const deleteRole = useDeleteRole();
-  const setRolePermissions = useSetRolePermissions();
+  const {
+    mutateAsync: mutateAsyncCreateRole,
+    isPending: isPendingCreateRole,
+  } = useCreateRole();
+  const {
+    mutateAsync: mutateAsyncUpdateRole,
+    isPending: isPendingUpdateRole,
+  } = useUpdateRole();
+  const {
+    mutateAsync: mutateAsyncDeleteRole,
+    isPending: isPendingDeleteRole,
+  } = useDeleteRole();
+  const {
+    mutateAsync: mutateAsyncSetRolePermissions,
+    isPending: isPendingSetRolePermissions,
+  } = useSetRolePermissions();
   const { toast, showToast, hideToast } = useToast();
 
   const [isAdding, setIsAdding] = useState(false);
@@ -44,7 +56,7 @@ export default function RolesPage() {
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await createRole.mutateAsync(roleName);
+      await mutateAsyncCreateRole(roleName);
       setIsAdding(false);
       setRoleName('');
       showToast('Tạo vai trò thành công', 'success');
@@ -55,7 +67,7 @@ export default function RolesPage() {
     e.preventDefault();
     if (!editingRole) return;
     try {
-      await updateRole.mutateAsync({ id: editingRole.id, name: roleName });
+      await mutateAsyncUpdateRole({ id: editingRole.id, name: roleName });
       setEditingRole(null);
       setRoleName('');
       showToast('Cập nhật vai trò thành công', 'success');
@@ -65,7 +77,7 @@ export default function RolesPage() {
   const handleDelete = async () => {
     if (!deletingRole) return;
     try {
-      await deleteRole.mutateAsync(deletingRole.id);
+      await mutateAsyncDeleteRole(deletingRole.id);
       setDeletingRole(null);
       showToast('Xóa vai trò thành công', 'success');
     } catch (err: any) { showToast('Lỗi: ' + err.message, 'error'); }
@@ -74,7 +86,7 @@ export default function RolesPage() {
   const handleSavePerms = async () => {
     if (!permRole) return;
     try {
-      await setRolePermissions.mutateAsync({ roleId: permRole.id, permissionIds: selectedPerms });
+      await mutateAsyncSetRolePermissions({ roleId: permRole.id, permissionIds: selectedPerms });
       setPermRole(null);
       showToast('Cập nhật quyền thành công', 'success');
     } catch (err: any) { showToast('Lỗi: ' + err.message, 'error'); }
@@ -125,8 +137,8 @@ export default function RolesPage() {
           </div>
           <div className="flex gap-4 mt-8">
             <button type="button" onClick={() => { setIsAdding(false); setEditingRole(null); }} className="flex-1 bg-muted/40 text-foreground py-2.5 rounded-md font-bold text-sm border border-border">Hủy</button>
-            <button type="submit" disabled={createRole.isPending || updateRole.isPending} className="flex-1 btn-primary py-2.5 rounded-md font-bold text-sm disabled:opacity-50">
-              {(createRole.isPending || updateRole.isPending) ? 'Đang lưu...' : editingRole ? 'Cập nhật' : 'Thêm'}
+            <button type="submit" disabled={isPendingCreateRole || isPendingUpdateRole} className="flex-1 btn-primary py-2.5 rounded-md font-bold text-sm disabled:opacity-50">
+              {(isPendingCreateRole || isPendingUpdateRole) ? 'Đang lưu...' : editingRole ? 'Cập nhật' : 'Thêm'}
             </button>
           </div>
         </form>
@@ -149,8 +161,8 @@ export default function RolesPage() {
           </div>
           <div className="flex gap-4 mt-6">
             <button onClick={() => setPermRole(null)} className="flex-1 bg-muted/40 text-foreground py-2.5 rounded-md font-bold text-sm border border-border">Hủy</button>
-            <button onClick={handleSavePerms} disabled={setRolePermissions.isPending} className="flex-1 btn-primary py-2.5 rounded-md font-bold text-sm disabled:opacity-50">
-              {setRolePermissions.isPending ? 'Đang lưu...' : 'Lưu quyền'}
+            <button onClick={handleSavePerms} disabled={isPendingSetRolePermissions} className="flex-1 btn-primary py-2.5 rounded-md font-bold text-sm disabled:opacity-50">
+              {isPendingSetRolePermissions ? 'Đang lưu...' : 'Lưu quyền'}
             </button>
           </div>
         </div>
@@ -162,8 +174,8 @@ export default function RolesPage() {
           <p className="text-muted-foreground text-sm">Bạn có chắc chắn muốn xóa vai trò <span className="font-bold text-foreground">{deletingRole?.name}</span>? Tất cả nhân viên thuộc vai trò này sẽ mất liên kết.</p>
           <div className="flex gap-4">
             <button onClick={() => setDeletingRole(null)} className="flex-1 bg-muted/40 text-foreground py-2.5 rounded-md font-bold text-sm border border-border">Giữ lại</button>
-            <button onClick={handleDelete} disabled={deleteRole.isPending} className="flex-1 bg-danger text-white hover:bg-danger/90 py-2.5 rounded-md font-bold text-sm disabled:opacity-50">
-              {deleteRole.isPending ? 'Đang xóa...' : 'Xóa vĩnh viễn'}
+            <button onClick={handleDelete} disabled={isPendingDeleteRole} className="flex-1 bg-danger text-white hover:bg-danger/90 py-2.5 rounded-md font-bold text-sm disabled:opacity-50">
+              {isPendingDeleteRole ? 'Đang xóa...' : 'Xóa vĩnh viễn'}
             </button>
           </div>
         </div>
