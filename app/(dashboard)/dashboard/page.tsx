@@ -13,6 +13,8 @@ import {
     PackageCheck,
     Shirt,
     Loader2,
+    DollarSign,
+    Scale,
 } from "lucide-react";
 import { useOrders } from "@/api/orders";
 import {
@@ -263,6 +265,16 @@ export default function DashboardPage() {
                             <span className="text-foreground/80">
                                 thời điểm khách nhận (trả đồ)
                             </span>
+                            {" · "}
+                            Doanh thu theo{" "}
+                            <span className="text-foreground/80">
+                                ngày thanh toán
+                            </span>
+                            {" · "}
+                            Công nợ là{" "}
+                            <span className="text-foreground/80">
+                                dư chưa thu trên đơn lập trong kỳ
+                            </span>
                         </p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
@@ -385,6 +397,43 @@ export default function DashboardPage() {
                                 </p>
                                 <p className="text-[10px] text-muted-foreground mt-1">
                                     Theo đơn trả trong kỳ
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
+                            <div className="rounded-xl border border-border bg-primary/5 p-3 md:p-4">
+                                <div className="flex items-center gap-2 text-muted-foreground text-xs font-semibold uppercase tracking-wide">
+                                    <DollarSign size={14} className="text-primary" />
+                                    Doanh thu trong kỳ
+                                </div>
+                                <p className="text-2xl md:text-3xl font-bold text-primary mt-2 tabular-nums">
+                                    {new Intl.NumberFormat("vi-VN").format(
+                                        Math.round(periodData.periodRevenue),
+                                    )}
+                                    đ
+                                </p>
+                                <p className="text-[10px] text-muted-foreground mt-1">
+                                    Tổng các khoản thu (payment) có ngày giao dịch
+                                    trong kỳ
+                                </p>
+                            </div>
+                            <div className="rounded-xl border border-border bg-warning/5 p-3 md:p-4">
+                                <div className="flex items-center gap-2 text-muted-foreground text-xs font-semibold uppercase tracking-wide">
+                                    <Scale size={14} className="text-warning" />
+                                    Công nợ đơn trong kỳ
+                                </div>
+                                <p className="text-2xl md:text-3xl font-bold text-foreground mt-2 tabular-nums">
+                                    {new Intl.NumberFormat("vi-VN").format(
+                                        Math.round(
+                                            periodData.periodUnpaidOnOrdersCreated,
+                                        ),
+                                    )}
+                                    đ
+                                </p>
+                                <p className="text-[10px] text-muted-foreground mt-1">
+                                    Tổng (tổng tiền − đã thu) trên đơn được lập
+                                    trong kỳ, chỉ cộng phần còn nợ
                                 </p>
                             </div>
                         </div>

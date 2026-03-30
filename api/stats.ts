@@ -182,6 +182,54 @@ function getPeriodIsoBounds(sel: DashboardPeriodSelection): {
     return { startIso: start.toISOString(), endIso: end.toISOString() };
 }
 
+async function sumPaymentsAmountInRange(
+    startIso: string,
+    endIso: string,
+): Promise<number> {
+    let sum = 0;
+    const page = 1000;
+    for (let from = 0; ; from += page) {
+        const { data, error } = await supabase
+            .from("payments")
+            .select("amount")
+            .gte("payment_time", startIso)
+            .lte("payment_time", endIso)
+            .order("id", { ascending: true })
+            .range(from, from + page - 1);
+        if (error) throw error;
+        if (!data?.length) break;
+        for (const p of data) sum += Number(p.amount);
+        if (data.length < page) break;
+    }
+    return sum;
+}
+
+async function sumUnpaidOnOrdersCreatedInRange(
+    startIso: string,
+    endIso: string,
+): Promise<number> {
+    let sum = 0;
+    const page = 1000;
+    for (let from = 0; ; from += page) {
+        const { data, error } = await supabase
+            .from("orders")
+            .select("total_amount, paid_amount")
+            .gte("created_at", startIso)
+            .lte("created_at", endIso)
+            .order("id", { ascending: true })
+            .range(from, from + page - 1);
+        if (error) throw error;
+        if (!data?.length) break;
+        for (const o of data) {
+            const unpaid =
+                Number(o.total_amount) - Number(o.paid_amount ?? 0);
+            if (unpaid > 0) sum += unpaid;
+        }
+        if (data.length < page) break;
+    }
+    return sum;
+}
+
 async function fetchAllReturnedOrderIdsInRange(
     startIso: string,
     endIso: string,
@@ -228,8 +276,13 @@ async function fetchPeriodAnalytics(
 ): Promise<DashboardPeriodAnalytics> {
     const { startIso, endIso } = getPeriodIsoBounds(sel);
 
-    const [createdCountRes, returnedCountRes, itemsCreatedCountRes] =
-        await Promise.all([
+    const [
+        createdCountRes,
+        returnedCountRes,
+        itemsCreatedCountRes,
+        periodRevenue,
+        periodUnpaidOnOrdersCreated,
+    ] = await Promise.all([
             supabase
                 .from("orders")
                 .select("*", { count: "exact", head: true })
@@ -246,6 +299,8 @@ async function fetchPeriodAnalytics(
                 .select("*", { count: "exact", head: true })
                 .gte("created_at", startIso)
                 .lte("created_at", endIso),
+            sumPaymentsAmountInRange(startIso, endIso),
+            sumUnpaidOnOrdersCreatedInRange(startIso, endIso),
         ]);
 
     if (createdCountRes.error) throw createdCountRes.error;
@@ -412,6 +467,8 @@ async function fetchPeriodAnalytics(
         ordersReturnedCount: returnedCountRes.count ?? 0,
         itemsCreatedCount: itemsCreatedCountRes.count ?? 0,
         itemsReturnedCount,
+        periodRevenue,
+        periodUnpaidOnOrdersCreated,
         ordersCreated,
         ordersReturned,
         itemsCreated,

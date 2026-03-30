@@ -119,6 +119,13 @@ export interface DashboardPeriodAnalytics {
     ordersReturnedCount: number;
     itemsCreatedCount: number;
     itemsReturnedCount: number;
+    /** Tổng tiền thu trong kỳ (bảng payments, theo payment_time) */
+    periodRevenue: number;
+    /**
+     * Tổng dư chưa thu trên các đơn có ngày lập trong kỳ
+     * (max(0, total_amount − paid_amount) cộng dồn).
+     */
+    periodUnpaidOnOrdersCreated: number;
     ordersCreated: DashboardPeriodOrderRow[];
     ordersReturned: DashboardPeriodOrderRow[];
     itemsCreated: DashboardPeriodItemRow[];
