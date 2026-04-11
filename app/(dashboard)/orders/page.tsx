@@ -42,6 +42,9 @@ import { useDebounce } from "@/hooks/useDebounce";
 import { Can } from "@/components/auth/Can";
 import { Order, OrderDetail, User, Role } from "@/lib/types";
 import { validateRequired, validateNumber } from "@/lib/validation";
+import { printTargetElementSmart } from "@/lib/printSmart";
+import { PRINT_TARGET_INVOICE_XP80C } from "@/lib/printTargets";
+import { isQzPrintEnabled } from "@/lib/qz/env";
 
 const statusOptions = [
     { value: "New", label: "Mới", color: "bg-info/10 text-info" },
@@ -1553,10 +1556,10 @@ export default function OrdersPage() {
                             </button>
                             <button
                                 type="button"
-                                onClick={() => window.print()}
+                                onClick={() => printTargetElementSmart(PRINT_TARGET_INVOICE_XP80C)}
                                 className="px-4 py-2 bg-primary text-white rounded-md font-bold text-sm hover:opacity-90"
                             >
-                                In XP-80C: {batchOrders.length} phiếu
+                                {isQzPrintEnabled() ? `In XP-80C: ${batchOrders.length} phiếu ⚡` : `In XP-80C: ${batchOrders.length} phiếu`}
                             </button>
                         </div>
                     </div>

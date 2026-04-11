@@ -14,12 +14,12 @@ export function configureQzSecurity(qzMod: typeof qz): void {
   qzMod.security.setSignatureAlgorithm("SHA512");
 
   qzMod.security.setCertificatePromise(
-    (resolve, reject) => {
-      fetch(`${globalThis.location.origin}/qz/digital-certificate.txt`, {
+    (resolve) => {
+      fetch(`${globalThis.location.origin}/api/qz/cert`, {
         cache: "no-store",
         headers: { Accept: "text/plain" },
       })
-        .then((r) => (r.ok ? r.text() : Promise.reject(new Error(String(r.status)))))
+        .then((r) => (r.ok ? r.text() : ""))
         .then((text) => resolve(text.trim()))
         .catch(() => resolve(""));
     },

@@ -2,8 +2,20 @@ import { createSign } from "node:crypto";
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { NextResponse } from "next/server";
+import { createSupabaseAdmin } from "@/lib/supabase-server";
 
-function loadPrivateKeyPem(): string | null {
+async function loadPrivateKeyPem(): Promise<string | null> {
+  try {
+    const sb = createSupabaseAdmin();
+    const { data, error } = await sb
+      .from("shop_settings")
+      .select("value")
+      .eq("key", "qz_private_key")
+      .single();
+
+    if (!error && data?.value?.trim()) return data.value.trim();
+  } catch { /* fall through to file/env */ }
+
   const fromEnv = process.env.QZ_PRIVATE_KEY?.replaceAll("\\n", "\n")?.trim();
   if (fromEnv) return fromEnv;
 
@@ -27,12 +39,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Missing request" }, { status: 400 });
   }
 
-  const pem = loadPrivateKeyPem();
+  const pem = await loadPrivateKeyPem();
   if (!pem) {
     return NextResponse.json(
       {
         error:
-          "QZ signing chưa cấu hình: đặt QZ_PRIVATE_KEY trong .env.local hoặc file qz-private-key.pem ở thư mục gốc project (đã gitignore).",
+          "QZ signing chưa cấu hình: vào Cài đặt > QZ Tray để upload private key, hoặc đặt QZ_PRIVATE_KEY trong .env.local.",
       },
       { status: 503 },
     );

@@ -9,14 +9,9 @@ import {
     invoiceDisplayNoFromBarcodeCode,
 } from "@/lib/barcode";
 import { wrapDetailLines } from "@/lib/invoicePrintLayout";
-import { QzPrintButton } from "@/components/print/QzPrintButton";
+import { SmartPrintButton } from "@/components/print/SmartPrintButton";
 import { PRINT_TARGET_INVOICE_XP80C } from "@/lib/printTargets";
-
-/** Mặc định giống template C# (trước khi gọi getInfo); có thể thay bằng cấu hình sau. */
-const SHOP_HOTLINE = "0904672288";
-const BANK_NAME = "Techcombank";
-const BANK_ACCOUNT_SPACED = "1902 9116 9690 16";
-const BANK_ACCOUNT_HOLDER = "Nguyễn Thu Hằng";
+import { useShopSettings } from "@/api/shopSettings";
 
 function formatInvoiceDetailLine(d: OrderDetail): string {
     const name = d.item_name?.trim() ?? "";
@@ -58,10 +53,6 @@ export function InvoicePrint({
     onClose,
     multiPage,
 }: Readonly<InvoicePrintProps>) {
-    const handlePrint = () => {
-        globalThis.print();
-    };
-
     return (
         <div
             data-print-target={PRINT_TARGET_INVOICE_XP80C}
@@ -69,19 +60,13 @@ export function InvoicePrint({
         >
             <div className="non-print space-y-3 mb-3 px-1 shrink-0">
                 <div className="flex flex-wrap justify-end gap-2">
-                    <button
-                        type="button"
-                        onClick={handlePrint}
+                    <SmartPrintButton
+                        target={PRINT_TARGET_INVOICE_XP80C}
                         className="px-4 py-2 bg-primary text-white rounded-md font-bold text-sm hover:opacity-90"
+                        qzLabel="In XP-80C ⚡"
                     >
                         In XP-80C (80mm)
-                    </button>
-                    <QzPrintButton
-                        target={PRINT_TARGET_INVOICE_XP80C}
-                        className="px-4 py-2 bg-zinc-800 text-white rounded-md font-bold text-sm hover:opacity-90"
-                    >
-                        In QZ (XP-80C)
-                    </QzPrintButton>
+                    </SmartPrintButton>
                     {onClose && (
                         <button
                             type="button"
@@ -108,6 +93,7 @@ export interface InvoicePrintContentProps {
 export function InvoicePrintContent({
     order,
 }: Readonly<InvoicePrintContentProps>) {
+    const { data: settings } = useShopSettings();
     const orderCode = invoiceBarcodeFromOrder(order);
     const invoiceNo = invoiceDisplayNoFromBarcodeCode(orderCode);
     const invoiceDate = formatInvoiceDateYmdVn(order.created_at);
@@ -128,10 +114,10 @@ export function InvoicePrintContent({
                 </div>
 
                 <p className="text-center text-[14px] font-bold text-black leading-tight">
-                    DŨNG SỬA ĐỒ HIỆU
+                    {settings?.shop_name || "DŨNG SỬA ĐỒ HIỆU"}
                 </p>
                 <p className="text-center text-[10px] font-bold text-black mt-1">
-                    Hotline: {SHOP_HOTLINE}
+                    Hotline: {settings?.shop_hotline || "0904672288"}
                 </p>
 
                 <p className="text-center text-[12px]  font-bold text-black mt-3">
@@ -237,10 +223,10 @@ export function InvoicePrintContent({
                         Quét mã QR để thanh toán
                     </p>
                     <p className="font-semibold text-[10px]">
-                        {BANK_NAME} {BANK_ACCOUNT_SPACED}
+                        {settings?.bank_name || "Techcombank"} {settings?.bank_account || "1902 9116 9690 16"}
                     </p>
                     <p className="font-semibold text-[10px]">
-                        {BANK_ACCOUNT_HOLDER}
+                        {settings?.bank_account_holder || "Nguyễn Thu Hằng"}
                     </p>
                 </div>
             </div>

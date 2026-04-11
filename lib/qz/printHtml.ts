@@ -56,5 +56,5 @@ export async function printElementWithQz(
     },
   ];
 
-  await config.print(data);
+  await qz.print(config, data);
 }

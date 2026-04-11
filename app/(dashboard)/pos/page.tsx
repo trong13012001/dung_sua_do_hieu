@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useRef, useEffect, useLayoutEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import { flushSync } from 'react-dom';
 import {
   Plus,
@@ -24,6 +24,9 @@ import { buildOrderForInvoicePrint } from '@/lib/buildOrderForInvoicePrint';
 import { useDebounce } from '@/hooks/useDebounce';
 import { Customer, Order, User, Role } from '@/lib/types';
 import { validateRequired, validateNumber, validatePhone, validateMaxLength } from '@/lib/validation';
+import { isQzPrintEnabled } from '@/lib/qz/env';
+import { printTargetElementSmart } from '@/lib/printSmart';
+import { PRINT_TARGET_LABEL_XP235B, PRINT_TARGET_INVOICE_XP80C } from '@/lib/printTargets';
 
 interface PosItem {
   name: string;
@@ -43,6 +46,40 @@ interface PosPrintQueue {
   customerAddress: string | null;
   returnTime: string | null;
   invoiceOrder: Order;
+}
+
+function PrintQueueHint({ step, qz }: Readonly<{ step: PosPrintStep; qz: boolean }>) {
+  if (qz && step === 'labels') {
+    return (
+      <div className="non-print rounded-lg border border-border bg-muted/20 p-3 text-xs text-muted-foreground leading-relaxed">
+        <span className="font-bold text-foreground">Bước 1/2 — XP-235B (tem):</span>{' '}
+        đang gửi trực tiếp tới máy in qua QZ Tray. Tự chuyển sang bước 2 khi hoàn tất.
+      </div>
+    );
+  }
+  if (qz) {
+    return (
+      <div className="non-print rounded-lg border border-border bg-muted/20 p-3 text-xs text-muted-foreground leading-relaxed">
+        <span className="font-bold text-foreground">Bước 2/2 — XP-80C (hóa đơn):</span>{' '}
+        đang gửi trực tiếp tới máy in qua QZ Tray.
+      </div>
+    );
+  }
+  if (step === 'labels') {
+    return (
+      <div className="non-print rounded-lg border border-border bg-muted/20 p-3 text-xs text-muted-foreground leading-relaxed">
+        <span className="font-bold text-foreground">Bước 1 — Xprinter XP-235B:</span>{' '}
+        cửa sổ in <span className="font-bold text-foreground">tự mở</span> ngay sau khi tạo đơn. Sau khi bạn in xong và đóng hộp thoại, hệ thống tự mở{' '}
+        <span className="font-bold text-foreground">bước 2 — XP-80C</span> cho hóa đơn.
+      </div>
+    );
+  }
+  return (
+    <div className="non-print rounded-lg border border-border bg-muted/20 p-3 text-xs text-muted-foreground leading-relaxed">
+      <span className="font-bold text-foreground">Bước 2 — Xprinter XP-80C (80mm):</span>{' '}
+      cửa sổ in tự mở — chọn máy nhiệt 80mm và in. Đóng hộp thoại in để kết thúc hàng đợi.
+    </div>
+  );
 }
 
 export default function POSPage() {
@@ -73,6 +110,10 @@ export default function POSPage() {
   const [printQueue, setPrintQueue] = useState<PosPrintQueue | null>(null);
   /** Chỉ tự chuyển bước sau afterprint khi print() do hàng đợi gọi (không áp dụng khi bấm "In lại"). */
   const printQueueAdvanceRef = useRef<PosPrintStep | null>(null);
+  /** Khi QZ đang in tự động, tránh trùng lệnh. */
+  const qzBusyRef = useRef(false);
+
+  const qzEnabled = isQzPrintEnabled();
 
   const closePrintQueue = () => setPrintQueue(null);
 
@@ -84,7 +125,31 @@ export default function POSPage() {
     });
   };
 
+  /** In tự động qua QZ: gửi thẳng tới máy in, không mở dialog trình duyệt. */
+  const runQzAutoPrint = useCallback(async (step: PosPrintStep) => {
+    if (qzBusyRef.current) return;
+    qzBusyRef.current = true;
+    try {
+      const target = step === 'labels' ? PRINT_TARGET_LABEL_XP235B : PRINT_TARGET_INVOICE_XP80C;
+      await new Promise((r) => globalThis.requestAnimationFrame(() => globalThis.requestAnimationFrame(r)));
+      const result = await printTargetElementSmart(target);
+      if (result.method === 'qz') {
+        if (step === 'labels') {
+          setPrintQueue((q) => (q?.step === 'labels' ? { ...q, step: 'invoice' } : q));
+        } else {
+          setPrintQueue(null);
+        }
+      }
+    } catch (err) {
+      console.error('[POS QZ auto-print]', err);
+    } finally {
+      qzBusyRef.current = false;
+    }
+  }, []);
+
+  /** Browser print flow: afterprint tự chuyển bước (chỉ khi không dùng QZ). */
   useEffect(() => {
+    if (qzEnabled) return;
     const onAfterPrint = () => {
       const expected = printQueueAdvanceRef.current;
       printQueueAdvanceRef.current = null;
@@ -98,13 +163,20 @@ export default function POSPage() {
     };
     globalThis.addEventListener('afterprint', onAfterPrint);
     return () => globalThis.removeEventListener('afterprint', onAfterPrint);
-  }, []);
+  }, [qzEnabled]);
 
   /**
-   * Bước 2 (hóa đơn): tự mở `window.print()` sau khi chuyển step.
+   * Bước 2 (hóa đơn): tự động in khi chuyển step.
+   * QZ → gửi trực tiếp, browser → mở window.print().
    */
   useLayoutEffect(() => {
     if (!printQueue || printQueue.step !== 'invoice') return;
+
+    if (qzEnabled) {
+      runQzAutoPrint('invoice');
+      return;
+    }
+
     printQueueAdvanceRef.current = 'invoice';
     let id0 = 0;
     let id1 = 0;
@@ -117,7 +189,7 @@ export default function POSPage() {
       globalThis.cancelAnimationFrame(id0);
       globalThis.cancelAnimationFrame(id1);
     };
-  }, [printQueue?.step, printQueue?.orderId]);
+  }, [printQueue?.step, printQueue?.orderId, qzEnabled, runQzAutoPrint]);
 
   const [addCustomerOpen, setAddCustomerOpen] = useState(false);
   const [newCustomerForm, setNewCustomerForm] = useState({ name: '', phone: '', address: '' });
@@ -234,12 +306,17 @@ export default function POSPage() {
           invoiceOrder,
         });
       });
-      printQueueAdvanceRef.current = 'labels';
-      globalThis.requestAnimationFrame(() => {
+
+      if (qzEnabled) {
+        runQzAutoPrint('labels');
+      } else {
+        printQueueAdvanceRef.current = 'labels';
         globalThis.requestAnimationFrame(() => {
-          globalThis.print();
+          globalThis.requestAnimationFrame(() => {
+            globalThis.print();
+          });
         });
-      });
+      }
       setItems([]);
       setSelectedCustomer(null);
       setReturnDate('');
@@ -497,20 +574,7 @@ export default function POSPage() {
       >
         {printQueue != null && printQueue.labelItems.length > 0 && (
           <div className="space-y-4">
-            <div className="non-print rounded-lg border border-border bg-muted/20 p-3 text-xs text-muted-foreground leading-relaxed">
-              {printQueue.step === 'labels' ? (
-                <>
-                  <span className="font-bold text-foreground">Bước 1 — Xprinter XP-235B:</span>{' '}
-                  cửa sổ in <span className="font-bold text-foreground">tự mở</span> ngay sau khi tạo đơn. Sau khi bạn in xong và đóng hộp thoại, hệ thống tự mở{' '}
-                  <span className="font-bold text-foreground">bước 2 — XP-80C</span> cho hóa đơn.
-                </>
-              ) : (
-                <>
-                  <span className="font-bold text-foreground">Bước 2 — Xprinter XP-80C (80mm):</span>{' '}
-                  cửa sổ in tự mở — chọn máy nhiệt 80mm và in. Đóng hộp thoại in để kết thúc hàng đợi.
-                </>
-              )}
-            </div>
+            <PrintQueueHint step={printQueue.step} qz={qzEnabled} />
             <div className="non-print flex flex-wrap gap-2">
               <button
                 type="button"

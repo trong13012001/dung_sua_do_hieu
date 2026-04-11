@@ -23,10 +23,12 @@ declare module "qz-tray" {
       create: (
         printer: string | { name: string },
         options?: Record<string, unknown>,
-      ) => {
-        print: (data: unknown[]) => Promise<void>;
-      };
+      ) => Record<string, unknown>;
     };
+    print: (
+      config: Record<string, unknown>,
+      data: unknown[],
+    ) => Promise<void>;
     printers: {
       find: (query?: string | null) => Promise<string | string[]>;
       getDefault: () => Promise<string>;
