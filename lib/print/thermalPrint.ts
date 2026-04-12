@@ -111,8 +111,14 @@ export async function printThermalElement(
   const deviceName =
     options.printerName?.trim() || thermalPrinterForTarget(options.target);
 
-  if (await tryElectronSilentPrint(html, deviceName)) {
+  const electron = await tryElectronSilentPrint(html, deviceName);
+  if (electron.ok) {
     return "silent";
+  }
+  if (electron.reason === "failed" && isElectronThermalPrintAvailable()) {
+    throw new Error(
+      `${electron.message} — Kiểm tra tên máy in (Cài đặt shop) trùng Windows hoặc driver máy in.`,
+    );
   }
 
   if (await trySilentPrintAgent(html, options)) {

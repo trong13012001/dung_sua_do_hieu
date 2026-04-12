@@ -5,6 +5,11 @@ export interface ElectronThermalPrintApi {
   ) => Promise<void>;
 }
 
+export type ElectronSilentPrintResult =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly reason: "unavailable" }
+  | { readonly ok: false; readonly reason: "failed"; readonly message: string };
+
 function api(): ElectronThermalPrintApi | undefined {
   if (typeof globalThis === "undefined") return undefined;
   return (globalThis as unknown as { electronThermalPrint?: ElectronThermalPrintApi })
@@ -17,19 +22,23 @@ export function isElectronThermalPrintAvailable(): boolean {
 
 /**
  * In im lặng qua shell Electron (`webContents.print({ silent: true })`).
- * Lỗi IPC / driver / OS không hợp lệ → trả về `false` để luồng in thử agent hoặc dialog.
+ * `unavailable`: không có preload (thường là đang mở POS trong trình duyệt).
+ * `failed`: IPC/driver lỗi — không nên im lặng rơi xuống hộp thoại in trình duyệt.
  */
 export async function tryElectronSilentPrint(
   html: string,
   deviceName?: string,
-): Promise<boolean> {
+): Promise<ElectronSilentPrintResult> {
   const a = api();
-  if (!a?.printHtmlSilent) return false;
+  if (!a?.printHtmlSilent) {
+    return { ok: false, reason: "unavailable" };
+  }
   try {
     await a.printHtmlSilent(html, deviceName?.trim() || undefined);
-    return true;
+    return { ok: true };
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
     console.warn("[electronThermalPrint] silent print failed:", err);
-    return false;
+    return { ok: false, reason: "failed", message };
   }
 }

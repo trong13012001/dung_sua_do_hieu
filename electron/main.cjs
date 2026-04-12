@@ -17,6 +17,63 @@ function resolveWindowIconPath() {
   return fs.existsSync(p) ? p : undefined;
 }
 
+/**
+ * In im lặng Windows: `print({ deviceName })` cần **PrinterInfo.name** (tên hệ thống),
+ * không phải tên hiển thị trong Cài đặt. Chuỗi từ Cài đặt shop được map; nếu trống → máy mặc định.
+ * @param {import("electron").WebContents} wc webContents của cửa sổ in
+ * @param {string} requestedTrim
+ */
+async function resolveWindowsPrinterDeviceName(wc, requestedTrim) {
+  let printers;
+  try {
+    printers = await wc.getPrintersAsync();
+  } catch (e) {
+    console.warn("[electron] getPrintersAsync:", e?.message || e);
+    return requestedTrim || undefined;
+  }
+  if (!printers.length) {
+    console.warn("[electron] Danh sách máy in rỗng.");
+    return requestedTrim || undefined;
+  }
+  const r = String(requestedTrim || "").trim();
+  const norm = (s) => String(s).trim().toLowerCase().replace(/\s+/g, " ");
+  const rn = r ? norm(r) : "";
+  if (!rn) {
+    const def = printers.find((p) => p.isDefault);
+    const pick = def || printers[0];
+    if (pick?.name) {
+      console.log(
+        "[electron] In silent — máy mặc định:",
+        pick.displayName || pick.name,
+        "→",
+        pick.name,
+      );
+      return pick.name;
+    }
+    return undefined;
+  }
+  const hit =
+    printers.find((p) => p.name === r) ||
+    printers.find((p) => p.displayName === r) ||
+    printers.find((p) => norm(p.name) === rn) ||
+    printers.find((p) => norm(p.displayName) === rn) ||
+    printers.find(
+      (p) =>
+        norm(p.displayName).includes(rn) ||
+        norm(p.name).includes(rn) ||
+        rn.includes(norm(p.displayName)) ||
+        rn.includes(norm(p.name)),
+    );
+  if (hit?.name) {
+    if (hit.name !== r) {
+      console.log("[electron] Map máy in", JSON.stringify(r), "→", hit.name);
+    }
+    return hit.name;
+  }
+  const list = printers.map((p) => `${p.displayName} — ${p.name}`).join(" | ");
+  throw new Error(`Không khớp máy in "${r}". Máy đã cài: ${list}`);
+}
+
 function scheduleAutoUpdateFromGitHub() {
   if (!app.isPackaged || !autoUpdater) return;
   autoUpdater.autoDownload = true;
@@ -218,7 +275,8 @@ ipcMain.handle("thermal-print-html", async (_event, { html, deviceName }) => {
       preferCSSPageSize: true,
     };
     const dn = typeof deviceName === "string" ? deviceName.trim() : "";
-    if (dn) opts.deviceName = dn;
+    const resolvedName = await resolveWindowsPrinterDeviceName(printWin.webContents, dn);
+    if (resolvedName) opts.deviceName = resolvedName;
 
     /**
      * `webContents.print` không trả Promise — `await print()` trước đây không chờ
@@ -233,7 +291,7 @@ ipcMain.handle("thermal-print-html", async (_event, { html, deviceName }) => {
             console.error(
               "[electron] thermal-print-html:",
               msg,
-              dn ? `(deviceName: ${dn})` : "(máy in mặc định)",
+              resolvedName ? `(deviceName: ${resolvedName})` : "(chưa map được máy in)",
             );
             reject(new Error(msg));
           }

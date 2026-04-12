@@ -147,7 +147,7 @@ export default function POSPage() {
       const result = await printTargetElementSmart(target);
       const advance =
         result.method === 'silent' ||
-        (result.method === 'browser' && !result.error?.includes('Không tìm thấy'));
+        (result.method === 'browser' && result.error == null);
       if (advance) {
         if (step === 'labels') {
           setPrintQueue((q) => (q?.step === 'labels' ? { ...q, step: 'invoice' } : q));

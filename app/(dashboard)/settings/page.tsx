@@ -148,8 +148,9 @@ export default function SettingsPage() {
           <div className="space-y-5">
             <p className="text-xs text-muted-foreground leading-relaxed">
               In im lặng: chạy POS bằng ứng dụng Electron hoặc agent{' '}
-              <code className="text-foreground">tools/silent-print-agent</code>. Tên máy in phải{' '}
-              <span className="font-semibold text-foreground">trùng y hệt</span> chuỗi trong Cài đặt Windows → Máy in.
+              <code className="text-foreground">tools/silent-print-agent</code>. Tên máy in nên trùng
+              Cài đặt Windows → Máy in; Electron map tên hiển thị sang tên hệ thống tự động. Để trống →
+              dùng máy in mặc định Windows.
             </p>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">

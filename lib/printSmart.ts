@@ -7,6 +7,7 @@ import {
   printThermalElement,
   type ThermalPrintMethod,
 } from "@/lib/print/thermalPrint";
+import { isElectronThermalPrintAvailable } from "@/lib/print/electronPrintClient";
 
 const THERMAL_MERGED_INVOICE_HOST_CLASS = "thermal-merged-invoice-host";
 
@@ -98,7 +99,9 @@ export async function printElementSmart(
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[printSmart] thermal print failed, falling back:", msg);
-    globalThis.print();
+    if (!isElectronThermalPrintAvailable()) {
+      globalThis.print();
+    }
     return { method: "browser", error: msg };
   }
 }
@@ -143,7 +146,9 @@ export async function printTargetElementSmart(
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[printSmart] batch thermal failed, falling back:", msg);
-    globalThis.print();
+    if (!isElectronThermalPrintAvailable()) {
+      globalThis.print();
+    }
     return { method: "browser", error: msg };
   }
 }
