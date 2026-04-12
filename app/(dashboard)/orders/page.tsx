@@ -44,7 +44,6 @@ import { Order, OrderDetail, User, Role } from "@/lib/types";
 import { validateRequired, validateNumber } from "@/lib/validation";
 import { printTargetElementSmart } from "@/lib/printSmart";
 import { PRINT_TARGET_INVOICE_XP80C } from "@/lib/printTargets";
-import { isQzPrintEnabled } from "@/lib/qz/env";
 
 const statusOptions = [
     { value: "New", label: "Mới", color: "bg-info/10 text-info" },
@@ -1559,7 +1558,7 @@ export default function OrdersPage() {
                                 onClick={() => printTargetElementSmart(PRINT_TARGET_INVOICE_XP80C)}
                                 className="px-4 py-2 bg-primary text-white rounded-md font-bold text-sm hover:opacity-90"
                             >
-                                {isQzPrintEnabled() ? `In XP-80C: ${batchOrders.length} phiếu ⚡` : `In XP-80C: ${batchOrders.length} phiếu`}
+                                {`In XP-80C: ${batchOrders.length} phiếu`}
                             </button>
                         </div>
                     </div>
@@ -1567,9 +1566,12 @@ export default function OrdersPage() {
                         {batchOrders.map((order) => (
                             <div
                                 key={order.id}
-                                className="invoice-print-area invoice-xp80c invoice-cs-receipt invoice-page bg-white text-black m-0 max-w-lg p-0 print:max-w-none"
+                                data-print-target={PRINT_TARGET_INVOICE_XP80C}
+                                className="invoice-print-area invoice-xp80c invoice-cs-receipt invoice-page bg-white text-black m-0 max-w-xl p-0 print:max-w-none"
                             >
-                                <InvoicePrintContent order={order} />
+                                <div className="invoice-xp80c-body min-w-0">
+                                    <InvoicePrintContent order={order} />
+                                </div>
                             </div>
                         ))}
                     </div>

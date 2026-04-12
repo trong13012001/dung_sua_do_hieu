@@ -1,4 +1,4 @@
--- Shop settings: key-value store for shop info, QZ Tray config, etc.
+-- Shop settings: key-value store for shop info, máy in nhiệt, v.v.
 CREATE TABLE IF NOT EXISTS shop_settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL DEFAULT '',
@@ -14,11 +14,8 @@ SELECT k, v FROM (VALUES
     ('bank_name',            'Techcombank'),
     ('bank_account',         '1902 9116 9690 16'),
     ('bank_account_holder',  'Nguyễn Thu Hằng'),
-    ('qz_enabled',           '0'),
-    ('qz_printer_invoice',   ''),
-    ('qz_printer_label',     ''),
-    ('qz_certificate',       ''),
-    ('qz_private_key',       '')
+    ('thermal_printer_invoice', ''),
+    ('thermal_printer_label',     '')
 ) AS seed(k, v)
 WHERE NOT EXISTS (SELECT 1 FROM shop_settings WHERE shop_settings.key = seed.k);
 

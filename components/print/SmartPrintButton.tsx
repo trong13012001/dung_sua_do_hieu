@@ -2,36 +2,32 @@
 
 import { useState, type ReactNode } from "react";
 import type { PrintTarget } from "@/lib/printTargets";
-import { isQzPrintEnabled } from "@/lib/qz/env";
-import { printElementWithQz } from "@/lib/qz/printHtml";
+import { isSilentThermalConfigured } from "@/lib/print/thermalPrint";
+import { printThermalElement } from "@/lib/print/thermalPrint";
 
 export interface SmartPrintButtonProps {
   readonly target: PrintTarget;
   readonly children: ReactNode;
-  readonly qzLabel?: ReactNode;
+  /** Nhãn khi đã cấu hình in im lặng (Electron / agent). */
+  readonly silentLabel?: ReactNode;
   readonly className?: string;
 }
 
 /**
  * Nút in thông minh:
- * - QZ enabled → in trực tiếp tới máy in (không mở dialog trình duyệt)
- * - QZ không enabled → `window.print()` (mở dialog)
+ * - Electron / agent cấu hình → in im lặng (không dialog)
+ * - Ngược lại → hộp thoại in Chrome (HTML đã gộp)
  */
 export function SmartPrintButton({
   target,
   children,
-  qzLabel,
+  silentLabel,
   className,
 }: Readonly<SmartPrintButtonProps>) {
   const [busy, setBusy] = useState(false);
-  const qzEnabled = isQzPrintEnabled();
+  const silentReady = isSilentThermalConfigured();
 
   const handleClick = async (e: React.MouseEvent<HTMLButtonElement>) => {
-    if (!qzEnabled) {
-      globalThis.print();
-      return;
-    }
-
     const root = e.currentTarget.closest(
       ".invoice-print-area, .item-labels-print",
     );
@@ -42,7 +38,7 @@ export function SmartPrintButton({
 
     setBusy(true);
     try {
-      await printElementWithQz(root, { target });
+      await printThermalElement(root, { target });
     } catch (err) {
       console.error(err);
       globalThis.alert(
@@ -60,7 +56,7 @@ export function SmartPrintButton({
       disabled={busy}
       onClick={handleClick}
     >
-      {busy ? "Đang in…" : (qzEnabled && qzLabel) || children}
+      {busy ? "Đang in…" : (silentReady && silentLabel) || children}
     </button>
   );
 }

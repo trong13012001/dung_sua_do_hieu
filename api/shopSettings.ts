@@ -8,11 +8,8 @@ export interface ShopSettings {
   bank_name: string;
   bank_account: string;
   bank_account_holder: string;
-  qz_enabled: string;
-  qz_printer_invoice: string;
-  qz_printer_label: string;
-  qz_certificate: string;
-  qz_private_key: string;
+  thermal_printer_invoice: string;
+  thermal_printer_label: string;
 }
 
 const SETTINGS_DEFAULTS: ShopSettings = {
@@ -22,11 +19,8 @@ const SETTINGS_DEFAULTS: ShopSettings = {
   bank_name: "Techcombank",
   bank_account: "1902 9116 9690 16",
   bank_account_holder: "Nguyễn Thu Hằng",
-  qz_enabled: "0",
-  qz_printer_invoice: "",
-  qz_printer_label: "",
-  qz_certificate: "",
-  qz_private_key: "",
+  thermal_printer_invoice: "",
+  thermal_printer_label: "",
 };
 
 const QUERY_KEY = ["shop_settings"] as const;
@@ -38,12 +32,27 @@ export async function getShopSettings(): Promise<ShopSettings> {
 
   if (error) throw error;
 
-  const result = { ...SETTINGS_DEFAULTS };
+  const map = new Map<string, string>();
   for (const row of data ?? []) {
-    if (row.key in result) {
-      (result as Record<string, string>)[row.key] = row.value;
-    }
+    map.set(row.key, row.value);
   }
+
+  const result = { ...SETTINGS_DEFAULTS };
+  for (const key of Object.keys(SETTINGS_DEFAULTS) as (keyof ShopSettings)[]) {
+    const v = map.get(key);
+    if (v !== undefined) result[key] = v;
+  }
+
+  /* Trước khi chạy migration SQL: đọc giá trị máy in từ khóa shop_settings cũ. */
+  if (!result.thermal_printer_invoice.trim()) {
+    const legacy = map.get("qz_printer_invoice");
+    if (legacy !== undefined) result.thermal_printer_invoice = legacy;
+  }
+  if (!result.thermal_printer_label.trim()) {
+    const legacy = map.get("qz_printer_label");
+    if (legacy !== undefined) result.thermal_printer_label = legacy;
+  }
+
   return result;
 }
 

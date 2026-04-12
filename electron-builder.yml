@@ -1,0 +1,17 @@
+appId: com.dungsuadohieu.pos
+productName: DungSuaDoHieuPOS
+copyright: Copyright © Dung Sua Do Hieu
+directories:
+  output: dist-electron
+files:
+  - electron/**/*
+  - package.json
+# PC quầy Windows Intel/AMD — chỉ NSIS x64 (schema v25 không có `win.arch` ở root).
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true

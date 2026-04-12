@@ -2,21 +2,20 @@
 
 import { useEffect } from "react";
 import { useShopSettings } from "@/api/shopSettings";
-import { syncQzSettings } from "@/lib/qz/env";
+import { syncThermalPrintersFromShop } from "@/lib/print/shopPrinterCache";
 
 /**
- * Syncs DB shop settings into the QZ module-level cache.
- * Mount once in the dashboard layout.
+ * Đồng bộ tên máy in từ DB vào cache (`lib/print/shopPrinterCache`) cho Electron / agent / dialog.
+ * Mount một lần trong layout dashboard.
  */
 export function ShopSettingsSync() {
   const { data } = useShopSettings();
 
   useEffect(() => {
     if (!data) return;
-    syncQzSettings({
-      qz_enabled: data.qz_enabled,
-      qz_printer_invoice: data.qz_printer_invoice,
-      qz_printer_label: data.qz_printer_label,
+    syncThermalPrintersFromShop({
+      thermal_printer_invoice: data.thermal_printer_invoice,
+      thermal_printer_label: data.thermal_printer_label,
     });
   }, [data]);
 

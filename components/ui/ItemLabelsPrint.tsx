@@ -4,6 +4,7 @@ import React from "react";
 import { OrderBarcode } from "@/components/ui/OrderBarcode";
 import { encodeItemBarcodeFromOrder } from "@/lib/barcode";
 import { SmartPrintButton } from "@/components/print/SmartPrintButton";
+import { BrowserHtmlPrintButton } from "@/components/print/BrowserHtmlPrintButton";
 import { PRINT_TARGET_LABEL_XP235B } from "@/lib/printTargets";
 
 export interface ItemLabelData {
@@ -100,10 +101,16 @@ export function ItemLabelsPrint({
                     <SmartPrintButton
                         target={PRINT_TARGET_LABEL_XP235B}
                         className="px-3 py-1.5 bg-primary text-white rounded-md font-bold text-xs md:text-sm hover:opacity-90"
-                        qzLabel="In tem XP-235B ⚡"
+                        silentLabel="In tem XP-235B ⚡"
                     >
                         In tem
                     </SmartPrintButton>
+                    <BrowserHtmlPrintButton
+                        target={PRINT_TARGET_LABEL_XP235B}
+                        className="px-3 py-1.5 border border-border rounded-md font-bold text-xs md:text-sm hover:bg-muted/50"
+                    >
+                        In qua Chrome
+                    </BrowserHtmlPrintButton>
                     {onClose && (
                         <button
                             type="button"

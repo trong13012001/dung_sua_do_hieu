@@ -24,7 +24,7 @@ import { buildOrderForInvoicePrint } from '@/lib/buildOrderForInvoicePrint';
 import { useDebounce } from '@/hooks/useDebounce';
 import { Customer, Order, User, Role } from '@/lib/types';
 import { validateRequired, validateNumber, validatePhone, validateMaxLength } from '@/lib/validation';
-import { isQzPrintEnabled } from '@/lib/qz/env';
+import { isSilentThermalConfigured } from '@/lib/print/thermalPrint';
 import { printTargetElementSmart } from '@/lib/printSmart';
 import { PRINT_TARGET_LABEL_XP235B, PRINT_TARGET_INVOICE_XP80C } from '@/lib/printTargets';
 
@@ -48,20 +48,23 @@ interface PosPrintQueue {
   invoiceOrder: Order;
 }
 
-function PrintQueueHint({ step, qz }: Readonly<{ step: PosPrintStep; qz: boolean }>) {
-  if (qz && step === 'labels') {
+function PrintQueueHint({
+  step,
+  silent,
+}: Readonly<{ step: PosPrintStep; silent: boolean }>) {
+  if (silent && step === 'labels') {
     return (
       <div className="non-print rounded-lg border border-border bg-muted/20 p-3 text-xs text-muted-foreground leading-relaxed">
         <span className="font-bold text-foreground">Bước 1/2 — XP-235B (tem):</span>{' '}
-        đang gửi trực tiếp tới máy in qua QZ Tray. Tự chuyển sang bước 2 khi hoàn tất.
+        đang in im lặng (Electron hoặc agent). Tự chuyển sang bước 2 khi hoàn tất.
       </div>
     );
   }
-  if (qz) {
+  if (silent) {
     return (
       <div className="non-print rounded-lg border border-border bg-muted/20 p-3 text-xs text-muted-foreground leading-relaxed">
         <span className="font-bold text-foreground">Bước 2/2 — XP-80C (hóa đơn):</span>{' '}
-        đang gửi trực tiếp tới máy in qua QZ Tray.
+        đang in im lặng (Electron hoặc agent).
       </div>
     );
   }
@@ -110,12 +113,18 @@ export default function POSPage() {
   const [printQueue, setPrintQueue] = useState<PosPrintQueue | null>(null);
   /** Chỉ tự chuyển bước sau afterprint khi print() do hàng đợi gọi (không áp dụng khi bấm "In lại"). */
   const printQueueAdvanceRef = useRef<PosPrintStep | null>(null);
-  /** Khi QZ đang in tự động, tránh trùng lệnh. */
-  const qzBusyRef = useRef(false);
+  /** Khi in im lặng (Electron/agent) đang chạy, tránh trùng lệnh. */
+  const silentPrintBusyRef = useRef(false);
+  /** React Strict Mode chạy useLayoutEffect 2 lần — tránh gửi in hóa đơn trùng. */
+  const invoiceAutoPrintKeyRef = useRef<string | null>(null);
 
-  const qzEnabled = isQzPrintEnabled();
+  const silentAutoPrint = isSilentThermalConfigured();
 
   const closePrintQueue = () => setPrintQueue(null);
+
+  useEffect(() => {
+    if (printQueue == null) invoiceAutoPrintKeyRef.current = null;
+  }, [printQueue]);
 
   const skipPrintStep = () => {
     setPrintQueue((q) => {
@@ -125,31 +134,39 @@ export default function POSPage() {
     });
   };
 
-  /** In tự động qua QZ: gửi thẳng tới máy in, không mở dialog trình duyệt. */
-  const runQzAutoPrint = useCallback(async (step: PosPrintStep) => {
-    if (qzBusyRef.current) return;
-    qzBusyRef.current = true;
+  /**
+   * In tự động sau tạo đơn (Electron silent → agent → dialog).
+   * `silentAutoPrint` chỉ nghĩa là *có thể* im lặng; nếu rơi về dialog vẫn chờ xong rồi chuyển bước.
+   */
+  const runSilentAutoPrint = useCallback(async (step: PosPrintStep) => {
+    if (silentPrintBusyRef.current) return;
+    silentPrintBusyRef.current = true;
     try {
       const target = step === 'labels' ? PRINT_TARGET_LABEL_XP235B : PRINT_TARGET_INVOICE_XP80C;
       await new Promise((r) => globalThis.requestAnimationFrame(() => globalThis.requestAnimationFrame(r)));
       const result = await printTargetElementSmart(target);
-      if (result.method === 'qz') {
+      const advance =
+        result.method === 'silent' ||
+        (result.method === 'browser' && !result.error?.includes('Không tìm thấy'));
+      if (advance) {
         if (step === 'labels') {
           setPrintQueue((q) => (q?.step === 'labels' ? { ...q, step: 'invoice' } : q));
         } else {
           setPrintQueue(null);
         }
+      } else if (result.error) {
+        console.warn('[POS auto-print]', result.error);
       }
     } catch (err) {
-      console.error('[POS QZ auto-print]', err);
+      console.error('[POS silent auto-print]', err);
     } finally {
-      qzBusyRef.current = false;
+      silentPrintBusyRef.current = false;
     }
   }, []);
 
-  /** Browser print flow: afterprint tự chuyển bước (chỉ khi không dùng QZ). */
+  /** Browser print flow: afterprint tự chuyển bước (chỉ khi không in im lặng). */
   useEffect(() => {
-    if (qzEnabled) return;
+    if (silentAutoPrint) return;
     const onAfterPrint = () => {
       const expected = printQueueAdvanceRef.current;
       printQueueAdvanceRef.current = null;
@@ -163,17 +180,20 @@ export default function POSPage() {
     };
     globalThis.addEventListener('afterprint', onAfterPrint);
     return () => globalThis.removeEventListener('afterprint', onAfterPrint);
-  }, [qzEnabled]);
+  }, [silentAutoPrint]);
 
   /**
    * Bước 2 (hóa đơn): tự động in khi chuyển step.
-   * QZ → gửi trực tiếp, browser → mở window.print().
+   * Electron/agent → im lặng; ngược lại → window.print().
    */
   useLayoutEffect(() => {
     if (!printQueue || printQueue.step !== 'invoice') return;
 
-    if (qzEnabled) {
-      runQzAutoPrint('invoice');
+    if (silentAutoPrint) {
+      const dedupeKey = `${printQueue.orderId}-invoice`;
+      if (invoiceAutoPrintKeyRef.current === dedupeKey) return;
+      invoiceAutoPrintKeyRef.current = dedupeKey;
+      runSilentAutoPrint('invoice');
       return;
     }
 
@@ -189,7 +209,7 @@ export default function POSPage() {
       globalThis.cancelAnimationFrame(id0);
       globalThis.cancelAnimationFrame(id1);
     };
-  }, [printQueue?.step, printQueue?.orderId, qzEnabled, runQzAutoPrint]);
+  }, [printQueue?.step, printQueue?.orderId, silentAutoPrint, runSilentAutoPrint]);
 
   const [addCustomerOpen, setAddCustomerOpen] = useState(false);
   const [newCustomerForm, setNewCustomerForm] = useState({ name: '', phone: '', address: '' });
@@ -307,8 +327,8 @@ export default function POSPage() {
         });
       });
 
-      if (qzEnabled) {
-        runQzAutoPrint('labels');
+      if (silentAutoPrint) {
+        runSilentAutoPrint('labels');
       } else {
         printQueueAdvanceRef.current = 'labels';
         globalThis.requestAnimationFrame(() => {
@@ -574,7 +594,7 @@ export default function POSPage() {
       >
         {printQueue != null && printQueue.labelItems.length > 0 && (
           <div className="space-y-4">
-            <PrintQueueHint step={printQueue.step} qz={qzEnabled} />
+            <PrintQueueHint step={printQueue.step} silent={silentAutoPrint} />
             <div className="non-print flex flex-wrap gap-2">
               <button
                 type="button"
