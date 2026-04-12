@@ -3,15 +3,24 @@ productName: DungSuaDoHieuPOS
 copyright: Copyright © Dung Sua Do Hieu
 directories:
   output: dist-electron
+  # icon.png / icon.ico — script `npm run prepare:electron-icon` copy từ public/brand-logo.png
+  buildResources: electron/build
 files:
   - electron/**/*
   - package.json
+publish:
+  - provider: github
+    owner: trong13012001
+    repo: dung_sua_do_hieu
 # PC quầy Windows Intel/AMD — chỉ NSIS x64 (schema v25 không có `win.arch` ở root).
 win:
+  icon: electron/build/icon.png
   target:
     - target: nsis
       arch:
         - x64
+mac:
+  icon: electron/build/icon.png
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true

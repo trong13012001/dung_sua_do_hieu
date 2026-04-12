@@ -1,0 +1,42 @@
+# Build NSIS Windows x64 + đẩy lên GitHub Releases → máy quầy (electron-updater) tự tải bản mới.
+# Cần: workflow chạy khi push `main`; mỗi lần chạy gán version `major.minor.<run_number>` để so sánh semver.
+
+name: Electron Windows release
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: electron-win-release-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Set package version for auto-updater
+        run: node electron/scripts/ci-set-package-version.cjs
+        env:
+          GITHUB_RUN_NUMBER: ${{ github.run_number }}
+
+      - name: Prepare app icon from brand asset
+        run: npm run prepare:electron-icon
+
+      - name: Build & publish to GitHub Releases
+        run: npx electron-builder --win --x64 -c electron-builder.yml --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

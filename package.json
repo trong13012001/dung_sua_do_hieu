@@ -1,24 +1,31 @@
 {
   "name": "dung_sua_do_hieu",
-  "version": "0.1.0",
+  "version": "1.0.1",
   "private": true,
   "main": "electron/main.cjs",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/trong13012001/dung_sua_do_hieu.git"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
     "electron": "electron electron/main.cjs",
-    "dist:electron": "electron-builder -c electron-builder.yml",
-    "dist:electron:win": "electron-builder -c electron-builder.yml --win --x64",
-    "dist:electron:win:arm64": "electron-builder -c electron-builder.yml --win --arm64",
-    "dist:electron:mac": "electron-builder -c electron-builder.yml --mac"
+    "prepare:electron-icon": "node electron/scripts/copy-build-icon.cjs",
+    "dist:electron": "npm run prepare:electron-icon && electron-builder -c electron-builder.yml",
+    "dist:electron:win": "npm run prepare:electron-icon && electron-builder -c electron-builder.yml --win --x64",
+    "dist:electron:win:arm64": "npm run prepare:electron-icon && electron-builder -c electron-builder.yml --win --arm64",
+    "dist:electron:mac": "npm run prepare:electron-icon && electron-builder -c electron-builder.yml --mac",
+    "publish:electron:win": "npm run prepare:electron-icon && electron-builder -c electron-builder.yml --win --x64 --publish always"
   },
   "dependencies": {
     "@hello-pangea/dnd": "^18.0.1",
     "@supabase/supabase-js": "^2.98.0",
     "@tanstack/react-query": "^5.90.21",
     "@tanstack/react-query-devtools": "^5.91.3",
+    "electron-updater": "^6.8.3",
     "lucide-react": "^0.576.0",
     "next": "16.1.6",
     "react": "19.2.3",
@@ -28,12 +35,12 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
-    "electron": "^34.5.8",
-    "electron-builder": "^25.1.8",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "electron": "^34.5.8",
+    "electron-builder": "^25.1.8",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
     "tailwindcss": "^4",

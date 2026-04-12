@@ -3,6 +3,38 @@ const path = require("node:path");
 const fs = require("node:fs");
 const os = require("node:os");
 
+/** GitHub Releases — `electron-builder --publish` tạo `app-update.yml` trong gói. */
+let autoUpdater;
+try {
+  ({ autoUpdater } = require("electron-updater"));
+} catch (e) {
+  console.warn("[electron] electron-updater:", e?.message || e);
+  autoUpdater = null;
+}
+
+function resolveWindowIconPath() {
+  const p = path.join(__dirname, "build", "icon.png");
+  return fs.existsSync(p) ? p : undefined;
+}
+
+function scheduleAutoUpdateFromGitHub() {
+  if (!app.isPackaged || !autoUpdater) return;
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+  try {
+    void autoUpdater.checkForUpdatesAndNotify();
+  } catch (e) {
+    console.warn("[electron] checkForUpdates:", e?.message || e);
+  }
+  globalThis.setInterval(() => {
+    try {
+      void autoUpdater.checkForUpdatesAndNotify();
+    } catch {
+      /* ignore */
+    }
+  }, 6 * 60 * 60 * 1000);
+}
+
 /**
  * Next.js tự đọc `.env.local`; tiến trình Electron (main) thì không.
  * Nạp: cạnh .exe → thư mục `electron/` → gốc repo.
@@ -121,6 +153,7 @@ function createMainWindow() {
   const win = new BrowserWindow({
     width: 1280,
     height: 840,
+    icon: resolveWindowIconPath(),
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
@@ -221,6 +254,7 @@ ipcMain.handle("thermal-print-html", async (_event, { html, deviceName }) => {
 });
 
 app.whenReady().then(() => {
+  scheduleAutoUpdateFromGitHub();
   createMainWindow();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createMainWindow();

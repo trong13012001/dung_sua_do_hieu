@@ -12,6 +12,8 @@
 !.yarn/versions
 
 dist-electron
+# Sinh từ public/brand-logo.png khi `npm run prepare:electron-icon`
+electron/build/icon.png
 # testing
 /coverage
 

@@ -74,6 +74,30 @@ Không dùng cờ kiểu `--window` sau `npm run` — đó không phải tham s�
 
 Bản ra thư mục `dist-electron/` (`electron-builder.yml`). Gói chỉ là shell Electron; app vẫn tải từ `ELECTRON_START_URL` / `NEXT_PUBLIC_APP_URL` khi chạy (đặt env trước khi build nếu cần URL production mặc định).
 
+## Logo app (icon cửa sổ + installer)
+
+- Nguồn: **`public/brand-logo.png`** (cùng file thương hiệu web).
+- Mỗi lần `npm run dist:electron*` chạy **`prepare:electron-icon`** → copy sang `electron/build/icon.png` (thư mục `buildResources` của electron-builder).
+- Đổi logo: thay `public/brand-logo.png`, rồi build lại Electron.
+
+## Cập nhật tự động (GitHub Releases)
+
+`electron-updater` trong `main.cjs` chỉ chạy khi **bản đã đóng gói** (`app.isPackaged`): kiểm tra bản mới trên **GitHub Releases** (không đọc trực tiếp “commit trên main”; luồng chuẩn là **CI đẩy installer lên Release** mỗi khi `main` có push).
+
+1. Workflow **`.github/workflows/electron-release-win.yml`**: push lên nhánh **`main`** → build Windows x64 (NSIS) → `--publish always` (cần quyền `contents: write` với `GITHUB_TOKEN`).
+2. Script **`electron/scripts/ci-set-package-version.cjs`**: gán `package.json` version dạng `major.minor.<GITHUB_RUN_NUMBER>` để mỗi bản release có semver **lớn hơn** bản trước (điều kiện để updater nhận là “có bản mới”).
+3. Máy quầy: cài **một lần** từ tab Releases; sau đó app sẽ tự kiểm tra (lúc mở + mỗi ~6 giờ), tải và cài khi thoát nếu đã tải xong.
+
+**Lưu ý:** Nếu fork repo, sửa `owner` / `repo` trong `electron-builder.yml` mục `publish` cho trùng GitHub của bạn. Muốn **ít release hơn** (không mỗi commit), thêm `paths:` trong workflow để chỉ chạy khi thay `electron/**`, `electron-builder.yml`, `package.json`, v.v.
+
+Đẩy release tay từ máy local (cần biến môi trường **`GH_TOKEN`** — Personal Access Token hoặc token có quyền `repo`):
+
+```bash
+npm run prepare:electron-icon
+npm run publish:electron:win
+# GH_TOKEN=ghp_... npm run publish:electron:win
+```
+
 ## Máy in
 
 Một IPC `thermal-print-html` phục vụ **cả hóa đơn (XP-80C) và tem (XP-235B)**. Tên máy in phải **trùng ký tự** với Windows (Cài đặt → Máy in).
