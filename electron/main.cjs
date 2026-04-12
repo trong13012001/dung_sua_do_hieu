@@ -17,9 +17,21 @@ function resolveWindowIconPath() {
   return fs.existsSync(p) ? p : undefined;
 }
 
+/** Chuẩn hoá tên máy in / chuỗi từ Cài đặt shop (khoảng trắng lạ, BOM, v.v.). */
+function sanitizePrinterString(s) {
+  if (s == null) return "";
+  return String(s)
+    .replace(/\uFEFF/g, "")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/\u00A0/g, " ")
+    .trim()
+    .normalize("NFC");
+}
+
 /**
  * In im lặng Windows: `print({ deviceName })` cần **PrinterInfo.name** (tên hệ thống),
  * không phải tên hiển thị trong Cài đặt. Chuỗi từ Cài đặt shop được map; nếu trống → máy mặc định.
+ * Nếu không đọc được danh sách máy in → **không** trả về chuỗi thô (tránh Chromium báo Invalid deviceName).
  * @param {import("electron").WebContents} wc webContents của cửa sổ in
  * @param {string} requestedTrim
  */
@@ -29,32 +41,34 @@ async function resolveWindowsPrinterDeviceName(wc, requestedTrim) {
     printers = await wc.getPrintersAsync();
   } catch (e) {
     console.warn("[electron] getPrintersAsync:", e?.message || e);
-    return requestedTrim || undefined;
+    return undefined;
   }
   if (!printers.length) {
     console.warn("[electron] Danh sách máy in rỗng.");
-    return requestedTrim || undefined;
+    return undefined;
   }
-  const r = String(requestedTrim || "").trim();
-  const norm = (s) => String(s).trim().toLowerCase().replace(/\s+/g, " ");
+  const r = sanitizePrinterString(requestedTrim);
+  const norm = (s) =>
+    sanitizePrinterString(s).toLowerCase().replace(/\s+/g, " ");
   const rn = r ? norm(r) : "";
   if (!rn) {
     const def = printers.find((p) => p.isDefault);
     const pick = def || printers[0];
     if (pick?.name) {
+      const nm = sanitizePrinterString(pick.name);
       console.log(
         "[electron] In silent — máy mặc định:",
         pick.displayName || pick.name,
         "→",
-        pick.name,
+        nm,
       );
-      return pick.name;
+      return nm || undefined;
     }
     return undefined;
   }
   const hit =
-    printers.find((p) => p.name === r) ||
-    printers.find((p) => p.displayName === r) ||
+    printers.find((p) => sanitizePrinterString(p.name) === r) ||
+    printers.find((p) => sanitizePrinterString(p.displayName) === r) ||
     printers.find((p) => norm(p.name) === rn) ||
     printers.find((p) => norm(p.displayName) === rn) ||
     printers.find(
@@ -65,13 +79,39 @@ async function resolveWindowsPrinterDeviceName(wc, requestedTrim) {
         rn.includes(norm(p.name)),
     );
   if (hit?.name) {
-    if (hit.name !== r) {
-      console.log("[electron] Map máy in", JSON.stringify(r), "→", hit.name);
+    const nm = sanitizePrinterString(hit.name);
+    if (nm !== r) {
+      console.log("[electron] Map máy in", JSON.stringify(r), "→", nm);
     }
-    return hit.name;
+    return nm || undefined;
   }
   const list = printers.map((p) => `${p.displayName} — ${p.name}`).join(" | ");
   throw new Error(`Không khớp máy in "${r}". Máy đã cài: ${list}`);
+}
+
+function isInvalidDeviceNamePrintError(msg) {
+  const m = String(msg || "").toLowerCase();
+  return (
+    (m.includes("invalid") && m.includes("device")) ||
+    m.includes("devicename") ||
+    m.includes("device_name")
+  );
+}
+
+function webContentsPrintSilentPromise(wc, printOpts) {
+  return new Promise((resolve, reject) => {
+    try {
+      wc.print(printOpts, (success, failureReason) => {
+        if (success) resolve(undefined);
+        else {
+          const msg = String(failureReason || "").trim() || "In im lặng thất bại.";
+          reject(new Error(msg));
+        }
+      });
+    } catch (e) {
+      reject(e);
+    }
+  });
 }
 
 function scheduleAutoUpdateFromGitHub() {
@@ -226,6 +266,25 @@ function createMainWindow() {
   return win;
 }
 
+ipcMain.handle("thermal-list-printers", async (event) => {
+  if (process.platform !== "win32") {
+    return [];
+  }
+  try {
+    const list = await event.sender.getPrintersAsync();
+    return (list || [])
+      .map((p) => ({
+        name: sanitizePrinterString(p.name),
+        displayName: sanitizePrinterString(p.displayName || p.name),
+        isDefault: Boolean(p.isDefault),
+      }))
+      .filter((p) => p.name.length > 0);
+  } catch (e) {
+    console.warn("[electron] thermal-list-printers:", e?.message || e);
+    return [];
+  }
+});
+
 ipcMain.handle("thermal-print-html", async (_event, { html, deviceName }) => {
   if (typeof html !== "string" || !html.length) {
     throw new Error("Thiếu HTML.");
@@ -274,32 +333,35 @@ ipcMain.handle("thermal-print-html", async (_event, { html, deviceName }) => {
       margins: { marginType: "none" },
       preferCSSPageSize: true,
     };
-    const dn = typeof deviceName === "string" ? deviceName.trim() : "";
+    const dn = sanitizePrinterString(typeof deviceName === "string" ? deviceName : "");
     const resolvedName = await resolveWindowsPrinterDeviceName(printWin.webContents, dn);
     if (resolvedName) opts.deviceName = resolvedName;
 
     /**
-     * `webContents.print` không trả Promise — `await print()` trước đây không chờ
-     * driver Windows; `destroy()` có thể chạy sớm và job in không ra giấy.
+     * `webContents.print` không trả Promise — chờ callback trước khi destroy cửa sổ.
+     * Một số driver/bản Chromium từ chối `deviceName` từ getPrintersAsync → thử lại không chỉ định máy (mặc định OS).
      */
-    await new Promise((resolve, reject) => {
-      try {
-        printWin.webContents.print(opts, (success, failureReason) => {
-          if (success) resolve(undefined);
-          else {
-            const msg = String(failureReason || "").trim() || "In im lặng thất bại.";
-            console.error(
-              "[electron] thermal-print-html:",
-              msg,
-              resolvedName ? `(deviceName: ${resolvedName})` : "(chưa map được máy in)",
-            );
-            reject(new Error(msg));
-          }
-        });
-      } catch (e) {
-        reject(e);
+    try {
+      await webContentsPrintSilentPromise(printWin.webContents, opts);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (opts.deviceName && isInvalidDeviceNamePrintError(msg)) {
+        console.warn(
+          "[electron] thermal-print-html: Chromium từ chối deviceName, in lại qua máy mặc định Windows:",
+          opts.deviceName,
+        );
+        const retryOpts = { ...opts };
+        delete retryOpts.deviceName;
+        await webContentsPrintSilentPromise(printWin.webContents, retryOpts);
+      } else {
+        console.error(
+          "[electron] thermal-print-html:",
+          msg,
+          resolvedName ? `(deviceName: ${resolvedName})` : "(không map tên máy)",
+        );
+        throw e instanceof Error ? e : new Error(msg);
       }
-    });
+    }
     return { ok: true };
   } finally {
     printWin.destroy();

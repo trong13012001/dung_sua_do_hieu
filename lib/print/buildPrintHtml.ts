@@ -4,6 +4,7 @@ import {
   invoiceThermalLayoutMaxWidthMm,
   invoiceThermalViewportWidthMm,
 } from "@/lib/print/invoiceThermalMetrics";
+import { LABEL_THERMAL_PAGE_HEIGHT_MM } from "@/lib/print/labelThermalMetrics";
 
 /**
  * HTML in nhiệt: viewport + `pageWidth` = **khổ giấy**; `@page` margin trong CSS tạo vùng nội dung —
@@ -81,11 +82,6 @@ function sanitizeCssForLabelPrintJob(css: string): string {
   s = s.replace(/\bpage\s*:\s*[^;\r\n}]+;?/gi, "");
   return s;
 }
-
-/**
- * Chiều cao trang cố định (mm) — `auto` hay nội dung cao hơn trang dễ bị Chromium tách 2 trang.
- */
-const LABEL_JOB_PAGE_HEIGHT_MM = 120;
 
 /**
  * Bản dự phòng utility Tailwind trong `.invoice-xp80c` — một số engine in có thể
@@ -274,7 +270,7 @@ export async function buildPrintableHtmlFromElement(
 
   const pageCss = isInvoice
     ? `@page { size: ${paperMm}mm auto; margin: ${THERMAL_INVOICE_HTML_PAGE_MARGIN_MM}mm; }`
-    : `@page { size: ${paperMm}mm ${LABEL_JOB_PAGE_HEIGHT_MM}mm; margin: 0; }`;
+    : `@page { size: ${paperMm}mm ${LABEL_THERMAL_PAGE_HEIGHT_MM}mm; margin: 0; }`;
 
   const layoutWpx = isInvoice ? mmToCssPx(invoiceThermalViewportWidthMm(paperMm)) : null;
   const viewportTag =
@@ -335,6 +331,10 @@ ${inlinedCss}
       ? `<style type="text/css" data-thermal-invoice-fallback="1">\n${escapeForStyleTag(invoiceThermalTailwindFallback(invoiceThermalLayoutMaxWidthMm(paperMm)))}\n</style>`
       : `<style type="text/css" data-thermal-label-pagination="">
 @media print, screen {
+  html.thermal-print #print-root:has(.item-labels-print) {
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+  }
   .item-labels-print .item-label-row {
     page-break-after: avoid !important;
     break-after: avoid !important;
@@ -344,6 +344,10 @@ ${inlinedCss}
   .item-labels-print .item-label-row ~ .item-label-row {
     page-break-before: always !important;
     break-before: page !important;
+  }
+  .item-labels-print .item-label-row:last-child {
+    page-break-after: avoid !important;
+    break-after: avoid !important;
   }
 }
 </style>`

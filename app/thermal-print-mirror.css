@@ -242,10 +242,10 @@
     direction: ltr !important;
     box-sizing: border-box !important;
     width: 100% !important;
-    max-width: 52mm !important;
-    margin-left: 0 !important;
+    max-width: 51mm !important;
+    margin-left: 2.5mm !important;
     margin-right: auto !important;
-    padding: 2mm 2mm 2mm 5mm !important;
+    padding: 1.5mm 1.5mm 2mm 3mm !important;
   }
 
   html.thermal-print .item-labels-print .item-label-row {
@@ -324,7 +324,7 @@
   }
 
   html.thermal-print .item-labels-print .item-label-header-row + .item-label-desc-block {
-    margin-top: 10px !important;
+    margin-top: 1.5mm !important;
     width: 100% !important;
     max-width: 100% !important;
     min-width: 0 !important;

@@ -1,8 +1,16 @@
+/** Một máy in Windows từ `getPrintersAsync` — `name` dùng cho in im lặng / DB. */
+export interface WindowsPrinterOption {
+  readonly name: string;
+  readonly displayName: string;
+  readonly isDefault?: boolean;
+}
+
 export interface ElectronThermalPrintApi {
   readonly printHtmlSilent: (
     html: string,
     deviceName?: string,
   ) => Promise<void>;
+  readonly listThermalPrinters?: () => Promise<unknown>;
 }
 
 export type ElectronSilentPrintResult =
@@ -18,6 +26,40 @@ function api(): ElectronThermalPrintApi | undefined {
 
 export function isElectronThermalPrintAvailable(): boolean {
   return Boolean(api()?.printHtmlSilent);
+}
+
+export function isElectronPrinterListAvailable(): boolean {
+  return Boolean(api()?.listThermalPrinters);
+}
+
+/** Chỉ khi mở POS trong Electron trên Windows; trình duyệt thường trả []. */
+export async function listThermalPrintersFromElectron(): Promise<
+  WindowsPrinterOption[]
+> {
+  const fn = api()?.listThermalPrinters;
+  if (!fn) return [];
+  try {
+    const raw = await fn();
+    if (!Array.isArray(raw)) return [];
+    const out: WindowsPrinterOption[] = [];
+    for (const p of raw as unknown[]) {
+      if (!p || typeof p !== "object") continue;
+      const o = p as unknown as Record<string, unknown>;
+      const name = typeof o.name === "string" ? o.name.trim() : "";
+      if (!name) continue;
+      const dn =
+        typeof o.displayName === "string" ? o.displayName.trim() : "";
+      const displayName = dn || name;
+      out.push({
+        name,
+        displayName,
+        isDefault: Boolean(o.isDefault),
+      });
+    }
+    return out;
+  } catch {
+    return [];
+  }
 }
 
 /**

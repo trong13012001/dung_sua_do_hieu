@@ -5,6 +5,12 @@ import { Save, Store, Printer, Loader2 } from 'lucide-react';
 import { Toast, useToast } from '@/components/ui/Toast';
 import { useShopSettings, useUpdateShopSettings, type ShopSettings } from '@/api/shopSettings';
 import { syncThermalPrintersFromShop } from '@/lib/print/shopPrinterCache';
+import {
+  isElectronPrinterListAvailable,
+  listThermalPrintersFromElectron,
+  type WindowsPrinterOption,
+} from '@/lib/print/electronPrintClient';
+import { WindowsPrinterPicker } from '@/components/settings/WindowsPrinterPicker';
 
 export default function SettingsPage() {
   const { data: settings, isLoading } = useShopSettings();
@@ -22,9 +28,31 @@ export default function SettingsPage() {
     thermal_printer_label: '',
   });
 
+  const [winPrinters, setWinPrinters] = useState<WindowsPrinterOption[]>([]);
+  const [printersLoading, setPrintersLoading] = useState(false);
+
   useEffect(() => {
     if (settings) setForm(settings);
   }, [settings]);
+
+  useEffect(() => {
+    if (!isElectronPrinterListAvailable()) {
+      setWinPrinters([]);
+      return;
+    }
+    let cancelled = false;
+    setPrintersLoading(true);
+    listThermalPrintersFromElectron()
+      .then((list) => {
+        if (!cancelled) setWinPrinters(list);
+      })
+      .finally(() => {
+        if (!cancelled) setPrintersLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const update = (key: keyof ShopSettings, value: string) =>
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -147,37 +175,28 @@ export default function SettingsPage() {
           </h5>
           <div className="space-y-5">
             <p className="text-xs text-muted-foreground leading-relaxed">
-              In im lặng: chạy POS bằng ứng dụng Electron hoặc agent{' '}
-              <code className="text-foreground">tools/silent-print-agent</code>. Tên máy in nên trùng
-              Cài đặt Windows → Máy in; Electron map tên hiển thị sang tên hệ thống tự động. Để trống →
-              dùng máy in mặc định Windows.
+              In im lặng: chạy POS bằng ứng dụng Electron trên Windows — danh sách máy in tải tự động; giá trị lưu là{' '}
+              <span className="font-semibold text-foreground">tên hệ thống</span> (cột sau dấu — trong menu).
+              Mở Cài đặt trong trình duyệt thì nhập tay như trước. Để trống → máy in mặc định Windows.
             </p>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-              <div className="space-y-1.5">
-                <label htmlFor="thermal_printer_invoice" className="text-[11px] font-bold text-muted-foreground uppercase opacity-80">
-                  Máy in hóa đơn (80mm)
-                </label>
-                <input
-                  id="thermal_printer_invoice"
-                  className="w-full bg-muted/20 border border-border rounded-md px-4 py-2.5 outline-none focus:ring-1 focus:ring-primary text-sm"
-                  placeholder="vd: XP-80C"
-                  value={form.thermal_printer_invoice}
-                  onChange={(e) => update('thermal_printer_invoice', e.target.value)}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <label htmlFor="thermal_printer_label" className="text-[11px] font-bold text-muted-foreground uppercase opacity-80">
-                  Máy in tem nhãn (58mm)
-                </label>
-                <input
-                  id="thermal_printer_label"
-                  className="w-full bg-muted/20 border border-border rounded-md px-4 py-2.5 outline-none focus:ring-1 focus:ring-primary text-sm"
-                  placeholder="vd: XP-235B"
-                  value={form.thermal_printer_label}
-                  onChange={(e) => update('thermal_printer_label', e.target.value)}
-                />
-              </div>
+              <WindowsPrinterPicker
+                id="thermal_printer_invoice"
+                label="Máy in hóa đơn (80mm)"
+                value={form.thermal_printer_invoice}
+                onChange={(v) => update('thermal_printer_invoice', v)}
+                printers={winPrinters}
+                loading={printersLoading}
+              />
+              <WindowsPrinterPicker
+                id="thermal_printer_label"
+                label="Máy in tem nhãn (58mm)"
+                value={form.thermal_printer_label}
+                onChange={(v) => update('thermal_printer_label', v)}
+                printers={winPrinters}
+                loading={printersLoading}
+              />
             </div>
           </div>
         </div>

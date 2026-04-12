@@ -156,8 +156,9 @@ body.sidebar-open {
    * XP-235B: một tem = một trang in. Chiều cao cố định (không `auto`) giảm lỗi Chrome/Electron tách thêm trang trắng.
    * Phân trang: break-before trên hàng tem thứ 2 trở đi (~), không break-after trên tem đơn.
    */
+  /* Chiều cao đồng bộ lib/print/labelThermalMetrics.ts (LABEL_THERMAL_PAGE_HEIGHT_MM) */
   @page item-label-xp235b {
-    size: 58mm 120mm;
+    size: 58mm 132mm;
     margin: 0;
   }
   html, body {
@@ -180,6 +181,8 @@ body.sidebar-open {
   /* Tránh trang 1 mặc định 80mm rồi mới sang 58mm; cả job tem dùng một @page */
   #print-root:has(> .item-labels-print) {
     page: item-label-xp235b;
+    page-break-after: avoid !important;
+    break-after: avoid !important;
   }
   .invoice-print-area {
     width: 100% !important;
@@ -402,11 +405,11 @@ body.sidebar-open {
     direction: ltr !important;
     box-sizing: border-box !important;
     width: 100% !important;
-    max-width: 52mm !important;
-    margin-left: 0 !important;
+    max-width: 51mm !important;
+    /* margin-left đẩy cả khối (padding không thoát khỏi vùng head cắt giấy) */
+    margin-left: 2.5mm !important;
     margin-right: auto !important;
-    /* Lề trái in thực XP-235B/driver thường cắt — đẩy nội dung vào trong */
-    padding: 2mm 2mm 2mm 5mm !important;
+    padding: 1.5mm 1.5mm 2mm 3mm !important;
   }
   /* Mỗi tem: một trang; chỉ hàng thứ 2+ mới break-before (tránh trang trắng khi chỉ 1 tem). */
   .item-labels-print .item-label-row {
@@ -425,6 +428,10 @@ body.sidebar-open {
     margin-top: 0 !important;
     page-break-before: always !important;
     break-before: page !important;
+  }
+  .item-labels-print .item-label-row:last-child {
+    page-break-after: avoid !important;
+    break-after: avoid !important;
   }
   .item-labels-print .item-label-header-row {
     display: flex !important;
@@ -477,7 +484,7 @@ body.sidebar-open {
   }
   /* Mô tả full ngang dưới barcode + cửa hàng (giống tem mẫu) */
   .item-labels-print .item-label-header-row + .item-label-desc-block {
-    margin-top: 10px !important;
+    margin-top: 1.5mm !important;
     width: 100% !important;
     max-width: 100% !important;
     min-width: 0 !important;
@@ -493,11 +500,12 @@ body.sidebar-open {
   }
 }
 
-/* Xem trước tem (màn hình): cùng khổ ~58mm XP-235B */
+/* Xem trước tem (màn hình): cùng lề ngang với bản in */
 .item-labels-print {
   font-family: Arial, Helvetica, sans-serif;
-  max-width: 52mm;
-  padding-left: 3mm;
+  max-width: 51mm;
+  margin-left: 2.5mm;
+  padding: 1.5mm 1.5mm 0 3mm;
   box-sizing: border-box;
 }
 .item-labels-print .item-label-row {
@@ -544,7 +552,7 @@ body.sidebar-open {
   color: #000;
 }
 .item-labels-print .item-label-header-row + .item-label-desc-block {
-  margin-top: 10px;
+  margin-top: 1.5mm;
   width: 100%;
   clear: both;
 }

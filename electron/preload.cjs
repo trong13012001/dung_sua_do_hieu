@@ -7,4 +7,6 @@ contextBridge.exposeInMainWorld("electronThermalPrint", {
    */
   printHtmlSilent: (html, deviceName) =>
     ipcRenderer.invoke("thermal-print-html", { html, deviceName }),
+  /** Windows: danh sách máy in từ OS (name = tên hệ thống, lưu DB). */
+  listThermalPrinters: () => ipcRenderer.invoke("thermal-list-printers"),
 });
