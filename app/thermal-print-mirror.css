@@ -1,0 +1,339 @@
+/**
+ * HTML in nhiệt dùng engine kiểu screen — @media print trong globals không áp dụng trực tiếp.
+ * buildPrintableHtmlFromElement đổi print → print,screen + bọc <html class="thermal-print">.
+ * File này mirror rule in nhiệt dưới @media screen để xem trên app gần print preview Chrome;
+ * khi sửa @media print (hóa đơn/tem) trong globals.css, nên cập nhật tương ứng ở đây.
+ *
+ * `print` cùng `screen`: job HTML có thể dùng media print — rule chỉ @media screen sẽ không chạy.
+ */
+@media screen, print {
+  html.thermal-print,
+  html.thermal-print body {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: white !important;
+    overflow: visible !important;
+  }
+
+  html.thermal-print .invoice-print-area {
+    width: 100% !important;
+    max-width: none !important;
+    background: white !important;
+    color: black !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    border: none !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  html.thermal-print .invoice-print-area:not(.item-labels-print) {
+    max-width: 74.5mm !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+
+  html.thermal-print .invoice-print-area.invoice-single {
+    page-break-after: avoid;
+    page-break-before: avoid;
+    break-after: avoid;
+    break-before: avoid;
+  }
+
+  html.thermal-print .invoice-print-area.invoice-page {
+    page-break-before: always;
+    page-break-after: always;
+    break-before: page;
+    break-after: page;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  html.thermal-print .invoice-print-area.invoice-page:first-of-type {
+    page-break-before: avoid;
+    break-before: avoid;
+  }
+
+  html.thermal-print .invoice-print-area.invoice-page:last-child {
+    page-break-after: avoid;
+    break-after: avoid;
+  }
+
+  html.thermal-print .item-labels-print.invoice-print-area {
+    page-break-inside: auto !important;
+    break-inside: auto !important;
+    page-break-before: avoid !important;
+    page-break-after: avoid !important;
+    break-before: avoid !important;
+    break-after: avoid !important;
+  }
+
+  html.thermal-print .non-print {
+    display: none !important;
+  }
+
+  html.thermal-print .invoice-xp80c {
+    font-family: Arial, Helvetica, sans-serif !important;
+    font-size: 9pt;
+    line-height: 1.32;
+    color: #000 !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+    -webkit-font-smoothing: none;
+    font-smooth: never;
+    text-rendering: optimizeSpeed;
+    box-sizing: border-box !important;
+  }
+
+  html.thermal-print .invoice-xp80c h1 {
+    font-size: 12pt !important;
+    margin-top: 0.35rem !important;
+  }
+
+  html.thermal-print .invoice-xp80c table {
+    font-size: 9pt;
+  }
+
+  html.thermal-print .invoice-xp80c table th,
+  html.thermal-print .invoice-xp80c table td {
+    padding: 0.2rem 0.35rem !important;
+  }
+
+  html.thermal-print .invoice-xp80c .invoice-cs-table th,
+  html.thermal-print .invoice-xp80c .invoice-cs-table td {
+    padding: 0.1rem 0.1rem !important;
+    vertical-align: top !important;
+  }
+
+  html.thermal-print .invoice-xp80c .invoice-xp80c-header {
+    flex-direction: row;
+    align-items: flex-start;
+    justify-content: space-between;
+    text-align: left;
+    gap: 0.35rem;
+  }
+
+  html.thermal-print .invoice-xp80c .invoice-xp80c-header > div:last-child {
+    align-items: flex-end !important;
+  }
+
+  html.thermal-print .invoice-xp80c .invoice-order-barcode svg {
+    max-width: 26mm !important;
+    height: auto !important;
+    display: block !important;
+  }
+
+  html.thermal-print .invoice-xp80c .invoice-xp80c-meta {
+    display: flex !important;
+    flex-direction: row !important;
+    justify-content: space-between !important;
+    align-items: flex-start !important;
+    gap: 0.5rem !important;
+  }
+
+  html.thermal-print .invoice-xp80c .invoice-xp80c-details > * + * {
+    margin-top: 0.125rem !important;
+  }
+
+  html.thermal-print .invoice-xp80c .invoice-xp80c-body {
+    overflow: visible !important;
+    min-width: 0 !important;
+  }
+
+  html.thermal-print .invoice-xp80c .invoice-xp80c-details p {
+    overflow: visible !important;
+    text-overflow: clip !important;
+    white-space: normal !important;
+  }
+
+  html.thermal-print .invoice-xp80c .invoice-xp80c-meta p:not(.shrink-0) {
+    overflow: visible !important;
+    text-overflow: clip !important;
+    white-space: normal !important;
+  }
+
+  html.thermal-print .invoice-xp80c .invoice-xp80c-meta p.shrink-0 {
+    overflow: visible !important;
+    text-overflow: clip !important;
+    white-space: nowrap !important;
+  }
+
+  html.thermal-print .invoice-xp80c .invoice-xp80c-meta p.min-w-0 {
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+  }
+
+  html.thermal-print .invoice-xp80c .invoice-brand-mark {
+    max-width: 17mm !important;
+    max-height: 17mm !important;
+    width: auto !important;
+    height: auto !important;
+  }
+
+  html.thermal-print .invoice-xp80c .invoice-brand-mark img {
+    max-width: 100% !important;
+    max-height: 17mm !important;
+    width: auto !important;
+    height: auto !important;
+    object-fit: contain !important;
+    object-position: left top !important;
+  }
+
+  html.thermal-print .invoice-xp80c .invoice-cs-table {
+    table-layout: fixed !important;
+    width: 100% !important;
+    border-collapse: collapse !important;
+  }
+
+  html.thermal-print .invoice-xp80c .invoice-cs-table td:nth-child(2) > div {
+    margin: 0 !important;
+    padding: 0 !important;
+    line-height: 1.35 !important;
+  }
+
+  html.thermal-print .invoice-xp80c .invoice-cs-table th:nth-child(1),
+  html.thermal-print .invoice-xp80c .invoice-cs-table td:nth-child(1) {
+    width: 5.5mm !important;
+    max-width: 6.5mm !important;
+    text-align: left !important;
+    box-sizing: border-box !important;
+  }
+
+  html.thermal-print .invoice-xp80c .invoice-cs-table th:nth-child(2),
+  html.thermal-print .invoice-xp80c .invoice-cs-table td:nth-child(2) {
+    text-align: left !important;
+    width: auto !important;
+    min-width: 0 !important;
+    overflow-wrap: anywhere !important;
+    word-wrap: break-word !important;
+    box-sizing: border-box !important;
+  }
+
+  html.thermal-print .invoice-xp80c .invoice-cs-table th:nth-child(3),
+  html.thermal-print .invoice-xp80c .invoice-cs-table td:nth-child(3) {
+    width: 24mm !important;
+    min-width: 22mm !important;
+    max-width: 26mm !important;
+    text-align: right !important;
+    padding-left: 0.08rem !important;
+    padding-right: 0 !important;
+    box-sizing: border-box !important;
+  }
+
+  html.thermal-print .invoice-xp80c .invoice-cs-table thead tr {
+    border-bottom: 2px solid #000 !important;
+  }
+
+  html.thermal-print .invoice-xp80c .invoice-cs-table tbody tr {
+    border-bottom: 1px solid #000 !important;
+  }
+
+  html.thermal-print .invoice-cs-table th,
+  html.thermal-print .invoice-cs-table td {
+    border-left: none !important;
+    border-right: none !important;
+    border-top: none !important;
+  }
+
+  html.thermal-print .item-labels-print {
+    font-family: Arial, Helvetica, sans-serif !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+    direction: ltr !important;
+    box-sizing: border-box !important;
+    width: 100% !important;
+    max-width: 58mm !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+  }
+
+  html.thermal-print .item-labels-print .item-label-row {
+    min-height: 0 !important;
+    box-sizing: border-box !important;
+    padding: 0 !important;
+    margin: 0 0 4mm 0 !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+    page-break-after: always;
+    break-after: page;
+  }
+
+  html.thermal-print .item-labels-print .item-label-row:last-child {
+    margin-bottom: 0 !important;
+    page-break-after: auto;
+    break-after: auto;
+  }
+
+  html.thermal-print .item-labels-print .item-label-header-row {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: flex-start !important;
+    justify-content: flex-start !important;
+    gap: 2mm !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  html.thermal-print .item-labels-print .item-label-barcode-block {
+    flex-shrink: 0 !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  html.thermal-print .item-labels-print .invoice-order-barcode--item-label svg {
+    display: block !important;
+    margin: 0 !important;
+    max-width: 100% !important;
+  }
+
+  html.thermal-print .item-labels-print .item-label-header-row .invoice-order-barcode--item-label svg {
+    max-width: 26mm !important;
+    max-height: 9mm !important;
+    width: auto !important;
+    height: auto !important;
+  }
+
+  html.thermal-print .item-labels-print .item-label-header-row--solo .invoice-order-barcode--item-label svg {
+    max-width: 24mm !important;
+    max-height: 12mm !important;
+  }
+
+  html.thermal-print .item-labels-print .item-label-barcode-hri {
+    font-size: 8pt !important;
+    font-style: italic !important;
+    line-height: 1.05 !important;
+  }
+
+  html.thermal-print .item-labels-print .item-label-customer-block {
+    flex: 1 1 0 !important;
+    min-width: 0 !important;
+    margin-top: 0 !important;
+  }
+
+  html.thermal-print .item-labels-print .item-label-customer-line {
+    margin: 0 !important;
+    padding: 0 !important;
+    font-size: 6.5pt !important;
+    font-weight: bold !important;
+    line-height: 14px !important;
+    color: #000 !important;
+  }
+
+  html.thermal-print .item-labels-print .item-label-header-row + .item-label-desc-block {
+    margin-top: 10px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    clear: both !important;
+  }
+
+  html.thermal-print .item-labels-print .item-label-desc-line {
+    margin: 0 !important;
+    padding: 0 !important;
+    font-size: 7pt !important;
+    font-weight: 700 !important;
+    line-height: 15px !important;
+    color: #000 !important;
+  }
+}

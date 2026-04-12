@@ -22,10 +22,22 @@ import { validateRequired, validateEmail, validatePassword, validatePhone } from
 export default function EmployeesPage() {
   const { data: employees, isLoading } = useEmployees();
   const { data: roles } = useRoles();
-  const createEmployee = useCreateEmployee();
-  const updateEmployee = useUpdateEmployee();
-  const deleteEmployee = useDeleteEmployee();
-  const resetPassword = useResetEmployeePassword();
+  const {
+    mutateAsync: mutateAsyncCreateEmployee,
+    isPending: isPendingCreateEmployee,
+  } = useCreateEmployee();
+  const {
+    mutateAsync: mutateAsyncUpdateEmployee,
+    isPending: isPendingUpdateEmployee,
+  } = useUpdateEmployee();
+  const {
+    mutateAsync: mutateAsyncDeleteEmployee,
+    isPending: isPendingDeleteEmployee,
+  } = useDeleteEmployee();
+  const {
+    mutateAsync: mutateAsyncResetPassword,
+    isPending: isPendingResetPassword,
+  } = useResetEmployeePassword();
   const { toast, showToast, hideToast } = useToast();
 
   const [isAdding, setIsAdding] = useState(false);
@@ -60,7 +72,7 @@ export default function EmployeesPage() {
     if (err) { showToast(err, 'error'); return; }
     try {
       const { password, ...employeeData } = createForm;
-      await createEmployee.mutateAsync({ employee: { ...employeeData, name: employeeData.name.trim(), phone: employeeData.phone?.trim() || undefined, address: employeeData.address?.trim() || undefined, id_card: employeeData.id_card?.trim() || undefined }, password });
+      await mutateAsyncCreateEmployee({ employee: { ...employeeData, name: employeeData.name.trim(), phone: employeeData.phone?.trim() || undefined, address: employeeData.address?.trim() || undefined, id_card: employeeData.id_card?.trim() || undefined }, password });
       setIsAdding(false);
       showToast('Tạo tài khoản nhân viên thành công', 'success');
     } catch (err: any) { showToast('Lỗi: ' + err.message, 'error'); }
@@ -74,7 +86,7 @@ export default function EmployeesPage() {
     const err = nameErr || phoneErr;
     if (err) { showToast(err, 'error'); return; }
     try {
-      await updateEmployee.mutateAsync({ id: editingEmp.id, employee: { ...editForm, name: editForm.name.trim(), phone: editForm.phone?.trim() || undefined, address: editForm.address?.trim() || undefined, id_card: editForm.id_card?.trim() || undefined } });
+      await mutateAsyncUpdateEmployee({ id: editingEmp.id, employee: { ...editForm, name: editForm.name.trim(), phone: editForm.phone?.trim() || undefined, address: editForm.address?.trim() || undefined, id_card: editForm.id_card?.trim() || undefined } });
       setEditingEmp(null);
       showToast('Cập nhật nhân viên thành công', 'success');
     } catch (err: any) { showToast('Lỗi: ' + err.message, 'error'); }
@@ -83,7 +95,7 @@ export default function EmployeesPage() {
   const handleDelete = async () => {
     if (!deletingEmp) return;
     try {
-      await deleteEmployee.mutateAsync(deletingEmp.id);
+      await mutateAsyncDeleteEmployee(deletingEmp.id);
       setDeletingEmp(null);
       showToast('Xóa nhân viên thành công', 'success');
     } catch (err: any) { showToast('Lỗi: ' + err.message, 'error'); }
@@ -92,7 +104,7 @@ export default function EmployeesPage() {
   const handleResetPassword = async () => {
     if (!resettingEmp?.email) { showToast('Nhân viên này chưa có email', 'error'); setResettingEmp(null); return; }
     try {
-      await resetPassword.mutateAsync(resettingEmp.email);
+      await mutateAsyncResetPassword(resettingEmp.email);
       setResettingEmp(null);
       showToast('Đã gửi email đặt lại mật khẩu', 'success');
     } catch (err: any) { showToast('Lỗi: ' + err.message, 'error'); }
@@ -163,7 +175,7 @@ export default function EmployeesPage() {
           </div>
           <div className="flex gap-4 mt-8">
             <button type="button" onClick={() => setIsAdding(false)} className="flex-1 bg-muted/40 text-foreground py-2.5 rounded-md font-bold text-sm border border-border hover:bg-muted transition-colors">Hủy</button>
-            <button type="submit" disabled={createEmployee.isPending} className="flex-1 btn-primary py-2.5 rounded-md font-bold text-sm disabled:opacity-50">{createEmployee.isPending ? 'Đang tạo...' : 'Tạo tài khoản'}</button>
+            <button type="submit" disabled={isPendingCreateEmployee} className="flex-1 btn-primary py-2.5 rounded-md font-bold text-sm disabled:opacity-50">{isPendingCreateEmployee ? 'Đang tạo...' : 'Tạo tài khoản'}</button>
           </div>
         </form>
       </Modal>
@@ -182,7 +194,7 @@ export default function EmployeesPage() {
           </div>
           <div className="flex gap-4 mt-8">
             <button type="button" onClick={() => setEditingEmp(null)} className="flex-1 bg-muted/40 text-foreground py-2.5 rounded-md font-bold text-sm border border-border hover:bg-muted transition-colors">Hủy</button>
-            <button type="submit" disabled={updateEmployee.isPending} className="flex-1 btn-primary py-2.5 rounded-md font-bold text-sm disabled:opacity-50">{updateEmployee.isPending ? 'Đang lưu...' : 'Cập nhật'}</button>
+            <button type="submit" disabled={isPendingUpdateEmployee} className="flex-1 btn-primary py-2.5 rounded-md font-bold text-sm disabled:opacity-50">{isPendingUpdateEmployee ? 'Đang lưu...' : 'Cập nhật'}</button>
           </div>
         </form>
       </Modal>
@@ -197,7 +209,7 @@ export default function EmployeesPage() {
           <p className="text-muted-foreground text-sm">Hệ thống sẽ gửi email đặt lại mật khẩu đến <span className="font-bold text-foreground">{resettingEmp?.email}</span>.</p>
           <div className="flex gap-4">
             <button onClick={() => setResettingEmp(null)} className="flex-1 bg-muted/40 text-foreground py-2.5 rounded-md font-bold text-sm border border-border">Hủy</button>
-            <button onClick={handleResetPassword} disabled={resetPassword.isPending} className="flex-1 bg-warning text-white hover:bg-warning/90 py-2.5 rounded-md font-bold text-sm disabled:opacity-50">{resetPassword.isPending ? 'Đang gửi...' : 'Gửi email đặt lại'}</button>
+            <button onClick={handleResetPassword} disabled={isPendingResetPassword} className="flex-1 bg-warning text-white hover:bg-warning/90 py-2.5 rounded-md font-bold text-sm disabled:opacity-50">{isPendingResetPassword ? 'Đang gửi...' : 'Gửi email đặt lại'}</button>
           </div>
         </div>
       </Modal>
@@ -208,7 +220,7 @@ export default function EmployeesPage() {
           <p className="text-muted-foreground text-sm">Bạn có chắc chắn muốn xóa <span className="font-bold text-foreground">{deletingEmp?.name}</span>?</p>
           <div className="flex gap-4">
             <button onClick={() => setDeletingEmp(null)} className="flex-1 bg-muted/40 text-foreground py-2.5 rounded-md font-bold text-sm border border-border">Giữ lại</button>
-            <button onClick={handleDelete} disabled={deleteEmployee.isPending} className="flex-1 bg-danger text-white hover:bg-danger/90 py-2.5 rounded-md font-bold text-sm disabled:opacity-50">{deleteEmployee.isPending ? 'Đang xóa...' : 'Xóa vĩnh viễn'}</button>
+            <button onClick={handleDelete} disabled={isPendingDeleteEmployee} className="flex-1 bg-danger text-white hover:bg-danger/90 py-2.5 rounded-md font-bold text-sm disabled:opacity-50">{isPendingDeleteEmployee ? 'Đang xóa...' : 'Xóa vĩnh viễn'}</button>
           </div>
         </div>
       </Modal>

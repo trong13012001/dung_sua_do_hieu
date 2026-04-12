@@ -18,6 +18,7 @@ import {
   UserCircle,
   PackageCheck,
   Hammer,
+  Settings,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useCurrentUserPermissions } from '@/hooks/useCurrentUserPermissions';
@@ -49,6 +50,7 @@ const navSections = [
     label: 'Cài đặt',
     items: [
       { name: 'Hồ sơ', href: '/profile', icon: UserCircle },
+      { name: 'Cửa hàng & Máy in', href: '/settings', icon: Settings },
     ],
   },
 ];

@@ -42,6 +42,8 @@ import { useDebounce } from "@/hooks/useDebounce";
 import { Can } from "@/components/auth/Can";
 import { Order, OrderDetail, User, Role } from "@/lib/types";
 import { validateRequired, validateNumber } from "@/lib/validation";
+import { printTargetElementSmart } from "@/lib/printSmart";
+import { PRINT_TARGET_INVOICE_XP80C } from "@/lib/printTargets";
 
 const statusOptions = [
     { value: "New", label: "Mới", color: "bg-info/10 text-info" },
@@ -133,12 +135,35 @@ function OrderLogSection({ orderId }: { orderId: number | null }) {
 export default function OrdersPage() {
     const currentUserId = useCurrentUserId();
     const { data: employees } = useEmployees();
-    const updateOrder = useUpdateOrder();
-    const updateDetail = useUpdateOrderDetail();
-    const addOrderDetails = useAddOrderDetails();
-    const deleteOrder = useDeleteOrder();
-    const deleteDetail = useDeleteOrderDetail();
-    const processPayment = useProcessPayment();
+    const {
+        mutateAsync: mutateAsyncUpdateOrder,
+        isPending: isPendingUpdateOrder,
+    } = useUpdateOrder();
+
+    const {
+        mutateAsync: mutateAsyncUpdateDetail,
+        isPending: isPendingUpdateDetail,
+    } = useUpdateOrderDetail();
+
+    const {
+        mutateAsync: mutateAsyncAddOrderDetails,
+        isPending: isPendingAddOrderDetails,
+    } = useAddOrderDetails();
+
+    const {
+        mutateAsync: mutateAsyncDeleteOrder,
+        isPending: isPendingDeleteOrder,
+    } = useDeleteOrder();
+
+    const {
+        mutateAsync: mutateAsyncDeleteDetail,
+        isPending: isPendingDeleteDetail,
+    } = useDeleteOrderDetail();
+
+    const {
+        mutateAsync: mutateAsyncProcessPayment,
+        isPending: isPendingProcessPayment,
+    } = useProcessPayment();
     const { toast, showToast, hideToast } = useToast();
 
     const [search, setSearch] = useState("");
@@ -309,7 +334,7 @@ export default function OrdersPage() {
         try {
             const newOrderStatus = fd.get("order-status") as string;
             if (newOrderStatus && newOrderStatus !== editingOrder.status) {
-                await updateOrder.mutateAsync({
+                await mutateAsyncUpdateOrder({
                     id: editingOrder.id,
                     order: { status: newOrderStatus as Order["status"] },
                     updated_by: currentUserId ?? undefined,
@@ -349,7 +374,7 @@ export default function OrdersPage() {
                         ? edit.assigned_tailor_id
                         : null;
                 if (Object.keys(patch).length > 0) {
-                    await updateDetail.mutateAsync({
+                    await mutateAsyncUpdateDetail({
                         id: detail.id,
                         detail: patch,
                         updated_by: currentUserId ?? undefined,
@@ -393,7 +418,7 @@ export default function OrdersPage() {
                         : null,
                 }));
             if (toAdd.length > 0) {
-                await addOrderDetails.mutateAsync({
+                await mutateAsyncAddOrderDetails({
                     orderId: editingOrder.id,
                     items: toAdd,
                     updated_by: currentUserId ?? undefined,
@@ -409,7 +434,7 @@ export default function OrdersPage() {
     const handleDelete = async () => {
         if (!deletingOrder) return;
         try {
-            await deleteOrder.mutateAsync({
+            await mutateAsyncDeleteOrder({
                 id: deletingOrder.id,
                 updated_by: currentUserId ?? undefined,
             });
@@ -423,7 +448,7 @@ export default function OrdersPage() {
     const handleDeleteDetail = async (detailId: number) => {
         if (!editingOrder) return;
         try {
-            await deleteDetail.mutateAsync({
+            await mutateAsyncDeleteDetail({
                 id: detailId,
                 updated_by: currentUserId ?? undefined,
             });
@@ -461,7 +486,7 @@ export default function OrdersPage() {
             return;
         }
         try {
-            await processPayment.mutateAsync({
+            await mutateAsyncProcessPayment({
                 order_id: payingOrder.id,
                 amount: Number(payForm.amount),
                 payment_method: payForm.method as any,
@@ -1282,15 +1307,15 @@ export default function OrdersPage() {
                         <button
                             type="submit"
                             disabled={
-                                updateOrder.isPending ||
-                                updateDetail.isPending ||
-                                addOrderDetails.isPending
+                                isPendingUpdateOrder ||
+                                isPendingUpdateDetail ||
+                                isPendingAddOrderDetails
                             }
                             className="flex-1 btn-primary py-2.5 rounded-md font-bold text-sm disabled:opacity-50"
                         >
-                            {updateOrder.isPending ||
-                            updateDetail.isPending ||
-                            addOrderDetails.isPending
+                            {isPendingUpdateOrder ||
+                            isPendingUpdateDetail ||
+                            isPendingAddOrderDetails
                                 ? "Đang lưu..."
                                 : "Cập nhật"}
                         </button>
@@ -1323,10 +1348,10 @@ export default function OrdersPage() {
                                 deletingDetailId != null &&
                                 handleDeleteDetail(deletingDetailId)
                             }
-                            disabled={deleteDetail.isPending}
+                            disabled={isPendingDeleteDetail}
                             className="flex-1 bg-danger text-white py-2.5 rounded-md font-bold text-sm disabled:opacity-50"
                         >
-                            {deleteDetail.isPending ? "Đang xóa..." : "Xóa"}
+                            {isPendingDeleteDetail ? "Đang xóa..." : "Xóa"}
                         </button>
                     </div>
                 </div>
@@ -1428,10 +1453,10 @@ export default function OrdersPage() {
                         </button>
                         <button
                             type="submit"
-                            disabled={processPayment.isPending}
+                            disabled={isPendingProcessPayment}
                             className="flex-1 btn-primary py-2.5 rounded-md font-bold text-sm disabled:opacity-50"
                         >
-                            {processPayment.isPending
+                            {isPendingProcessPayment
                                 ? "Đang xử lý..."
                                 : "Xác nhận"}
                         </button>
@@ -1462,10 +1487,10 @@ export default function OrdersPage() {
                         </button>
                         <button
                             onClick={handleDelete}
-                            disabled={deleteOrder.isPending}
+                            disabled={isPendingDeleteOrder}
                             className="flex-1 bg-danger text-white hover:bg-danger/90 py-2.5 rounded-md font-bold text-sm disabled:opacity-50"
                         >
-                            {deleteOrder.isPending
+                            {isPendingDeleteOrder
                                 ? "Đang xóa..."
                                 : "Xóa vĩnh viễn"}
                         </button>
@@ -1530,10 +1555,10 @@ export default function OrdersPage() {
                             </button>
                             <button
                                 type="button"
-                                onClick={() => window.print()}
+                                onClick={() => printTargetElementSmart(PRINT_TARGET_INVOICE_XP80C)}
                                 className="px-4 py-2 bg-primary text-white rounded-md font-bold text-sm hover:opacity-90"
                             >
-                                In XP-80C: {batchOrders.length} phiếu
+                                {`In XP-80C: ${batchOrders.length} phiếu`}
                             </button>
                         </div>
                     </div>
@@ -1541,9 +1566,12 @@ export default function OrdersPage() {
                         {batchOrders.map((order) => (
                             <div
                                 key={order.id}
-                                className="invoice-print-area invoice-xp80c invoice-cs-receipt invoice-page bg-white text-black m-0 max-w-lg p-0 print:max-w-none"
+                                data-print-target={PRINT_TARGET_INVOICE_XP80C}
+                                className="invoice-print-area invoice-xp80c invoice-cs-receipt invoice-page bg-white text-black m-0 max-w-xl p-0 print:max-w-none"
                             >
-                                <InvoicePrintContent order={order} />
+                                <div className="invoice-xp80c-body min-w-0">
+                                    <InvoicePrintContent order={order} />
+                                </div>
                             </div>
                         ))}
                     </div>

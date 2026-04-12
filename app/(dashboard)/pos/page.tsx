@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useRef, useEffect, useLayoutEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import { flushSync } from 'react-dom';
 import {
   Plus,
@@ -24,6 +24,9 @@ import { buildOrderForInvoicePrint } from '@/lib/buildOrderForInvoicePrint';
 import { useDebounce } from '@/hooks/useDebounce';
 import { Customer, Order, User, Role } from '@/lib/types';
 import { validateRequired, validateNumber, validatePhone, validateMaxLength } from '@/lib/validation';
+import { isSilentThermalConfigured } from '@/lib/print/thermalPrint';
+import { printTargetElementSmart } from '@/lib/printSmart';
+import { PRINT_TARGET_LABEL_XP235B, PRINT_TARGET_INVOICE_XP80C } from '@/lib/printTargets';
 
 interface PosItem {
   name: string;
@@ -45,6 +48,43 @@ interface PosPrintQueue {
   invoiceOrder: Order;
 }
 
+function PrintQueueHint({
+  step,
+  silent,
+}: Readonly<{ step: PosPrintStep; silent: boolean }>) {
+  if (silent && step === 'labels') {
+    return (
+      <div className="non-print rounded-lg border border-border bg-muted/20 p-3 text-xs text-muted-foreground leading-relaxed">
+        <span className="font-bold text-foreground">Bước 1/2 — XP-235B (tem):</span>{' '}
+        đang in im lặng (Electron hoặc agent). Tự chuyển sang bước 2 khi hoàn tất.
+      </div>
+    );
+  }
+  if (silent) {
+    return (
+      <div className="non-print rounded-lg border border-border bg-muted/20 p-3 text-xs text-muted-foreground leading-relaxed">
+        <span className="font-bold text-foreground">Bước 2/2 — XP-80C (hóa đơn):</span>{' '}
+        đang in im lặng (Electron hoặc agent).
+      </div>
+    );
+  }
+  if (step === 'labels') {
+    return (
+      <div className="non-print rounded-lg border border-border bg-muted/20 p-3 text-xs text-muted-foreground leading-relaxed">
+        <span className="font-bold text-foreground">Bước 1 — Xprinter XP-235B:</span>{' '}
+        cửa sổ in <span className="font-bold text-foreground">tự mở</span> ngay sau khi tạo đơn. Sau khi bạn in xong và đóng hộp thoại, hệ thống tự mở{' '}
+        <span className="font-bold text-foreground">bước 2 — XP-80C</span> cho hóa đơn.
+      </div>
+    );
+  }
+  return (
+    <div className="non-print rounded-lg border border-border bg-muted/20 p-3 text-xs text-muted-foreground leading-relaxed">
+      <span className="font-bold text-foreground">Bước 2 — Xprinter XP-80C (80mm):</span>{' '}
+      cửa sổ in tự mở — chọn máy nhiệt 80mm và in. Đóng hộp thoại in để kết thúc hàng đợi.
+    </div>
+  );
+}
+
 export default function POSPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const debouncedSearchTerm = useDebounce(searchTerm, 400);
@@ -53,8 +93,14 @@ export default function POSPage() {
   const { data: customerData } = useGetCustomer(0, 100, debouncedSearchTerm);
   const customers = customerData?.data || [];
   const { data: employees } = useEmployees();
-  const createOrder = useCreateOrder();
-  const createCustomer = useCreateCustomer();
+  const {
+    mutateAsync: mutateAsyncCreateOrder,
+    isPending: isPendingCreateOrder,
+  } = useCreateOrder();
+  const {
+    mutateAsync: mutateAsyncCreateCustomer,
+    isPending: isPendingCreateCustomer,
+  } = useCreateCustomer();
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const { toast, showToast, hideToast } = useToast();
   const [items, setItems] = useState<PosItem[]>([]);
@@ -67,8 +113,18 @@ export default function POSPage() {
   const [printQueue, setPrintQueue] = useState<PosPrintQueue | null>(null);
   /** Chỉ tự chuyển bước sau afterprint khi print() do hàng đợi gọi (không áp dụng khi bấm "In lại"). */
   const printQueueAdvanceRef = useRef<PosPrintStep | null>(null);
+  /** Khi in im lặng (Electron/agent) đang chạy, tránh trùng lệnh. */
+  const silentPrintBusyRef = useRef(false);
+  /** React Strict Mode chạy useLayoutEffect 2 lần — tránh gửi in hóa đơn trùng. */
+  const invoiceAutoPrintKeyRef = useRef<string | null>(null);
+
+  const silentAutoPrint = isSilentThermalConfigured();
 
   const closePrintQueue = () => setPrintQueue(null);
+
+  useEffect(() => {
+    if (printQueue == null) invoiceAutoPrintKeyRef.current = null;
+  }, [printQueue]);
 
   const skipPrintStep = () => {
     setPrintQueue((q) => {
@@ -78,7 +134,39 @@ export default function POSPage() {
     });
   };
 
+  /**
+   * In tự động sau tạo đơn (Electron silent → agent → dialog).
+   * `silentAutoPrint` chỉ nghĩa là *có thể* im lặng; nếu rơi về dialog vẫn chờ xong rồi chuyển bước.
+   */
+  const runSilentAutoPrint = useCallback(async (step: PosPrintStep) => {
+    if (silentPrintBusyRef.current) return;
+    silentPrintBusyRef.current = true;
+    try {
+      const target = step === 'labels' ? PRINT_TARGET_LABEL_XP235B : PRINT_TARGET_INVOICE_XP80C;
+      await new Promise((r) => globalThis.requestAnimationFrame(() => globalThis.requestAnimationFrame(r)));
+      const result = await printTargetElementSmart(target);
+      const advance =
+        result.method === 'silent' ||
+        (result.method === 'browser' && !result.error?.includes('Không tìm thấy'));
+      if (advance) {
+        if (step === 'labels') {
+          setPrintQueue((q) => (q?.step === 'labels' ? { ...q, step: 'invoice' } : q));
+        } else {
+          setPrintQueue(null);
+        }
+      } else if (result.error) {
+        console.warn('[POS auto-print]', result.error);
+      }
+    } catch (err) {
+      console.error('[POS silent auto-print]', err);
+    } finally {
+      silentPrintBusyRef.current = false;
+    }
+  }, []);
+
+  /** Browser print flow: afterprint tự chuyển bước (chỉ khi không in im lặng). */
   useEffect(() => {
+    if (silentAutoPrint) return;
     const onAfterPrint = () => {
       const expected = printQueueAdvanceRef.current;
       printQueueAdvanceRef.current = null;
@@ -92,13 +180,23 @@ export default function POSPage() {
     };
     globalThis.addEventListener('afterprint', onAfterPrint);
     return () => globalThis.removeEventListener('afterprint', onAfterPrint);
-  }, []);
+  }, [silentAutoPrint]);
 
   /**
-   * Bước 2 (hóa đơn): tự mở `window.print()` sau khi chuyển step.
+   * Bước 2 (hóa đơn): tự động in khi chuyển step.
+   * Electron/agent → im lặng; ngược lại → window.print().
    */
   useLayoutEffect(() => {
     if (!printQueue || printQueue.step !== 'invoice') return;
+
+    if (silentAutoPrint) {
+      const dedupeKey = `${printQueue.orderId}-invoice`;
+      if (invoiceAutoPrintKeyRef.current === dedupeKey) return;
+      invoiceAutoPrintKeyRef.current = dedupeKey;
+      runSilentAutoPrint('invoice');
+      return;
+    }
+
     printQueueAdvanceRef.current = 'invoice';
     let id0 = 0;
     let id1 = 0;
@@ -111,7 +209,7 @@ export default function POSPage() {
       globalThis.cancelAnimationFrame(id0);
       globalThis.cancelAnimationFrame(id1);
     };
-  }, [printQueue?.step, printQueue?.orderId]);
+  }, [printQueue?.step, printQueue?.orderId, silentAutoPrint, runSilentAutoPrint]);
 
   const [addCustomerOpen, setAddCustomerOpen] = useState(false);
   const [newCustomerForm, setNewCustomerForm] = useState({ name: '', phone: '', address: '' });
@@ -149,7 +247,7 @@ export default function POSPage() {
     setNewCustomerErrors(errs);
     if (nameErr || phoneErr || addressErr) return;
     try {
-      const created = await createCustomer.mutateAsync({
+      const created = await mutateAsyncCreateCustomer({
         name: newCustomerForm.name.trim(),
         phone: newCustomerForm.phone.trim() || undefined,
         address: newCustomerForm.address.trim() || undefined,
@@ -195,7 +293,7 @@ export default function POSPage() {
         }
       }
 
-      const created = await createOrder.mutateAsync({
+      const created = await mutateAsyncCreateOrder({
         order: {
           customer_id: selectedCustomer.id,
           total_amount: totalAmount,
@@ -228,12 +326,17 @@ export default function POSPage() {
           invoiceOrder,
         });
       });
-      printQueueAdvanceRef.current = 'labels';
-      globalThis.requestAnimationFrame(() => {
+
+      if (silentAutoPrint) {
+        runSilentAutoPrint('labels');
+      } else {
+        printQueueAdvanceRef.current = 'labels';
         globalThis.requestAnimationFrame(() => {
-          globalThis.print();
+          globalThis.requestAnimationFrame(() => {
+            globalThis.print();
+          });
         });
-      });
+      }
       setItems([]);
       setSelectedCustomer(null);
       setReturnDate('');
@@ -419,8 +522,8 @@ export default function POSPage() {
             </div>
           </div>
 
-          <button onClick={handleSubmit} disabled={createOrder.isPending} className="w-full btn-primary py-3 rounded-md font-bold mb-3 disabled:opacity-50">
-            {createOrder.isPending ? 'Đang xử lý...' : 'Đặt hàng'}
+          <button onClick={handleSubmit} disabled={isPendingCreateOrder} className="w-full btn-primary py-3 rounded-md font-bold mb-3 disabled:opacity-50">
+            {isPendingCreateOrder ? 'Đang xử lý...' : 'Đặt hàng'}
           </button>
           <div className="flex items-center gap-2 p-3 bg-info/10 rounded border border-info/20">
             <CheckCircle2 size={16} className="text-info shrink-0" />
@@ -469,8 +572,8 @@ export default function POSPage() {
             <button type="button" onClick={() => setAddCustomerOpen(false)} className="flex-1 py-2.5 rounded-md font-bold text-sm border border-border bg-muted/40 hover:bg-muted transition-colors">
               Hủy
             </button>
-            <button type="submit" disabled={createCustomer.isPending} className="flex-1 btn-primary py-2.5 rounded-md font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2">
-              {createCustomer.isPending ? 'Đang tạo...' : 'Thêm'}
+            <button type="submit" disabled={isPendingCreateCustomer} className="flex-1 btn-primary py-2.5 rounded-md font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2">
+              {isPendingCreateCustomer ? 'Đang tạo...' : 'Thêm'}
             </button>
           </div>
         </form>
@@ -491,20 +594,7 @@ export default function POSPage() {
       >
         {printQueue != null && printQueue.labelItems.length > 0 && (
           <div className="space-y-4">
-            <div className="non-print rounded-lg border border-border bg-muted/20 p-3 text-xs text-muted-foreground leading-relaxed">
-              {printQueue.step === 'labels' ? (
-                <>
-                  <span className="font-bold text-foreground">Bước 1 — Xprinter XP-235B:</span>{' '}
-                  cửa sổ in <span className="font-bold text-foreground">tự mở</span> ngay sau khi tạo đơn. Sau khi bạn in xong và đóng hộp thoại, hệ thống tự mở{' '}
-                  <span className="font-bold text-foreground">bước 2 — XP-80C</span> cho hóa đơn.
-                </>
-              ) : (
-                <>
-                  <span className="font-bold text-foreground">Bước 2 — Xprinter XP-80C (80mm):</span>{' '}
-                  cửa sổ in tự mở — chọn máy nhiệt 80mm và in. Đóng hộp thoại in để kết thúc hàng đợi.
-                </>
-              )}
-            </div>
+            <PrintQueueHint step={printQueue.step} silent={silentAutoPrint} />
             <div className="non-print flex flex-wrap gap-2">
               <button
                 type="button"

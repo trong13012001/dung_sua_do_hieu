@@ -3,7 +3,8 @@
 import React from "react";
 import { OrderBarcode } from "@/components/ui/OrderBarcode";
 import { encodeItemBarcodeFromOrder } from "@/lib/barcode";
-import { QzPrintButton } from "@/components/print/QzPrintButton";
+import { SmartPrintButton } from "@/components/print/SmartPrintButton";
+import { BrowserHtmlPrintButton } from "@/components/print/BrowserHtmlPrintButton";
 import { PRINT_TARGET_LABEL_XP235B } from "@/lib/printTargets";
 
 export interface ItemLabelData {
@@ -81,10 +82,6 @@ export function ItemLabelsPrint({
     customerAddress,
     returnTime,
 }: Readonly<ItemLabelsPrintProps>) {
-    const handlePrint = () => {
-        globalThis.print();
-    };
-
     if (!orderId || items.length === 0) return null;
 
     const returnDateLine = formatReturnDateVi(returnTime);
@@ -93,7 +90,7 @@ export function ItemLabelsPrint({
     return (
         <div
             data-print-target={PRINT_TARGET_LABEL_XP235B}
-            className="invoice-print-area item-labels-print bg-white text-black p-4 md:p-5 mx-auto rounded-lg border border-border print:p-0 print:max-w-none print:border-0 print:rounded-none"
+            className="invoice-print-area item-labels-print bg-white text-black p-4 md:p-5 mx-auto rounded-lg print:p-0 print:max-w-none print:border-0 print:rounded-none"
         >
             <div className="non-print flex flex-wrap justify-between items-center gap-2 mb-4 shrink-0">
                 <h3 className="text-sm md:text-base font-bold text-foreground">
@@ -101,19 +98,14 @@ export function ItemLabelsPrint({
                     {orderId.toString().padStart(5, "0")}
                 </h3>
                 <div className="flex gap-2">
-                    <button
-                        type="button"
-                        onClick={handlePrint}
+                    <SmartPrintButton
+                        target={PRINT_TARGET_LABEL_XP235B}
                         className="px-3 py-1.5 bg-primary text-white rounded-md font-bold text-xs md:text-sm hover:opacity-90"
+                        silentLabel="In tem XP-235B ⚡"
                     >
                         In tem
-                    </button>
-                    <QzPrintButton
-                        target={PRINT_TARGET_LABEL_XP235B}
-                        className="px-3 py-1.5 bg-zinc-800 text-white rounded-md font-bold text-xs md:text-sm hover:opacity-90"
-                    >
-                        In QZ (tem)
-                    </QzPrintButton>
+                    </SmartPrintButton>
+
                     {onClose && (
                         <button
                             type="button"

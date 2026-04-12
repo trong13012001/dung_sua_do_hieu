@@ -19,7 +19,10 @@ import { Order, OrderDetail } from '@/lib/types';
 
 export default function ReturnsPage() {
   const { data: orders, isLoading } = useOrders();
-  const updateOrder = useUpdateOrder();
+  const {
+    mutateAsync: mutateAsyncUpdateOrder,
+    isPending: isPendingUpdateOrder,
+  } = useUpdateOrder();
   const { toast, showToast, hideToast } = useToast();
 
   const [search, setSearch] = useState('');
@@ -50,7 +53,7 @@ export default function ReturnsPage() {
   const handleReturn = async () => {
     if (!returningOrder) return;
     try {
-      await updateOrder.mutateAsync({
+      await mutateAsyncUpdateOrder({
         id: returningOrder.id,
         order: {
           status: 'Delivered' as Order['status'],
@@ -219,8 +222,8 @@ export default function ReturnsPage() {
 
               <div className="flex gap-4">
                 <button onClick={() => setReturningOrder(null)} className="flex-1 bg-muted/40 text-foreground py-2.5 rounded-md font-bold text-sm border border-border hover:bg-muted transition-colors">Hủy</button>
-                <button onClick={handleReturn} disabled={updateOrder.isPending} className="flex-1 btn-primary py-2.5 rounded-md font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2">
-                  {updateOrder.isPending ? 'Đang xử lý...' : <><PackageCheck size={16} />Xác nhận trả đồ</>}
+                <button onClick={handleReturn} disabled={isPendingUpdateOrder} className="flex-1 btn-primary py-2.5 rounded-md font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2">
+                  {isPendingUpdateOrder ? 'Đang xử lý...' : <><PackageCheck size={16} />Xác nhận trả đồ</>}
                 </button>
               </div>
             </>

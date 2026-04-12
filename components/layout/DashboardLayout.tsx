@@ -5,6 +5,7 @@ import { Sidebar } from './Sidebar';
 import { BrandLogo } from '@/components/ui/BrandLogo';
 import { Menu } from 'lucide-react';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
+import { ShopSettingsSync } from '@/components/providers/ShopSettingsSync';
 
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -15,6 +16,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-background text-foreground flex">
+      <ShopSettingsSync />
       <Sidebar isOpen={sidebarOpen} onClose={closeSidebar} />
 
       <div className="flex-1 lg:ml-[260px] flex flex-col">

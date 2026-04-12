@@ -2,6 +2,7 @@
 
 # dependencies
 /node_modules
+/tools/silent-print-agent/node_modules
 /.pnp
 .pnp.*
 .yarn/*
@@ -10,6 +11,7 @@
 !.yarn/releases
 !.yarn/versions
 
+dist-electron
 # testing
 /coverage
 
