@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import type { PrintTarget } from "@/lib/printTargets";
 import { printElementHtmlThroughBrowser } from "@/lib/print/thermalPrint";
 
@@ -19,6 +19,13 @@ export function BrowserHtmlPrintButton({
     className,
 }: Readonly<BrowserHtmlPrintButtonProps>) {
     const [busy, setBusy] = useState(false);
+    const alive = useRef(true);
+    useEffect(() => {
+        alive.current = true;
+        return () => {
+            alive.current = false;
+        };
+    }, []);
 
     const handleClick = async (e: MouseEvent<HTMLButtonElement>) => {
         const root = e.currentTarget.closest(
@@ -37,7 +44,7 @@ export function BrowserHtmlPrintButton({
                 err instanceof Error ? err.message : String(err),
             );
         } finally {
-            setBusy(false);
+            if (alive.current) setBusy(false);
         }
     };
 

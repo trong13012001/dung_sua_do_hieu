@@ -62,19 +62,16 @@ async function printHtmlThroughBrowserDialog(html: string): Promise<void> {
       throw new Error("Không có cửa sổ iframe.");
     }
     w.focus();
-    await new Promise<void>((resolve) => {
-      const maxWait = globalThis.setTimeout(() => {
-        w.removeEventListener("afterprint", onAfter);
-        resolve();
-      }, 300_000);
-      const onAfter = () => {
-        globalThis.clearTimeout(maxWait);
-        w.removeEventListener("afterprint", onAfter);
-        resolve();
-      };
-      w.addEventListener("afterprint", onAfter);
+    /**
+     * Không dùng `afterprint` trên iframe: Electron/Chromium hay báo
+     * "The provided callback is no longer runnable" khi dialog đóng / node bị gỡ.
+     * `print()` trên cửa sổ iframe thường **chặn** tới khi hộp thoại in đóng (giống tab).
+     */
+    try {
       w.print();
-    });
+    } catch (err) {
+      console.warn("[thermalPrint] iframe.print():", err);
+    }
   } finally {
     globalThis.setTimeout(() => iframe.remove(), 120_000);
   }

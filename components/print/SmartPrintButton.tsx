@@ -1,9 +1,11 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { PrintTarget } from "@/lib/printTargets";
-import { isSilentThermalConfigured } from "@/lib/print/thermalPrint";
-import { printThermalElement } from "@/lib/print/thermalPrint";
+import {
+  isSilentThermalConfigured,
+  printThermalElement,
+} from "@/lib/print/thermalPrint";
 
 export interface SmartPrintButtonProps {
   readonly target: PrintTarget;
@@ -26,6 +28,13 @@ export function SmartPrintButton({
 }: Readonly<SmartPrintButtonProps>) {
   const [busy, setBusy] = useState(false);
   const silentReady = isSilentThermalConfigured();
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
 
   const handleClick = async (e: React.MouseEvent<HTMLButtonElement>) => {
     const root = e.currentTarget.closest(
@@ -45,7 +54,7 @@ export function SmartPrintButton({
         err instanceof Error ? err.message : String(err),
       );
     } finally {
-      setBusy(false);
+      if (alive.current) setBusy(false);
     }
   };
 

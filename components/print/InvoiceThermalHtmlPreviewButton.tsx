@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type MouseEvent } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { buildPrintableHtmlFromElement } from "@/lib/print/buildPrintHtml";
 
@@ -22,6 +22,13 @@ export function InvoiceThermalHtmlPreviewButton({
   const [html, setHtml] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
 
   const handleClose = () => {
     setOpen(false);
@@ -41,14 +48,16 @@ export function InvoiceThermalHtmlPreviewButton({
       const doc = await buildPrintableHtmlFromElement(root, {
         paperWidthMm: 80,
       });
+      if (!alive.current) return;
       setHtml(doc);
       setOpen(true);
     } catch (err) {
       console.error(err);
+      if (!alive.current) return;
       setError(err instanceof Error ? err.message : String(err));
       setOpen(true);
     } finally {
-      setBusy(false);
+      if (alive.current) setBusy(false);
     }
   };
 

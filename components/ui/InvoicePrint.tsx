@@ -69,13 +69,7 @@ export function InvoicePrint({
                     >
                         In XP-80C (80mm)
                     </SmartPrintButton>
-                    <BrowserHtmlPrintButton
-                        target={PRINT_TARGET_INVOICE_XP80C}
-                        className="px-4 py-2 border border-border rounded-md font-bold text-sm hover:bg-muted/50"
-                    >
-                        In qua Chrome (driver)
-                    </BrowserHtmlPrintButton>
-                    <InvoiceThermalHtmlPreviewButton className="px-4 py-2 border border-border rounded-md font-bold text-sm hover:bg-muted/50" />
+
                     {onClose && (
                         <button
                             type="button"
