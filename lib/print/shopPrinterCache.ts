@@ -18,7 +18,10 @@ export function syncThermalPrintersFromShop(settings: {
   cachedPrinterLabel = settings.thermal_printer_label;
 }
 
-/** Tên máy in Windows (Electron silent / agent / hộp thoại). */
+/**
+ * Tên máy in Windows (Electron silent / agent / hộp thoại).
+ * Hóa đơn vs tem: hai khóa DB/env khác nhau — in tem không dùng `thermal_printer_invoice`.
+ */
 export function thermalPrinterForTarget(target: PrintTarget): string {
   if (target === PRINT_TARGET_LABEL_XP235B) {
     return (

@@ -77,11 +77,43 @@ loadElectronEnvFiles();
 /** Mặc định khi không set env (bản cài quầy). Dev local: `ELECTRON_START_URL=http://localhost:3000`. */
 const DEFAULT_POS_APP_URL = "https://dung-sua-do-hieu.vercel.app";
 
+/**
+ * Chuẩn hoá URL cho loadURL. Sửa lỗi gõ hay gặp: cổng `3000s` thay vì `3000` → `3000`.
+ * @param {string} raw
+ * @returns {string | null}
+ */
+function normalizePosLoadUrl(raw) {
+  let u = String(raw ?? "").trim();
+  if (!u) return null;
+  const fixedPort = u.replace(/:(\d+)s(\/|\?|#|$)/g, ":$1$2");
+  if (fixedPort !== u) {
+    console.warn("[electron] Sửa nhầm cổng trong URL (vd. …:3000s/ → …:3000/):", u);
+    u = fixedPort;
+  }
+  try {
+    const p = new URL(u);
+    if (p.protocol !== "http:" && p.protocol !== "https:") return null;
+    return p.href;
+  } catch {
+    return null;
+  }
+}
+
 const startUrlRaw =
   process.env.ELECTRON_START_URL?.trim() ||
   process.env.NEXT_PUBLIC_APP_URL?.trim() ||
   "";
-const startUrl = startUrlRaw || DEFAULT_POS_APP_URL;
+
+let startUrl = normalizePosLoadUrl(startUrlRaw || DEFAULT_POS_APP_URL);
+if (!startUrl) {
+  console.error(
+    "[electron] URL không hợp lệ, dùng mặc định:",
+    startUrlRaw || "(trống)",
+    "→",
+    DEFAULT_POS_APP_URL,
+  );
+  startUrl = normalizePosLoadUrl(DEFAULT_POS_APP_URL) ?? DEFAULT_POS_APP_URL;
+}
 
 console.log("[electron] Mở POS tại:", startUrl);
 
@@ -118,8 +150,11 @@ ipcMain.handle("thermal-print-html", async (_event, { html, deviceName }) => {
 
   fs.writeFileSync(tmpPath, html, "utf8");
 
+  /* Khổ hẹp ~ 58mm nhiệt: viewport rộng (mặc định ~800px) khiến layout + phân trang lệch so với @page mm. */
   const printWin = new BrowserWindow({
     show: false,
+    width: 280,
+    height: 1400,
     webPreferences: {
       sandbox: false,
       nodeIntegration: false,
@@ -145,11 +180,35 @@ ipcMain.handle("thermal-print-html", async (_event, { html, deviceName }) => {
     const opts = {
       silent: true,
       printBackground: true,
+      /* Windows: mặc định hay bỏ qua @page mm → A4 + cắt/lệch; bật theo CSS + tắt margin hệ thống. */
+      margins: { marginType: "none" },
+      preferCSSPageSize: true,
     };
     const dn = typeof deviceName === "string" ? deviceName.trim() : "";
     if (dn) opts.deviceName = dn;
 
-    await printWin.webContents.print(opts);
+    /**
+     * `webContents.print` không trả Promise — `await print()` trước đây không chờ
+     * driver Windows; `destroy()` có thể chạy sớm và job in không ra giấy.
+     */
+    await new Promise((resolve, reject) => {
+      try {
+        printWin.webContents.print(opts, (success, failureReason) => {
+          if (success) resolve(undefined);
+          else {
+            const msg = String(failureReason || "").trim() || "In im lặng thất bại.";
+            console.error(
+              "[electron] thermal-print-html:",
+              msg,
+              dn ? `(deviceName: ${dn})` : "(máy in mặc định)",
+            );
+            reject(new Error(msg));
+          }
+        });
+      } catch (e) {
+        reject(e);
+      }
+    });
     return { ok: true };
   } finally {
     printWin.destroy();

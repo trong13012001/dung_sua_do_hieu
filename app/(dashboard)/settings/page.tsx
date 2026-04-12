@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Save, Store, Printer, Loader2 } from 'lucide-react';
 import { Toast, useToast } from '@/components/ui/Toast';
 import { useShopSettings, useUpdateShopSettings, type ShopSettings } from '@/api/shopSettings';
+import { syncThermalPrintersFromShop } from '@/lib/print/shopPrinterCache';
 
 export default function SettingsPage() {
   const { data: settings, isLoading } = useShopSettings();
@@ -32,6 +33,10 @@ export default function SettingsPage() {
     e.preventDefault();
     try {
       await save(form);
+      syncThermalPrintersFromShop({
+        thermal_printer_invoice: form.thermal_printer_invoice,
+        thermal_printer_label: form.thermal_printer_label,
+      });
       showToast('Đã lưu cài đặt thành công!', 'success');
     } catch (err) {
       showToast('Lỗi: ' + (err instanceof Error ? err.message : String(err)), 'error');

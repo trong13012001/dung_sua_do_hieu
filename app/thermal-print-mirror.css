@@ -242,26 +242,29 @@
     direction: ltr !important;
     box-sizing: border-box !important;
     width: 100% !important;
-    max-width: 58mm !important;
-    margin: 0 auto !important;
-    padding: 0 !important;
+    max-width: 52mm !important;
+    margin-left: 0 !important;
+    margin-right: auto !important;
+    padding: 2mm 2mm 2mm 5mm !important;
   }
 
   html.thermal-print .item-labels-print .item-label-row {
     min-height: 0 !important;
     box-sizing: border-box !important;
     padding: 0 !important;
-    margin: 0 0 4mm 0 !important;
+    margin: 0 !important;
     page-break-inside: avoid;
     break-inside: avoid;
-    page-break-after: always;
-    break-after: page;
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+    page-break-before: avoid !important;
+    break-before: auto !important;
   }
 
-  html.thermal-print .item-labels-print .item-label-row:last-child {
-    margin-bottom: 0 !important;
-    page-break-after: auto;
-    break-after: auto;
+  html.thermal-print .item-labels-print .item-label-row ~ .item-label-row {
+    margin-top: 0 !important;
+    page-break-before: always !important;
+    break-before: page !important;
   }
 
   html.thermal-print .item-labels-print .item-label-header-row {

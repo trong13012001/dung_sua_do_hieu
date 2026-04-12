@@ -32,6 +32,62 @@ function mmToCssPx(mm: number): number {
 }
 
 /**
+ * Gỡ mọi `@page { … }` / `@page name { … }` khỏi CSS đã flatten — job tem tự chèn một `@page` duy nhất.
+ * Regex từng block 80mm dễ sót (minify, thứ tự property, file khác).
+ */
+function stripAllAtPageRules(css: string): string {
+  const re = /@page\b/gi;
+  let out = "";
+  let i = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(css)) !== null) {
+    const idx = m.index;
+    const before = idx > 0 ? css[idx - 1]! : " ";
+    if (/[A-Za-z0-9_-]/.test(before)) {
+      out += css.slice(i, idx + 1);
+      i = idx + 1;
+      re.lastIndex = i;
+      continue;
+    }
+    out += css.slice(i, idx);
+    let j = idx + m[0].length;
+    while (j < css.length && /\s/.test(css[j]!)) j++;
+    while (j < css.length && /[\w-]/.test(css[j]!)) j++;
+    while (j < css.length && /\s/.test(css[j]!)) j++;
+    if (j >= css.length || css[j] !== "{") {
+      out += css.slice(idx, j);
+      i = j;
+      re.lastIndex = i;
+      continue;
+    }
+    let depth = 1;
+    j++;
+    while (j < css.length && depth > 0) {
+      const c = css[j]!;
+      if (c === "{") depth++;
+      else if (c === "}") depth--;
+      j++;
+    }
+    i = j;
+    re.lastIndex = i;
+  }
+  out += css.slice(i);
+  return out;
+}
+
+/** Job tem: bỏ toàn bộ @page + thuộc tính `page:` (named page) trong bundle — tránh xung đột với @page của job. */
+function sanitizeCssForLabelPrintJob(css: string): string {
+  let s = stripAllAtPageRules(css);
+  s = s.replace(/\bpage\s*:\s*[^;\r\n}]+;?/gi, "");
+  return s;
+}
+
+/**
+ * Chiều cao trang cố định (mm) — `auto` hay nội dung cao hơn trang dễ bị Chromium tách 2 trang.
+ */
+const LABEL_JOB_PAGE_HEIGHT_MM = 120;
+
+/**
  * Bản dự phòng utility Tailwind trong `.invoice-xp80c` — một số engine in có thể
  * bỏ qua @layer / CSS mới; rule nằm sau bundle gốc.
  */
@@ -200,7 +256,7 @@ export async function buildPrintableHtmlFromElement(
   const isInvoice =
     wrapper.classList.contains("invoice-xp80c") ||
     Boolean(wrapper.querySelector(".invoice-xp80c"));
-  const paperMm = opts?.paperWidthMm ?? 80;
+  const paperMm = opts?.paperWidthMm ?? (isInvoice ? 80 : 58);
 
   if (
     isInvoice &&
@@ -210,11 +266,15 @@ export async function buildPrintableHtmlFromElement(
     combined += `\n\n${THERMAL_MERGED_INVOICES_SHIM}`;
   }
 
+  if (!isInvoice) {
+    combined = sanitizeCssForLabelPrintJob(combined);
+  }
+
   const inlinedCss = escapeForStyleTag(combined);
 
   const pageCss = isInvoice
     ? `@page { size: ${paperMm}mm auto; margin: ${THERMAL_INVOICE_HTML_PAGE_MARGIN_MM}mm; }`
-    : "@page { margin: 0; size: auto; }";
+    : `@page { size: ${paperMm}mm ${LABEL_JOB_PAGE_HEIGHT_MM}mm; margin: 0; }`;
 
   const layoutWpx = isInvoice ? mmToCssPx(invoiceThermalViewportWidthMm(paperMm)) : null;
   const viewportTag =
@@ -229,7 +289,7 @@ export async function buildPrintableHtmlFromElement(
 
   const htmlBodyCss =
     layoutWpx == null
-      ? `html, body { margin: 0 !important; padding: 0 !important; background: white !important; overflow-x: hidden !important; overflow-y: visible !important; }\n`
+      ? `html, body { margin: 0 !important; padding: 0 !important; background: white !important; overflow-x: visible !important; overflow-y: visible !important; }\nhtml.thermal-print #print-root { max-width: ${paperMm}mm !important; width: 100% !important; margin: 0 !important; padding: 0 !important; box-sizing: border-box !important; overflow: visible !important; }\n`
       : `html, body { margin: 0 !important; padding: 0 !important; background: white !important; overflow-x: visible !important; overflow-y: visible !important; }\n`;
 
   const chromeParity =
@@ -273,6 +333,19 @@ ${inlinedCss}
 </style>${
     isInvoice
       ? `<style type="text/css" data-thermal-invoice-fallback="1">\n${escapeForStyleTag(invoiceThermalTailwindFallback(invoiceThermalLayoutMaxWidthMm(paperMm)))}\n</style>`
-      : ""
+      : `<style type="text/css" data-thermal-label-pagination="">
+@media print, screen {
+  .item-labels-print .item-label-row {
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+    page-break-before: avoid !important;
+    break-before: auto !important;
+  }
+  .item-labels-print .item-label-row ~ .item-label-row {
+    page-break-before: always !important;
+    break-before: page !important;
+  }
+}
+</style>`
   }</head><body><div id="print-root">${wrapper.outerHTML}</div></body></html>`;
 }

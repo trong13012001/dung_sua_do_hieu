@@ -32,6 +32,8 @@ Ví dụ một dòng trong `.env.local` (hoặc `.env` cạnh `.exe`):
 NEXT_PUBLIC_APP_URL=https://pos.example.com
 ```
 
+Lưu ý cổng LAN: phải là số thuần, ví dụ `http://192.168.1.235:3000/` — **không** viết `3000s` (dư chữ `s`). `main.cjs` tự sửa trường hợp `:3000s/` → `:3000/` nếu gặp.
+
 Hoặc:
 
 ```env
@@ -74,7 +76,16 @@ Bản ra thư mục `dist-electron/` (`electron-builder.yml`). Gói chỉ là sh
 
 ## Máy in
 
-Đặt tên máy in **trùng** chuỗi trong Windows (Cài đặt → Máy in) — trường `thermal_printer_invoice` trong Cài đặt shop hoặc env `NEXT_PUBLIC_THERMAL_PRINTER_INVOICE`.
+Một IPC `thermal-print-html` phục vụ **cả hóa đơn (XP-80C) và tem (XP-235B)**. Tên máy in phải **trùng ký tự** với Windows (Cài đặt → Máy in).
+
+**Thứ tự dùng tên máy in trong app:** Cài đặt cửa hàng (DB) — đồng bộ vào bộ nhớ khi mở trang dashboard (`ShopSettingsSync`) và **ngay sau khi bấm Lưu** ở trang Cài đặt. Chỉ khi ô tương ứng trống mới fallback sang biến môi trường `NEXT_PUBLIC_THERMAL_PRINTER_*` (hữu ích cho máy dev hoặc bản build tĩnh).
+
+| Loại | Cài đặt shop | Env (tuỳ chọn, khi DB trống) |
+|------|----------------|---------------------------|
+| Hóa đơn | `thermal_printer_invoice` | `NEXT_PUBLIC_THERMAL_PRINTER_INVOICE` (hoặc `NEXT_PUBLIC_THERMAL_PRINTER_XP80C`) |
+| Tem | `thermal_printer_label` | `NEXT_PUBLIC_THERMAL_PRINTER_LABEL` (hoặc `NEXT_PUBLIC_THERMAL_PRINTER_XP235B`) |
+
+Hai máy in khác nhau → cần **hai tên** đúng chỗ; để trống → Windows dùng **máy in mặc định** cho job đó (dễ nhầm máy).
 
 ## Ghi chú
 
