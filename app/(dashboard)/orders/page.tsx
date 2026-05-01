@@ -871,21 +871,17 @@ export default function OrdersPage() {
                                                         </button>
                                                     </Can>
                                                 )}
-                                                {isPaid && (
-                                                    <button
-                                                        type="button"
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            setInvoiceOrder(
-                                                                order,
-                                                            );
-                                                        }}
-                                                        className="p-2 rounded-md text-primary hover:bg-primary/10 transition-colors"
-                                                        title="In phiếu"
-                                                    >
-                                                        <Printer size={16} />
-                                                    </button>
-                                                )}
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setInvoiceOrder(order);
+                                                    }}
+                                                    className="p-2 rounded-md text-primary hover:bg-primary/10 transition-colors"
+                                                    title="In phiếu"
+                                                >
+                                                    <Printer size={16} />
+                                                </button>
                                                 {order.details &&
                                                     order.details.length >
                                                         0 && (

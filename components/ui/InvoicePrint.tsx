@@ -115,10 +115,10 @@ export function InvoicePrintContent({
                     <OrderBarcode value={orderCode} compact />
                 </div>
 
-                <p className="text-center text-[13px] font-bold text-black leading-tight">
+                <p className="text-center text-[15px] font-bold text-black leading-tight">
                     {settings?.shop_name || "DŨNG SỬA ĐỒ HIỆU"}
                 </p>
-                <p className="text-center text-[10px] font-bold text-black mt-1">
+                <p className="text-center text-[11px] font-bold text-black mt-1">
                     Hotline: {settings?.shop_hotline || "0904672288"}
                 </p>
 
@@ -145,7 +145,7 @@ export function InvoicePrintContent({
                     <p className="font-semibold text-[9px]">
                         Nhân viên: {order.created_by_name?.trim() || "-"}
                     </p>
-                    <p className="font-semibold text-[10px]">
+                    <p className="font-semibold text-[12px]">
                         Hẹn trả đồ:{" "}
                         <span className="font-bold">
                             {order.return_time

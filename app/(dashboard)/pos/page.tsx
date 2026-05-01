@@ -110,7 +110,6 @@ export default function POSPage() {
 
   // Optional return appointment time
   const [returnDate, setReturnDate] = useState('');
-  const [returnClock, setReturnClock] = useState('');
 
   /** Hàng đợi in sau tạo đơn: 1) tem XP-235B → 2) hóa đơn XP-80C */
   const [printQueue, setPrintQueue] = useState<PosPrintQueue | null>(null);
@@ -309,8 +308,7 @@ export default function POSPage() {
     try {
       let return_time: string | null = null;
       if (returnDate) {
-        const time = returnClock && returnClock.length > 0 ? returnClock : '18:00';
-        const combined = new Date(`${returnDate}T${time}:00`);
+        const combined = new Date(`${returnDate}T16:00:00`);
         if (!Number.isNaN(combined.getTime())) {
           return_time = combined.toISOString();
         }
@@ -368,7 +366,6 @@ export default function POSPage() {
       setItems([]);
       setSelectedCustomer(null);
       setReturnDate('');
-      setReturnClock('');
     } catch (error: any) {
       showToast('Lỗi: ' + error.message, 'error');
     }
@@ -410,7 +407,7 @@ export default function POSPage() {
               </div>
 
               {/* Return appointment (optional) */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
+              <div className="grid grid-cols-1 gap-3 md:gap-4">
                 <div className="space-y-1">
                   <label htmlFor="pos-return-date" className="text-[11px] font-bold text-muted-foreground uppercase">Ngày hẹn trả (tùy chọn)</label>
                   <input
@@ -420,17 +417,6 @@ export default function POSPage() {
                     value={returnDate}
                     onChange={e => setReturnDate(e.target.value)}
                   />
-                </div>
-                <div className="space-y-1">
-                  <label htmlFor="pos-return-clock" className="text-[11px] font-bold text-muted-foreground uppercase">Giờ hẹn trả</label>
-                  <input
-                    id="pos-return-clock"
-                    type="time"
-                    className="w-full bg-muted/20 border border-border rounded-md px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-primary"
-                    value={returnClock}
-                    onChange={e => setReturnClock(e.target.value)}
-                  />
-                  <p className="text-[11px] text-muted-foreground">Nếu bỏ trống giờ, hệ thống sẽ lấy mặc định 18:00.</p>
                 </div>
               </div>
               <div className="space-y-1">
