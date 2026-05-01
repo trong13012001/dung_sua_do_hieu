@@ -1,7 +1,7 @@
 /**
  * Khổ tem thực tế hiện tại: khoảng 6x5cm (60mm x 50mm), Portrait.
  */
-export const LABEL_THERMAL_PAPER_WIDTH_MM = 51 as const;
+export const LABEL_THERMAL_PAPER_WIDTH_MM = 50 as const;
 export const LABEL_THERMAL_PAGE_HEIGHT_MM = 50 as const;
 
 /** Khối tem (box-sizing: border-box): chừa lề an toàn hai bên cho tem 60mm. */
