@@ -156,9 +156,9 @@ body.sidebar-open {
    * XP-235B: một tem = một trang in. Chiều cao cố định (không `auto`) giảm lỗi Chrome/Electron tách thêm trang trắng.
    * Phân trang: break-before trên hàng tem thứ 2 trở đi (~), không break-after trên tem đơn.
    */
-  /* Chiều cao đồng bộ lib/print/labelThermalMetrics.ts (LABEL_THERMAL_PAGE_HEIGHT_MM) */
+  /* Đồng bộ lib/print/labelThermalMetrics.ts (tem khoảng 6x5cm). */
   @page item-label-xp235b {
-    size: 58mm 132mm;
+    size: 60mm 50mm;
     margin: 0;
   }
   html, body {
@@ -178,7 +178,7 @@ body.sidebar-open {
     padding: 0 !important;
     box-sizing: border-box !important;
   }
-  /* Tránh trang 1 mặc định 80mm rồi mới sang 58mm; cả job tem dùng một @page */
+  /* Tránh trang 1 mặc định 80mm rồi mới sang khổ tem; cả job tem dùng một @page */
   #print-root:has(> .item-labels-print) {
     page: item-label-xp235b;
     page-break-after: avoid !important;
@@ -196,9 +196,11 @@ body.sidebar-open {
 
   /* Hóa đơn 80mm: đồng bộ invoiceThermalLayoutMaxWidthMm(80) ≈ 74.5mm — tránh lẹm phải trên nhiệt */
   .invoice-print-area:not(.item-labels-print) {
-    max-width: 74.5mm !important;
+    max-width: 71.5mm !important;
     margin-left: 0 !important;
     margin-right: 0 !important;
+    padding-right: 3mm !important;
+    box-sizing: border-box !important;
   }
   /* Single invoice: exactly 1 page */
   .invoice-print-area.invoice-single {
@@ -235,6 +237,11 @@ body.sidebar-open {
     page-break-after: avoid !important;
     break-before: avoid !important;
     break-after: avoid !important;
+    overflow: visible !important;
+  }
+  .item-labels-print .item-labels-print-body {
+    margin: 0 !important;
+    padding: 0 !important;
   }
   .non-print { display: none !important; }
 
@@ -275,6 +282,8 @@ body.sidebar-open {
     justify-content: space-between;
     text-align: left;
     gap: 0.35rem;
+    margin-top: -2.5mm !important;
+    margin-bottom: 0.5mm !important;
   }
   .invoice-xp80c .invoice-xp80c-header > div:last-child {
     align-items: flex-end !important;
@@ -357,12 +366,14 @@ body.sidebar-open {
 
   .invoice-xp80c .invoice-cs-table th:nth-child(3),
   .invoice-xp80c .invoice-cs-table td:nth-child(3) {
-    width: 24mm !important;
-    min-width: 22mm !important;
-    max-width: 26mm !important;
+    width: 21mm !important;
+    min-width: 21mm !important;
+    max-width: 21mm !important;
     text-align: right !important;
     padding-left: 0.08rem !important;
-    padding-right: 0 !important;
+    padding-right: 0.035rem !important;
+    white-space: nowrap !important;
+    overflow: visible !important;
     box-sizing: border-box !important;
   }
 
@@ -375,18 +386,20 @@ body.sidebar-open {
   }
   /* Logo ~65px C# template ≈ 17mm trên 80mm — img gốc đủ nét khi co (PNG đầy đủ + unoptimized) */
   .invoice-xp80c .invoice-brand-mark {
-    max-width: 17mm !important;
-    max-height: 17mm !important;
+    max-width: 14mm !important;
+    max-height: 14mm !important;
+    height: 14mm !important;
     width: auto !important;
-    height: auto !important;
+    overflow: hidden !important;
   }
   .invoice-xp80c .invoice-brand-mark img {
     max-width: 100% !important;
-    max-height: 17mm !important;
+    max-height: 14mm !important;
     width: auto !important;
-    height: auto !important;
+    height: 14mm !important;
     object-fit: contain !important;
     object-position: left top !important;
+    transform: translateY(-2.2mm) !important;
     image-rendering: -webkit-optimize-contrast !important;
     image-rendering: crisp-edges !important;
   }
@@ -405,33 +418,30 @@ body.sidebar-open {
     direction: ltr !important;
     box-sizing: border-box !important;
     width: 100% !important;
-    max-width: 51mm !important;
-    /* margin-left đẩy cả khối (padding không thoát khỏi vùng head cắt giấy) */
-    margin-left: 2.5mm !important;
-    margin-right: auto !important;
-    padding: 1.5mm 1.5mm 2mm 3mm !important;
+    max-width: 58mm !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    padding: 1mm 1mm 1.25mm 1mm !important;
   }
-  /* Mỗi tem: một trang; chỉ hàng thứ 2+ mới break-before (tránh trang trắng khi chỉ 1 tem). */
+  .item-labels-print .item-label-page {
+    page-break-after: always !important;
+    break-after: page !important;
+    page-break-before: avoid !important;
+    break-before: avoid-page !important;
+  }
+  .item-labels-print .item-label-page:last-child {
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+  }
   .item-labels-print .item-label-row {
     min-height: 0 !important;
     box-sizing: border-box !important;
-    padding: 0 !important;
+    padding: 0 0 0 2mm !important;
     margin: 0 !important;
     page-break-inside: avoid;
     break-inside: avoid;
-    page-break-after: avoid !important;
-    break-after: avoid !important;
-    page-break-before: avoid !important;
-    break-before: auto !important;
-  }
-  .item-labels-print .item-label-row ~ .item-label-row {
-    margin-top: 0 !important;
-    page-break-before: always !important;
-    break-before: page !important;
-  }
-  .item-labels-print .item-label-row:last-child {
-    page-break-after: avoid !important;
-    break-after: avoid !important;
+    display: block !important;
+    visibility: visible !important;
   }
   .item-labels-print .item-label-header-row {
     display: flex !important;
@@ -443,10 +453,16 @@ body.sidebar-open {
     max-width: 100% !important;
     min-width: 0 !important;
   }
+  .item-labels-print .item-label-left-block {
+    flex: 0 0 30mm !important;
+    width: 30mm !important;
+    min-width: 30mm !important;
+    max-width: 30mm !important;
+    overflow: visible !important;
+  }
   .item-labels-print .item-label-barcode-block {
-    flex-shrink: 0 !important;
-    min-width: 0 !important;
-    max-width: 100% !important;
+    width: 100% !important;
+    overflow: visible !important;
   }
   .item-labels-print .invoice-order-barcode--item-label svg {
     display: block !important;
@@ -454,14 +470,15 @@ body.sidebar-open {
     max-width: 100% !important;
   }
   .item-labels-print .item-label-header-row .invoice-order-barcode--item-label svg {
-    max-width: 26mm !important;
+    width: 30mm !important;
+    max-width: 30mm !important;
     max-height: 9mm !important;
-    width: auto !important;
     height: auto !important;
   }
   /* C# 90×45px ≈ 24×12mm @96dpi — chỉ cột barcode (không cột KH) */
   .item-labels-print .item-label-header-row--solo .invoice-order-barcode--item-label svg {
-    max-width: 24mm !important;
+    width: 28mm !important;
+    max-width: 28mm !important;
     max-height: 12mm !important;
   }
   .item-labels-print .item-label-barcode-hri {
@@ -477,18 +494,17 @@ body.sidebar-open {
   .item-labels-print .item-label-customer-line {
     margin: 0 !important;
     padding: 0 !important;
-    font-size: 6.5pt !important;
+    font-size: 8.5pt !important;
     font-weight: bold !important;
     line-height: 14px !important;
     color: #000 !important;
   }
   /* Mô tả full ngang dưới barcode + cửa hàng (giống tem mẫu) */
-  .item-labels-print .item-label-header-row + .item-label-desc-block {
-    margin-top: 1.5mm !important;
+  .item-labels-print .item-label-left-block .item-label-desc-block {
+    margin-top: 0.5mm !important;
     width: 100% !important;
     max-width: 100% !important;
     min-width: 0 !important;
-    clear: both !important;
   }
   .item-labels-print .item-label-desc-line {
     margin: 0 !important;
@@ -503,15 +519,19 @@ body.sidebar-open {
 /* Xem trước tem (màn hình): cùng lề ngang với bản in */
 .item-labels-print {
   font-family: Arial, Helvetica, sans-serif;
-  max-width: 51mm;
-  margin-left: 2.5mm;
-  padding: 1.5mm 1.5mm 0 3mm;
+  max-width: 58mm;
+  margin-left: 0;
+  padding: 1mm 1mm 0 1mm;
   box-sizing: border-box;
+}
+.item-labels-print .item-label-page {
+  margin: 0;
+  padding: 0;
 }
 .item-labels-print .item-label-row {
   min-height: 0;
   box-sizing: border-box;
-  padding-left: 10px;
+  padding-left: 2mm;
   padding-top: 10px;
   margin-bottom: 10px;
 }
@@ -526,17 +546,24 @@ body.sidebar-open {
   gap: 2mm;
   width: 100%;
 }
+.item-labels-print .item-label-left-block {
+  flex: 0 0 30mm;
+  width: 30mm;
+  min-width: 30mm;
+  max-width: 30mm;
+}
 .item-labels-print .item-label-barcode-block {
-  flex-shrink: 0;
+  width: 100%;
 }
 .item-labels-print .item-label-header-row .invoice-order-barcode--item-label svg {
-  max-width: 26mm;
+  width: 30mm;
+  max-width: 30mm;
   max-height: 9mm;
-  width: auto;
   height: auto;
 }
 .item-labels-print .item-label-header-row--solo .invoice-order-barcode--item-label svg {
-  max-width: 24mm;
+  width: 28mm;
+  max-width: 28mm;
   max-height: 12mm;
 }
 .item-labels-print .item-label-customer-block {
@@ -546,15 +573,14 @@ body.sidebar-open {
 }
 .item-labels-print .item-label-customer-line {
   margin: 0;
-  font-size: 6.5pt;
+  font-size: 8.5pt;
   font-weight: bold;
   line-height: 14px;
   color: #000;
 }
-.item-labels-print .item-label-header-row + .item-label-desc-block {
-  margin-top: 1.5mm;
+.item-labels-print .item-label-left-block .item-label-desc-block {
+  margin-top: 0.5mm;
   width: 100%;
-  clear: both;
 }
 .item-labels-print .item-label-desc-line {
   margin: 0;

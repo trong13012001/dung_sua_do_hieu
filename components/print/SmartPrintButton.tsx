@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { PrintTarget } from "@/lib/printTargets";
 import {
   isSilentThermalConfigured,
-  printThermalElement,
+  printThermalElementWithStatus,
 } from "@/lib/print/thermalPrint";
 
 export interface SmartPrintButtonProps {
@@ -27,6 +27,10 @@ export function SmartPrintButton({
   className,
 }: Readonly<SmartPrintButtonProps>) {
   const [busy, setBusy] = useState(false);
+  const [feedback, setFeedback] = useState<{
+    type: "success" | "error";
+    message: string;
+  } | null>(null);
   const silentReady = isSilentThermalConfigured();
   const alive = useRef(true);
   useEffect(() => {
@@ -46,10 +50,25 @@ export function SmartPrintButton({
     }
 
     setBusy(true);
+    setFeedback(null);
     try {
-      await printThermalElement(root, { target });
+      const result = await printThermalElementWithStatus(root, { target });
+      if (alive.current) {
+        setFeedback({
+          type: "success",
+          message: result.method === "silent"
+            ? `Đã xác nhận gửi lệnh in qua ${result.channel}.`
+            : "Đã mở hộp thoại in. Hãy xác nhận để gửi lệnh in.",
+        });
+      }
     } catch (err) {
       console.error(err);
+      if (alive.current) {
+        setFeedback({
+          type: "error",
+          message: err instanceof Error ? err.message : String(err),
+        });
+      }
       globalThis.alert(
         err instanceof Error ? err.message : String(err),
       );
@@ -59,13 +78,25 @@ export function SmartPrintButton({
   };
 
   return (
-    <button
-      type="button"
-      className={className}
-      disabled={busy}
-      onClick={handleClick}
-    >
-      {busy ? "Đang in…" : (silentReady && silentLabel) || children}
-    </button>
+    <div className="inline-flex flex-col gap-1">
+      <button
+        type="button"
+        className={className}
+        disabled={busy}
+        onClick={handleClick}
+      >
+        {busy ? "Đang in…" : (silentReady && silentLabel) || children}
+      </button>
+      {feedback ? (
+        <span
+          role="status"
+          className={`text-xs ${
+            feedback.type === "success" ? "text-green-600" : "text-red-600"
+          }`}
+        >
+          {feedback.message}
+        </span>
+      ) : null}
+    </div>
   );
 }

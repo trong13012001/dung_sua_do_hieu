@@ -28,9 +28,11 @@
   }
 
   html.thermal-print .invoice-print-area:not(.item-labels-print) {
-    max-width: 74.5mm !important;
+    max-width: 71.5mm !important;
     margin-left: 0 !important;
     margin-right: 0 !important;
+    padding-right: 3mm !important;
+    box-sizing: border-box !important;
   }
 
   html.thermal-print .invoice-print-area.invoice-single {
@@ -66,6 +68,11 @@
     page-break-after: avoid !important;
     break-before: avoid !important;
     break-after: avoid !important;
+    overflow: visible !important;
+  }
+  html.thermal-print .item-labels-print .item-labels-print-body {
+    margin: 0 !important;
+    padding: 0 !important;
   }
 
   html.thermal-print .non-print {
@@ -111,6 +118,8 @@
     justify-content: space-between;
     text-align: left;
     gap: 0.35rem;
+    margin-top: -2.5mm !important;
+    margin-bottom: 0.5mm !important;
   }
 
   html.thermal-print .invoice-xp80c .invoice-xp80c-header > div:last-child {
@@ -164,19 +173,21 @@
   }
 
   html.thermal-print .invoice-xp80c .invoice-brand-mark {
-    max-width: 17mm !important;
-    max-height: 17mm !important;
+    max-width: 14mm !important;
+    max-height: 14mm !important;
+    height: 14mm !important;
     width: auto !important;
-    height: auto !important;
+    overflow: hidden !important;
   }
 
   html.thermal-print .invoice-xp80c .invoice-brand-mark img {
     max-width: 100% !important;
-    max-height: 17mm !important;
+    max-height: 14mm !important;
     width: auto !important;
-    height: auto !important;
+    height: 14mm !important;
     object-fit: contain !important;
     object-position: left top !important;
+    transform: translateY(-2.2mm) !important;
   }
 
   html.thermal-print .invoice-xp80c .invoice-cs-table {
@@ -211,12 +222,14 @@
 
   html.thermal-print .invoice-xp80c .invoice-cs-table th:nth-child(3),
   html.thermal-print .invoice-xp80c .invoice-cs-table td:nth-child(3) {
-    width: 24mm !important;
-    min-width: 22mm !important;
-    max-width: 26mm !important;
+    width: 21mm !important;
+    min-width: 21mm !important;
+    max-width: 21mm !important;
     text-align: right !important;
     padding-left: 0.08rem !important;
-    padding-right: 0 !important;
+    padding-right: 0.35mm !important;
+    white-space: nowrap !important;
+    overflow: visible !important;
     box-sizing: border-box !important;
   }
 
@@ -242,29 +255,31 @@
     direction: ltr !important;
     box-sizing: border-box !important;
     width: 100% !important;
-    max-width: 51mm !important;
-    margin-left: 2.5mm !important;
-    margin-right: auto !important;
-    padding: 1.5mm 1.5mm 2mm 3mm !important;
+    max-width: 58mm !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    padding: 1mm 1mm 1.25mm 1mm !important;
+  }
+  html.thermal-print .item-labels-print .item-label-page {
+    page-break-after: always !important;
+    break-after: page !important;
+    page-break-before: avoid !important;
+    break-before: avoid-page !important;
+  }
+  html.thermal-print .item-labels-print .item-label-page:last-child {
+    page-break-after: avoid !important;
+    break-after: avoid !important;
   }
 
   html.thermal-print .item-labels-print .item-label-row {
     min-height: 0 !important;
     box-sizing: border-box !important;
-    padding: 0 !important;
+    padding: 0 0 0 2mm !important;
     margin: 0 !important;
     page-break-inside: avoid;
     break-inside: avoid;
-    page-break-after: avoid !important;
-    break-after: avoid !important;
-    page-break-before: avoid !important;
-    break-before: auto !important;
-  }
-
-  html.thermal-print .item-labels-print .item-label-row ~ .item-label-row {
-    margin-top: 0 !important;
-    page-break-before: always !important;
-    break-before: page !important;
+    display: block !important;
+    visibility: visible !important;
   }
 
   html.thermal-print .item-labels-print .item-label-header-row {
@@ -277,11 +292,17 @@
     max-width: 100% !important;
     min-width: 0 !important;
   }
+  html.thermal-print .item-labels-print .item-label-left-block {
+    flex: 0 0 30mm !important;
+    width: 30mm !important;
+    min-width: 30mm !important;
+    max-width: 30mm !important;
+    overflow: visible !important;
+  }
 
   html.thermal-print .item-labels-print .item-label-barcode-block {
-    flex-shrink: 0 !important;
-    min-width: 0 !important;
-    max-width: 100% !important;
+    width: 100% !important;
+    overflow: visible !important;
   }
 
   html.thermal-print .item-labels-print .invoice-order-barcode--item-label svg {
@@ -291,14 +312,15 @@
   }
 
   html.thermal-print .item-labels-print .item-label-header-row .invoice-order-barcode--item-label svg {
-    max-width: 26mm !important;
+    width: 30mm !important;
+    max-width: 30mm !important;
     max-height: 9mm !important;
-    width: auto !important;
     height: auto !important;
   }
 
   html.thermal-print .item-labels-print .item-label-header-row--solo .invoice-order-barcode--item-label svg {
-    max-width: 24mm !important;
+    width: 28mm !important;
+    max-width: 28mm !important;
     max-height: 12mm !important;
   }
 
@@ -317,18 +339,17 @@
   html.thermal-print .item-labels-print .item-label-customer-line {
     margin: 0 !important;
     padding: 0 !important;
-    font-size: 6.5pt !important;
+    font-size: 8.5pt !important;
     font-weight: bold !important;
     line-height: 14px !important;
     color: #000 !important;
   }
 
-  html.thermal-print .item-labels-print .item-label-header-row + .item-label-desc-block {
-    margin-top: 1.5mm !important;
+  html.thermal-print .item-labels-print .item-label-left-block .item-label-desc-block {
+    margin-top: 0.5mm !important;
     width: 100% !important;
     max-width: 100% !important;
     min-width: 0 !important;
-    clear: both !important;
   }
 
   html.thermal-print .item-labels-print .item-label-desc-line {

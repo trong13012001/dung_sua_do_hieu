@@ -4,7 +4,10 @@ import {
   invoiceThermalLayoutMaxWidthMm,
   invoiceThermalViewportWidthMm,
 } from "@/lib/print/invoiceThermalMetrics";
-import { LABEL_THERMAL_PAGE_HEIGHT_MM } from "@/lib/print/labelThermalMetrics";
+import {
+  LABEL_THERMAL_PAGE_HEIGHT_MM,
+  LABEL_THERMAL_PAPER_WIDTH_MM,
+} from "@/lib/print/labelThermalMetrics";
 
 /**
  * HTML in nhiệt: viewport + `pageWidth` = **khổ giấy**; `@page` margin trong CSS tạo vùng nội dung —
@@ -163,17 +166,22 @@ html.thermal-print #print-root .invoice-xp80c .invoice-cs-table td:nth-child(2) 
 }
 html.thermal-print #print-root .invoice-xp80c .invoice-cs-table th:nth-child(3),
 html.thermal-print #print-root .invoice-xp80c .invoice-cs-table td:nth-child(3) {
-  width: 24mm !important;
-  min-width: 22mm !important;
-  max-width: 26mm !important;
+  width: 21mm !important;
+  min-width: 21mm !important;
+  max-width: 21mm !important;
   text-align: right !important;
-  padding-right: 0 !important;
+  padding-left: 0.08rem !important;
+  padding-right: 0.35mm !important;
+  white-space: nowrap !important;
+  overflow: visible !important;
   box-sizing: border-box !important;
 }
 html.thermal-print .invoice-print-area:not(.item-labels-print) {
-  max-width: ${layoutMaxMm}mm !important;
+  max-width: calc(${layoutMaxMm}mm - 3mm) !important;
   margin-left: 0 !important;
   margin-right: 0 !important;
+  padding-right: 3mm !important;
+  box-sizing: border-box !important;
 }
 html.thermal-print #print-root .invoice-xp80c .invoice-xp80c-body {
   overflow: visible !important;
@@ -252,7 +260,7 @@ export async function buildPrintableHtmlFromElement(
   const isInvoice =
     wrapper.classList.contains("invoice-xp80c") ||
     Boolean(wrapper.querySelector(".invoice-xp80c"));
-  const paperMm = opts?.paperWidthMm ?? (isInvoice ? 80 : 58);
+  const paperMm = opts?.paperWidthMm ?? (isInvoice ? 80 : LABEL_THERMAL_PAPER_WIDTH_MM);
 
   if (
     isInvoice &&
@@ -335,19 +343,23 @@ ${inlinedCss}
     page-break-after: avoid !important;
     break-after: avoid !important;
   }
-  .item-labels-print .item-label-row {
-    page-break-after: avoid !important;
-    break-after: avoid !important;
+  .item-labels-print .item-labels-print-body {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  .item-labels-print .item-label-page {
+    page-break-after: always !important;
+    break-after: page !important;
     page-break-before: avoid !important;
-    break-before: auto !important;
+    break-before: avoid-page !important;
   }
-  .item-labels-print .item-label-row ~ .item-label-row {
-    page-break-before: always !important;
-    break-before: page !important;
-  }
-  .item-labels-print .item-label-row:last-child {
+  .item-labels-print .item-label-page:last-child {
     page-break-after: avoid !important;
     break-after: avoid !important;
+  }
+  .item-labels-print .item-label-row {
+    display: block !important;
+    visibility: visible !important;
   }
 }
 </style>`

@@ -1,9 +1,7 @@
 "use client";
 
 import React from "react";
-import dynamic from "next/dynamic";
-
-const ReactBarcode = dynamic(() => import("react-barcode"), { ssr: false });
+import ReactBarcode from "react-barcode";
 
 export interface OrderBarcodeProps {
     readonly value: string;
@@ -53,6 +51,7 @@ export function OrderBarcode({
                 <ReactBarcode
                     value={value}
                     format="CODE128"
+                    renderer="svg"
                     height={height}
                     width={barWidth}
                     displayValue={false}

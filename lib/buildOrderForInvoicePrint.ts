@@ -17,6 +17,7 @@ export function buildOrderForInvoicePrint(
     customer: Customer,
     lines: readonly PosLikeLine[],
     tailors: readonly (User & { role: Role | null })[],
+    creatorName?: string | null,
 ): Order {
     const tailorById: Record<string, { name: string }> = {};
     for (const t of tailors) {
@@ -39,6 +40,7 @@ export function buildOrderForInvoicePrint(
     });
     return {
         ...created,
+        created_by_name: creatorName ?? created.created_by_name ?? null,
         customer: {
             name: customer.name,
             phone: customer.phone,

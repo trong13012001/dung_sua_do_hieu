@@ -141,6 +141,15 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
 
               <div className="vuexy-card p-4 md:p-5 !shadow-none border border-border bg-transparent">
                 <h6 className="text-[10px] md:text-xs font-bold uppercase tracking-widest text-muted-foreground mb-3 md:mb-4 flex items-center gap-2">
+                  <User size={12} className="md:w-[14px] md:h-[14px]" /> Người tạo đơn
+                </h6>
+                <p className="font-bold text-sm md:text-base text-foreground">
+                  {order.created_by_name?.trim() || '-'}
+                </p>
+              </div>
+
+              <div className="vuexy-card p-4 md:p-5 !shadow-none border border-border bg-transparent">
+                <h6 className="text-[10px] md:text-xs font-bold uppercase tracking-widest text-muted-foreground mb-3 md:mb-4 flex items-center gap-2">
                   <User size={12} className="md:w-[14px] md:h-[14px]" /> Thợ xử lý
                 </h6>
                 {order.details?.some(d => d.assigned_tailor_id) ? (

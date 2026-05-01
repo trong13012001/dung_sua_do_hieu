@@ -22,6 +22,7 @@ import { ItemLabelsPrint } from '@/components/ui/ItemLabelsPrint';
 import { InvoicePrint } from '@/components/ui/InvoicePrint';
 import { buildOrderForInvoicePrint } from '@/lib/buildOrderForInvoicePrint';
 import { useDebounce } from '@/hooks/useDebounce';
+import { useCurrentUserId } from '@/hooks/useCurrentUserId';
 import { Customer, Order, User, Role } from '@/lib/types';
 import { validateRequired, validateNumber, validatePhone, validateMaxLength } from '@/lib/validation';
 import { isSilentThermalConfigured } from '@/lib/print/thermalPrint';
@@ -104,6 +105,8 @@ export default function POSPage() {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const { toast, showToast, hideToast } = useToast();
   const [items, setItems] = useState<PosItem[]>([]);
+  const currentUserId = useCurrentUserId();
+  const [selectedCreatorId, setSelectedCreatorId] = useState<string>('');
 
   // Optional return appointment time
   const [returnDate, setReturnDate] = useState('');
@@ -221,6 +224,26 @@ export default function POSPage() {
     ) || [],
     [employees]
   );
+  const creatorEmployees = useMemo(
+    () =>
+      employees?.filter((e: User & { role: Role | null }) => {
+        const roleName = e.role?.name?.trim().toLowerCase();
+        return roleName === 'kế toán' || roleName === 'ke toan' || roleName === 'account';
+      }) || [],
+    [employees]
+  );
+
+  useEffect(() => {
+    if (selectedCreatorId) return;
+    const hasCurrentInCreatorList = creatorEmployees.some((u) => String(u.id) === String(currentUserId || ''));
+    if (hasCurrentInCreatorList && currentUserId) {
+      setSelectedCreatorId(String(currentUserId));
+      return;
+    }
+    if (creatorEmployees.length > 0) {
+      setSelectedCreatorId(String(creatorEmployees[0].id));
+    }
+  }, [currentUserId, selectedCreatorId, creatorEmployees]);
 
   const addItem = () => setItems([...items, { name: '', price: 0, description: '', assigned_tailor_id: '' }]);
   const removeItem = (index: number) => setItems(items.filter((_, i) => i !== index));
@@ -306,13 +329,18 @@ export default function POSPage() {
           description: i.description?.trim() ?? '',
           assigned_tailor_id: i.assigned_tailor_id || null,
         })),
+        updated_by: selectedCreatorId || undefined,
       });
       showToast('Đơn hàng đã được tạo thành công!', 'success');
+      const creatorName =
+        employees?.find((u: User & { role: Role | null }) => String(u.id) === String(selectedCreatorId))?.name ??
+        null;
       const invoiceOrder = buildOrderForInvoicePrint(
         created as Order,
         selectedCustomer,
         filled,
         tailors,
+        creatorName,
       );
       flushSync(() => {
         setPrintQueue({
@@ -403,6 +431,27 @@ export default function POSPage() {
                     onChange={e => setReturnClock(e.target.value)}
                   />
                   <p className="text-[11px] text-muted-foreground">Nếu bỏ trống giờ, hệ thống sẽ lấy mặc định 18:00.</p>
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label htmlFor="pos-order-creator" className="text-[11px] font-bold text-muted-foreground uppercase">
+                  Nhân viên tạo đơn
+                </label>
+                <div className="relative">
+                  <select
+                    id="pos-order-creator"
+                    className="w-full bg-muted/20 border border-border rounded-md px-3 py-1.5 text-sm appearance-none outline-none focus:ring-1 focus:ring-primary"
+                    value={selectedCreatorId}
+                    onChange={e => setSelectedCreatorId(e.target.value)}
+                  >
+                    <option value="">Mặc định theo tài khoản đăng nhập</option>
+                    {creatorEmployees.map((u: User & { role: Role | null }) => (
+                      <option key={u.id} value={String(u.id)}>
+                        {u.name}{u.role?.name ? ` (${u.role.name})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" size={14} />
                 </div>
               </div>
             </div>

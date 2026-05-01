@@ -196,7 +196,7 @@ async function enrichOrders(orders: any[]): Promise<Order[]> {
     const customerIds = [
         ...new Set(orders.map((o) => o.customer_id).filter(Boolean)),
     ] as number[];
-    const [customersRes, detailsRes] = await Promise.all([
+    const [customersRes, detailsRes, createdLogsRes] = await Promise.all([
         customerIds.length > 0
             ? supabase
                   .from("customers")
@@ -209,6 +209,12 @@ async function enrichOrders(orders: any[]): Promise<Order[]> {
                 "id, order_id, item_name, unit_price, description, status, assigned_tailor_id",
             )
             .in("order_id", orderIds),
+        supabase
+            .from("order_logs")
+            .select("order_id, updated_by, created_at")
+            .eq("action", "order_created")
+            .in("order_id", orderIds)
+            .order("created_at", { ascending: true }),
     ]);
     const customerMap: Record<
         number,
@@ -241,8 +247,34 @@ async function enrichOrders(orders: any[]): Promise<Order[]> {
             for (const t of tailors)
                 tailorMap[String(t.id)] = { id: String(t.id), name: t.name };
     }
+
+    const firstCreatorByOrder: Record<number, string> = {};
+    const creatorIds = new Set<string | number>();
+    for (const log of createdLogsRes.data || []) {
+        const oid = Number(log.order_id);
+        if (!Number.isFinite(oid)) continue;
+        if (firstCreatorByOrder[oid] != null) continue;
+        const uid = log.updated_by;
+        if (uid == null) continue;
+        const sid = String(uid);
+        firstCreatorByOrder[oid] = sid;
+        creatorIds.add(uid);
+    }
+    const creatorNameById: Record<string, string> = {};
+    if (creatorIds.size > 0) {
+        const { data: creators } = await supabase
+            .from("users")
+            .select("id, name")
+            .in("id", [...creatorIds]);
+        for (const u of creators || []) {
+            creatorNameById[String(u.id)] = u.name;
+        }
+    }
+
     return orders.map((o) => ({
         ...o,
+        created_by_name:
+            creatorNameById[firstCreatorByOrder[o.id] ?? ""] ?? null,
         customer: customerMap[o.customer_id] || null,
         details: (detailsByOrder[o.id] || []).map((d: any) => ({
             ...d,
@@ -1195,7 +1227,7 @@ export async function getOrder(orderId: number | string): Promise<Order> {
         .single();
     if (error) throw error;
 
-    const [customerRes, detailsRes, paymentsRes] = await Promise.all([
+    const [customerRes, detailsRes, paymentsRes, creatorLogRes] = await Promise.all([
         order.customer_id
             ? supabase
                   .from("customers")
@@ -1205,6 +1237,13 @@ export async function getOrder(orderId: number | string): Promise<Order> {
             : Promise.resolve({ data: null }),
         supabase.from("order_details").select("*").eq("order_id", order.id),
         supabase.from("payments").select("*").eq("order_id", order.id),
+        supabase
+            .from("order_logs")
+            .select("updated_by, created_at")
+            .eq("order_id", order.id)
+            .eq("action", "order_created")
+            .order("created_at", { ascending: true })
+            .limit(1),
     ]);
 
     const details = detailsRes.data || [];
@@ -1231,8 +1270,20 @@ export async function getOrder(orderId: number | string): Promise<Order> {
             : null,
     }));
 
+    let createdByName: string | null = null;
+    const creatorId = creatorLogRes.data?.[0]?.updated_by;
+    if (creatorId != null) {
+        const { data: creator } = await supabase
+            .from("users")
+            .select("name")
+            .eq("id", creatorId)
+            .single();
+        createdByName = creator?.name ?? null;
+    }
+
     return {
         ...order,
+        created_by_name: createdByName,
         customer: customerRes.data || null,
         details: detailsWithTailor,
         payments: paymentsRes.data || [],

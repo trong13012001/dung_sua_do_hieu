@@ -10,6 +10,7 @@ import {
   isElectronThermalPrintAvailable,
   tryElectronSilentPrint,
 } from "@/lib/print/electronPrintClient";
+import { LABEL_THERMAL_PAPER_WIDTH_MM } from "@/lib/print/labelThermalMetrics";
 
 export interface ThermalPrintOptions {
   readonly target: PrintTarget;
@@ -18,7 +19,7 @@ export interface ThermalPrintOptions {
 }
 
 function defaultPaperWidthMm(target: PrintTarget): number {
-  if (target === PRINT_TARGET_LABEL_XP235B) return 58;
+  if (target === PRINT_TARGET_LABEL_XP235B) return LABEL_THERMAL_PAPER_WIDTH_MM;
   if (target === PRINT_TARGET_INVOICE_XP80C) return 80;
   return 80;
 }
@@ -92,28 +93,27 @@ export async function printElementHtmlThroughBrowser(
 }
 
 export type ThermalPrintMethod = "silent" | "browser";
+export type ThermalPrintChannel = "electron" | "agent" | "browser" | "mixed";
 
-/**
- * In nhiệt: **Electron silent** → agent localhost (tuỳ chọn) → hộp thoại Chrome (tuỳ chọn env) → **luôn** fallback dialog HTML.
- * Electron silent → agent (tuỳ chọn) → dialog.
- */
-export async function printThermalElement(
-  sourceEl: HTMLElement,
+export interface ThermalPrintDispatchResult {
+  readonly method: ThermalPrintMethod;
+  /** Kênh đã nhận lệnh in (xác nhận mức app/spooler callback). */
+  readonly channel: ThermalPrintChannel;
+  /** Có xác nhận gửi job từ kênh in hay chưa. */
+  readonly dispatched: boolean;
+}
+
+async function dispatchThermalHtml(
+  html: string,
   options: ThermalPrintOptions,
-): Promise<ThermalPrintMethod> {
-  const widthMm = options.paperWidthMm ?? defaultPaperWidthMm(options.target);
+): Promise<ThermalPrintDispatchResult> {
   const isInvoice = options.target === PRINT_TARGET_INVOICE_XP80C;
-
-  const html = await buildPrintableHtmlFromElement(sourceEl, {
-    paperWidthMm: widthMm,
-  });
-
   const deviceName =
     options.printerName?.trim() || thermalPrinterForTarget(options.target);
 
   const electron = await tryElectronSilentPrint(html, deviceName);
   if (electron.ok) {
-    return "silent";
+    return { method: "silent", channel: "electron", dispatched: true };
   }
   if (electron.reason === "failed" && isElectronThermalPrintAvailable()) {
     throw new Error(
@@ -122,14 +122,97 @@ export async function printThermalElement(
   }
 
   if (await trySilentPrintAgent(html, options)) {
-    return "silent";
+    return { method: "silent", channel: "agent", dispatched: true };
   }
 
   if (isInvoice && isInvoiceBrowserPrintEnabled()) {
     await printHtmlThroughBrowserDialog(html);
-    return "browser";
+    return { method: "browser", channel: "browser", dispatched: true };
   }
 
   await printHtmlThroughBrowserDialog(html);
-  return "browser";
+  return { method: "browser", channel: "browser", dispatched: true };
+}
+
+function collectItemLabelRows(sourceEl: HTMLElement): HTMLElement[] {
+  if (sourceEl.classList.contains("item-label-row")) {
+    return [sourceEl];
+  }
+  const rows = [...sourceEl.querySelectorAll(".item-label-row")].filter(
+    (el): el is HTMLElement => el instanceof HTMLElement,
+  );
+  if (rows.length > 0) return rows;
+  return [sourceEl];
+}
+
+function createSingleLabelHost(row: HTMLElement): HTMLElement {
+  const host = document.createElement("div");
+  host.className = "item-labels-print";
+  host.setAttribute("data-print-target", PRINT_TARGET_LABEL_XP235B);
+  const body = document.createElement("div");
+  body.className = "item-labels-print-body";
+  const page = document.createElement("div");
+  page.className = "item-label-page";
+  page.appendChild(row.cloneNode(true));
+  body.appendChild(page);
+  host.appendChild(body);
+  return host;
+}
+
+/**
+ * In nhiệt: **Electron silent** → agent localhost (tuỳ chọn) → hộp thoại Chrome (tuỳ chọn env) → **luôn** fallback dialog HTML.
+ * Electron silent → agent (tuỳ chọn) → dialog.
+ */
+export async function printThermalElementWithStatus(
+  sourceEl: HTMLElement,
+  options: ThermalPrintOptions,
+): Promise<ThermalPrintDispatchResult> {
+  const widthMm = options.paperWidthMm ?? defaultPaperWidthMm(options.target);
+  if (options.target === PRINT_TARGET_LABEL_XP235B) {
+    const rows = collectItemLabelRows(sourceEl);
+    let method: ThermalPrintMethod = "silent";
+    const channels = new Set<ThermalPrintChannel>();
+
+    for (let i = 0; i < rows.length; i += 1) {
+      const host = createSingleLabelHost(rows[i]);
+      const html = await buildPrintableHtmlFromElement(host, {
+        paperWidthMm: widthMm,
+      });
+      let one: ThermalPrintDispatchResult;
+      try {
+        one = await dispatchThermalHtml(html, options);
+      } catch (err) {
+        throw new Error(
+          `Tem ${i + 1}/${rows.length}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+      channels.add(one.channel);
+      if (one.method === "browser") {
+        method = "browser";
+      }
+      if (i < rows.length - 1) {
+        await new Promise((resolve) => globalThis.setTimeout(resolve, 120));
+      }
+    }
+
+    const channel =
+      channels.size === 1
+        ? [...channels][0]
+        : (channels.has("browser") ? "browser" : "mixed");
+
+    return { method, channel, dispatched: true };
+  }
+
+  const html = await buildPrintableHtmlFromElement(sourceEl, {
+    paperWidthMm: widthMm,
+  });
+  return dispatchThermalHtml(html, options);
+}
+
+export async function printThermalElement(
+  sourceEl: HTMLElement,
+  options: ThermalPrintOptions,
+): Promise<ThermalPrintMethod> {
+  const result = await printThermalElementWithStatus(sourceEl, options);
+  return result.method;
 }

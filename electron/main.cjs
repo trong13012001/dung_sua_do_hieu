@@ -114,6 +114,24 @@ function webContentsPrintSilentPromise(wc, printOpts) {
   });
 }
 
+function clampMicrons(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return undefined;
+  return Math.max(1_000, Math.min(2_000_000, Math.round(n)));
+}
+
+function extractThermalPageSizeMicronsFromHtml(html) {
+  const s = String(html || "");
+  const m = s.match(/@page\s*\{[\s\S]*?\bsize\s*:\s*([0-9.]+)mm(?:\s+([0-9.]+)mm|\s+auto)?/i);
+  if (!m) return undefined;
+  const widthMm = Number(m[1]);
+  const heightMm = m[2] ? Number(m[2]) : 240; // receipt cuộn: dùng chiều cao đủ lớn thay vì auto
+  const width = clampMicrons(widthMm * 1000);
+  const height = clampMicrons(heightMm * 1000);
+  if (!width || !height) return undefined;
+  return { width, height };
+}
+
 function scheduleAutoUpdateFromGitHub() {
   if (!app.isPackaged || !autoUpdater) return;
   autoUpdater.autoDownload = true;
@@ -205,6 +223,7 @@ loadElectronEnvFiles();
 
 /** Mặc định khi không set env (bản cài quầy). Dev local: `ELECTRON_START_URL=http://localhost:3000`. */
 const DEFAULT_POS_APP_URL = "https://dung-sua-do-hieu.vercel.app";
+// const DEFAULT_POS_APP_URL="http://localhost:3000"
 
 /**
  * Chuẩn hoá URL cho loadURL. Sửa lỗi gõ hay gặp: cổng `3000s` thay vì `3000` → `3000`.
@@ -333,6 +352,10 @@ ipcMain.handle("thermal-print-html", async (_event, { html, deviceName }) => {
       margins: { marginType: "none" },
       preferCSSPageSize: true,
     };
+    const explicitPageSize = extractThermalPageSizeMicronsFromHtml(html);
+    if (explicitPageSize) {
+      opts.pageSize = explicitPageSize;
+    }
     const dn = sanitizePrinterString(typeof deviceName === "string" ? deviceName : "");
     const resolvedName = await resolveWindowsPrinterDeviceName(printWin.webContents, dn);
     if (resolvedName) opts.deviceName = resolvedName;

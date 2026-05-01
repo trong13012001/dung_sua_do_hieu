@@ -42,8 +42,9 @@ import { useDebounce } from "@/hooks/useDebounce";
 import { Can } from "@/components/auth/Can";
 import { Order, OrderDetail, User, Role } from "@/lib/types";
 import { validateRequired, validateNumber } from "@/lib/validation";
-import { printTargetElementSmart } from "@/lib/printSmart";
+import { printElementSmart } from "@/lib/printSmart";
 import { PRINT_TARGET_INVOICE_XP80C } from "@/lib/printTargets";
+import { isSilentThermalConfigured } from "@/lib/print/thermalPrint";
 
 const statusOptions = [
     { value: "New", label: "Mới", color: "bg-info/10 text-info" },
@@ -186,6 +187,7 @@ export default function OrdersPage() {
         new Set(),
     );
     const [batchPrintOpen, setBatchPrintOpen] = useState(false);
+    const [batchPrinting, setBatchPrinting] = useState(false);
     const [payForm, setPayForm] = useState<{
         amount: string;
         method: "Cash" | "Card" | "Transfer";
@@ -304,6 +306,7 @@ export default function OrdersPage() {
     });
 
     const loadMoreRef = useRef<HTMLDivElement>(null);
+    const batchPrintRootRef = useRef<HTMLDivElement>(null);
     const loadMoreCallback = useCallback(() => {
         if (!hasNextPage || isFetchingNextPage) return;
         fetchNextPage();
@@ -540,6 +543,75 @@ export default function OrdersPage() {
         });
     };
     const batchOrders = filtered.filter((o) => selectedForPrint.has(o.id));
+    const silentBatchReady = isSilentThermalConfigured();
+
+    const handleBatchPrint = async () => {
+        if (batchPrinting) return;
+        if (!batchOrders.length) {
+            showToast("Không có hóa đơn nào để in", "error");
+            return;
+        }
+        const root = batchPrintRootRef.current;
+        if (!root) {
+            showToast("Không tìm thấy vùng in lô hóa đơn", "error");
+            return;
+        }
+        const invoiceEls = [...root.querySelectorAll(".invoice-print-area")].filter(
+            (el): el is HTMLElement => el instanceof HTMLElement,
+        );
+        if (!invoiceEls.length) {
+            showToast("Không có hóa đơn hiển thị để in", "error");
+            return;
+        }
+        setBatchPrinting(true);
+        try {
+            let successCount = 0;
+            let usedBrowserFallback = false;
+            const errors: string[] = [];
+
+            for (const [idx, el] of invoiceEls.entries()) {
+                const result = await printElementSmart(
+                    el,
+                    PRINT_TARGET_INVOICE_XP80C,
+                );
+                if (result.error) {
+                    errors.push(`Phiếu ${idx + 1}: ${result.error}`);
+                    continue;
+                }
+                if (result.method === "browser") {
+                    usedBrowserFallback = true;
+                }
+                successCount += 1;
+
+                // Giảm nguy cơ driver bỏ sót job khi đẩy nhiều lệnh liên tiếp.
+                await new Promise((resolve) => setTimeout(resolve, 150));
+            }
+
+            if (successCount === 0) {
+                showToast(errors[0] || "In lô hóa đơn thất bại", "error");
+                return;
+            }
+
+            if (errors.length > 0) {
+                showToast(
+                    `Đã in ${successCount}/${invoiceEls.length} hóa đơn. Lỗi: ${errors[0]}`,
+                    "error",
+                );
+                return;
+            }
+
+            showToast(
+                usedBrowserFallback
+                    ? `Đã mở hộp thoại in cho ${successCount} hóa đơn.`
+                    : `Đã gửi lệnh in ${successCount} hóa đơn tới máy in.`,
+                "success",
+            );
+        } catch (err: any) {
+            showToast(err?.message || "In lô hóa đơn thất bại", "error");
+        } finally {
+            setBatchPrinting(false);
+        }
+    };
 
     return (
         <div className="space-y-6">
@@ -1555,14 +1627,22 @@ export default function OrdersPage() {
                             </button>
                             <button
                                 type="button"
-                                onClick={() => printTargetElementSmart(PRINT_TARGET_INVOICE_XP80C)}
-                                className="px-4 py-2 bg-primary text-white rounded-md font-bold text-sm hover:opacity-90"
+                                onClick={handleBatchPrint}
+                                disabled={batchPrinting || batchOrders.length === 0}
+                                className="px-4 py-2 bg-primary text-white rounded-md font-bold text-sm hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed"
                             >
-                                {`In XP-80C: ${batchOrders.length} phiếu`}
+                                {batchPrinting
+                                    ? "Đang in..."
+                                    : silentBatchReady
+                                      ? `In XP-80C ⚡: ${batchOrders.length} phiếu`
+                                      : `In XP-80C: ${batchOrders.length} phiếu`}
                             </button>
                         </div>
                     </div>
-                    <div className="print:block space-y-6 print:space-y-0">
+                    <div
+                        ref={batchPrintRootRef}
+                        className="print:block space-y-6 print:space-y-0"
+                    >
                         {batchOrders.map((order) => (
                             <div
                                 key={order.id}

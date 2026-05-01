@@ -73,6 +73,8 @@ export interface Order {
     updated_at: string;
     /** Mã 11 số giống WPF (yymmdd + thứ tự ngày + 00); null nếu DB chưa migrate */
     transaction_code?: string | null;
+    /** Tên nhân viên tạo đơn (dùng cho in/preview khi có chọn trên POS). */
+    created_by_name?: string | null;
 
     customer?: Partial<Customer>;
     details?: OrderDetail[];

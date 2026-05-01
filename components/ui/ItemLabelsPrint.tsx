@@ -26,8 +26,24 @@ export interface ItemLabelsPrintProps {
     readonly returnTime?: string | null;
 }
 
-function wrapItemLabelText(raw: string, maxLen: number): string[] {
-    const noiDung = raw.trim().split(/\s+/).filter(Boolean);
+function splitLongToken(token: string, maxLen: number): string[] {
+    if (token.length <= maxLen) return [token];
+    const chunks: string[] = [];
+    for (let i = 0; i < token.length; i += maxLen) {
+        chunks.push(token.slice(i, i + maxLen));
+    }
+    return chunks;
+}
+
+function wrapItemLabelText(
+    raw: string,
+    maxLen: number,
+): string[] {
+    const noiDung = raw
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean)
+        .flatMap((token) => splitLongToken(token, maxLen));
     if (noiDung.length === 0) return [];
     const lines: string[] = [];
     let newLine = "";
@@ -164,54 +180,55 @@ export function ItemLabelsPrint({
                         addressLines.length > 0 ||
                         returnLines.length > 0;
                     return (
-                        <div
-                            key={`${index}-${item.name}`}
-                            className="item-label-row border-b border-dashed border-gray-300 last:border-b-0 print:border-b-0 pb-3 mb-1"
-                        >
-                            <div
-                                className={`item-label-header-row${hasCustomerCol ? "" : " item-label-header-row--solo"}`}
-                            >
-                                <div className="item-label-barcode-block">
-                                    <OrderBarcode value={code} itemLabel />
-                                </div>
-                                {hasCustomerCol && (
-                                    <div className="item-label-customer-block">
-                                        {customerLines.map((line, li) => (
-                                            <p
-                                                key={`${code}-kh-${li}`}
-                                                className="item-label-customer-line"
-                                            >
-                                                {line}
-                                            </p>
-                                        ))}
-                                        {addressLines.map((line, li) => (
-                                            <p
-                                                key={`${code}-dc-${li}`}
-                                                className="item-label-customer-line"
-                                            >
-                                                {line}
-                                            </p>
-                                        ))}
-                                        {returnLines.map((line, li) => (
-                                            <p
-                                                key={`${code}-tr-${li}`}
-                                                className="item-label-customer-line"
-                                            >
-                                                {line}
-                                            </p>
-                                        ))}
+                        <div key={`${index}-${item.name}`} className="item-label-page">
+                            <div className="item-label-row border-b border-dashed border-gray-300 last:border-b-0 print:border-b-0 ">
+                                <div
+                                    className={`item-label-header-row${hasCustomerCol ? "" : " item-label-header-row--solo"}`}
+                                >
+                                    <div className="item-label-left-block">
+                                        <div className="item-label-barcode-block">
+                                            <OrderBarcode value={code} itemLabel />
+                                        </div>
+                                        <div className="item-label-desc-block">
+                                            {lines.map((line, li) => (
+                                                <p
+                                                    key={`${code}-L${li}`}
+                                                    className="item-label-desc-line"
+                                                >
+                                                    {line}
+                                                </p>
+                                            ))}
+                                        </div>
                                     </div>
-                                )}
-                            </div>
-                            <div className="item-label-desc-block">
-                                {lines.map((line, li) => (
-                                    <p
-                                        key={`${code}-L${li}`}
-                                        className="item-label-desc-line"
-                                    >
-                                        {line}
-                                    </p>
-                                ))}
+                                    {hasCustomerCol && (
+                                        <div className="item-label-customer-block">
+                                            {customerLines.map((line, li) => (
+                                                <p
+                                                    key={`${code}-kh-${li}`}
+                                                    className="item-label-customer-line"
+                                                >
+                                                    {line}
+                                                </p>
+                                            ))}
+                                            {addressLines.map((line, li) => (
+                                                <p
+                                                    key={`${code}-dc-${li}`}
+                                                    className="item-label-customer-line"
+                                                >
+                                                    {line}
+                                                </p>
+                                            ))}
+                                            {returnLines.map((line, li) => (
+                                                <p
+                                                    key={`${code}-tr-${li}`}
+                                                    className="item-label-customer-line"
+                                                >
+                                                    {line}
+                                                </p>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     );

@@ -191,7 +191,7 @@ export default function SettingsPage() {
               />
               <WindowsPrinterPicker
                 id="thermal_printer_label"
-                label="Máy in tem nhãn (58mm)"
+                label="Máy in tem nhãn (USER 3x4in)"
                 value={form.thermal_printer_label}
                 onChange={(v) => update('thermal_printer_label', v)}
                 printers={winPrinters}
