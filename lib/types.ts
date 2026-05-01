@@ -116,6 +116,12 @@ export interface DashboardPeriodOrderRow {
     total_amount: number;
 }
 
+export interface DashboardPeriodDebtOrderRow
+    extends DashboardPeriodOrderRow {
+    paid_amount: number;
+    unpaid_amount: number;
+}
+
 export interface DashboardPeriodAnalytics {
     ordersCreatedCount: number;
     ordersReturnedCount: number;
@@ -129,6 +135,7 @@ export interface DashboardPeriodAnalytics {
      */
     periodUnpaidOnOrdersCreated: number;
     ordersCreated: DashboardPeriodOrderRow[];
+    ordersDebt: DashboardPeriodDebtOrderRow[];
     ordersReturned: DashboardPeriodOrderRow[];
     itemsCreated: DashboardPeriodItemRow[];
     itemsReturned: DashboardPeriodItemRow[];

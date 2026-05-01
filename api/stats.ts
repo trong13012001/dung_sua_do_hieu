@@ -2,6 +2,7 @@ import { supabase } from "@/lib/supabase";
 import { useQuery } from "@tanstack/react-query";
 import type {
     DashboardPeriodAnalytics,
+    DashboardPeriodDebtOrderRow,
     DashboardPeriodItemRow,
     DashboardPeriodOrderRow,
     DashboardPeriodSelection,
@@ -329,7 +330,7 @@ async function fetchPeriodAnalytics(
             supabase
                 .from("orders")
                 .select(
-                    "id, customer_id, total_amount, status, return_time, created_at",
+                    "id, customer_id, total_amount, paid_amount, status, return_time, created_at",
                 )
                 .gte("created_at", startIso)
                 .lte("created_at", endIso)
@@ -392,6 +393,26 @@ async function fetchPeriodAnalytics(
             total_amount: Number(o.total_amount),
         }),
     );
+
+    const ordersDebt: DashboardPeriodDebtOrderRow[] = ordersCreatedRaw
+        .map((o) => {
+            const total = Number(o.total_amount);
+            const paid = Number(o.paid_amount ?? 0);
+            const unpaid = Math.max(0, total - paid);
+            return {
+                id: o.id,
+                created_at: o.created_at,
+                return_time: o.return_time,
+                status: o.status,
+                customer_name:
+                    customerMap[o.customer_id as number] || "Vãng lai",
+                total_amount: total,
+                paid_amount: paid,
+                unpaid_amount: unpaid,
+            };
+        })
+        .filter((o) => o.unpaid_amount > 0)
+        .sort((a, b) => b.unpaid_amount - a.unpaid_amount);
 
     const ordersReturned: DashboardPeriodOrderRow[] = ordersReturnedRaw.map(
         (o) => ({
@@ -473,6 +494,7 @@ async function fetchPeriodAnalytics(
         periodRevenue,
         periodUnpaidOnOrdersCreated,
         ordersCreated,
+        ordersDebt,
         ordersReturned,
         itemsCreated,
         itemsReturned,

@@ -99,6 +99,7 @@ function periodLabelVi(mode: DashboardPeriodMode, value: string) {
 
 type PeriodListTab =
     | "ordersCreated"
+    | "ordersDebt"
     | "ordersReturned"
     | "itemsCreated"
     | "itemsReturned";
@@ -457,6 +458,11 @@ export default function DashboardPage() {
                                         periodData.ordersCreated.length,
                                     ],
                                     [
+                                        "ordersDebt",
+                                        "Công nợ đơn trong kỳ",
+                                        periodData.ordersDebt.length,
+                                    ],
+                                    [
                                         "ordersReturned",
                                         "Đơn đã trả (chi tiết)",
                                         periodData.ordersReturned.length,
@@ -485,7 +491,7 @@ export default function DashboardPage() {
                             <div className="overflow-x-auto max-h-[min(420px,55vh)] overflow-y-auto">
                                 {listTab === "itemsCreated" && (
                                     <table className="w-full text-left text-sm">
-                                        <thead className="sticky top-0 z-[1] bg-muted/40 text-[11px] font-bold text-muted-foreground uppercase">
+                                        <thead className="sticky top-0 z-1 bg-muted/40 text-[11px] font-bold text-muted-foreground uppercase">
                                             <tr>
                                                 <th className="px-4 py-3">
                                                     Hàng
@@ -571,7 +577,7 @@ export default function DashboardPage() {
 
                                 {listTab === "itemsReturned" && (
                                     <table className="w-full text-left text-sm">
-                                        <thead className="sticky top-0 z-[1] bg-muted/40 text-[11px] font-bold text-muted-foreground uppercase">
+                                        <thead className="sticky top-0 z-1 bg-muted/40 text-[11px] font-bold text-muted-foreground uppercase">
                                             <tr>
                                                 <th className="px-4 py-3">
                                                     Hàng
@@ -659,7 +665,7 @@ export default function DashboardPage() {
 
                                 {listTab === "ordersCreated" && (
                                     <table className="w-full text-left text-sm">
-                                        <thead className="sticky top-0 z-[1] bg-muted/40 text-[11px] font-bold text-muted-foreground uppercase">
+                                        <thead className="sticky top-0 z-1 bg-muted/40 text-[11px] font-bold text-muted-foreground uppercase">
                                             <tr>
                                                 <th className="px-4 py-3">
                                                     Mã đơn
@@ -754,7 +760,7 @@ export default function DashboardPage() {
 
                                 {listTab === "ordersReturned" && (
                                     <table className="w-full text-left text-sm">
-                                        <thead className="sticky top-0 z-[1] bg-muted/40 text-[11px] font-bold text-muted-foreground uppercase">
+                                        <thead className="sticky top-0 z-1 bg-muted/40 text-[11px] font-bold text-muted-foreground uppercase">
                                             <tr>
                                                 <th className="px-4 py-3">
                                                     Mã đơn
@@ -841,6 +847,131 @@ export default function DashboardPage() {
                                                                           "vi-VN",
                                                                       )
                                                                     : "—"}
+                                                            </td>
+                                                        </tr>
+                                                    ),
+                                                )
+                                            )}
+                                        </tbody>
+                                    </table>
+                                )}
+
+                                {listTab === "ordersDebt" && (
+                                    <table className="w-full text-left text-sm">
+                                        <thead className="sticky top-0 z-1 bg-muted/40 text-[11px] font-bold text-muted-foreground uppercase">
+                                            <tr>
+                                                <th className="px-4 py-3">
+                                                    Mã đơn
+                                                </th>
+                                                <th className="px-4 py-3">
+                                                    Khách
+                                                </th>
+                                                <th className="px-4 py-3">
+                                                    Trạng thái
+                                                </th>
+                                                <th className="px-4 py-3 text-right">
+                                                    Tổng tiền
+                                                </th>
+                                                <th className="px-4 py-3 text-right">
+                                                    Đã thu
+                                                </th>
+                                                <th className="px-4 py-3 text-right">
+                                                    Còn nợ
+                                                </th>
+                                                <th className="px-4 py-3 whitespace-nowrap">
+                                                    Tạo lúc
+                                                </th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-border">
+                                            {periodData.ordersDebt.length ===
+                                            0 ? (
+                                                <tr>
+                                                    <td
+                                                        colSpan={7}
+                                                        className="px-4 py-8 text-center text-muted-foreground italic"
+                                                    >
+                                                        Không có đơn nợ nào
+                                                        được tạo trong kỳ này.
+                                                    </td>
+                                                </tr>
+                                            ) : (
+                                                periodData.ordersDebt.map(
+                                                    (o) => (
+                                                        <tr
+                                                            key={o.id}
+                                                            className="hover:bg-muted/20"
+                                                        >
+                                                            <td className="px-4 py-2.5">
+                                                                <Link
+                                                                    href="/orders"
+                                                                    className="font-bold text-primary hover:underline"
+                                                                >
+                                                                    #
+                                                                    {String(
+                                                                        o.id,
+                                                                    ).padStart(
+                                                                        5,
+                                                                        "0",
+                                                                    )}
+                                                                </Link>
+                                                            </td>
+                                                            <td className="px-4 py-2.5 text-muted-foreground">
+                                                                {
+                                                                    o.customer_name
+                                                                }
+                                                            </td>
+                                                            <td className="px-4 py-2.5">
+                                                                <span
+                                                                    className={`px-2 py-0.5 rounded text-[10px] font-bold ${statusColor(o.status)}`}
+                                                                >
+                                                                    {statusLabel(
+                                                                        o.status,
+                                                                    )}
+                                                                </span>
+                                                            </td>
+                                                            <td className="px-4 py-2.5 text-right font-medium tabular-nums">
+                                                                {new Intl.NumberFormat(
+                                                                    "vi-VN",
+                                                                    {
+                                                                        style: "currency",
+                                                                        currency:
+                                                                            "VND",
+                                                                    },
+                                                                ).format(
+                                                                    o.total_amount,
+                                                                )}
+                                                            </td>
+                                                            <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">
+                                                                {new Intl.NumberFormat(
+                                                                    "vi-VN",
+                                                                    {
+                                                                        style: "currency",
+                                                                        currency:
+                                                                            "VND",
+                                                                    },
+                                                                ).format(
+                                                                    o.paid_amount,
+                                                                )}
+                                                            </td>
+                                                            <td className="px-4 py-2.5 text-right font-bold tabular-nums text-warning">
+                                                                {new Intl.NumberFormat(
+                                                                    "vi-VN",
+                                                                    {
+                                                                        style: "currency",
+                                                                        currency:
+                                                                            "VND",
+                                                                    },
+                                                                ).format(
+                                                                    o.unpaid_amount,
+                                                                )}
+                                                            </td>
+                                                            <td className="px-4 py-2.5 text-xs text-muted-foreground whitespace-nowrap">
+                                                                {new Date(
+                                                                    o.created_at,
+                                                                ).toLocaleString(
+                                                                    "vi-VN",
+                                                                )}
                                                             </td>
                                                         </tr>
                                                     ),
