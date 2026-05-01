@@ -33,6 +33,7 @@ import {
     YAxis,
 } from "recharts";
 import Link from "next/link";
+import { OrderDetailModal } from "@/components/ui/OrderDetailModal";
 
 const statusLabel = (s: string) => {
     switch (s) {
@@ -112,6 +113,9 @@ export default function DashboardPage() {
         String(new Date().getFullYear()),
     );
     const [listTab, setListTab] = useState<PeriodListTab>("itemsCreated");
+    const [detailModalOrderId, setDetailModalOrderId] = useState<
+        number | string | null
+    >(null);
 
     const periodSelection = useMemo(
         () => ({
@@ -193,7 +197,7 @@ export default function DashboardPage() {
     return (
         <div className="space-y-4 md:space-y-6">
             {/* Main stats */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6">
                 {dashboardStats.map((stat) => (
                     <div key={stat.name} className="vuexy-card p-3 md:p-5">
                         <div className="flex justify-between items-center">
@@ -222,7 +226,7 @@ export default function DashboardPage() {
             </div>
 
             {/* Extra stats row */}
-            <div className="grid grid-cols-2 gap-3 md:gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-6">
                 {extraStats.map((stat) => (
                     <div
                         key={stat.name}
@@ -357,7 +361,7 @@ export default function DashboardPage() {
                     </p>
                 ) : periodData ? (
                     <>
-                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
                             <div className="rounded-xl border border-border bg-muted/10 p-3 md:p-4">
                                 <div className="flex items-center gap-2 text-muted-foreground text-xs font-semibold uppercase tracking-wide">
                                     <ShoppingBag size={14} />
@@ -533,8 +537,13 @@ export default function DashboardPage() {
                                                                 {row.item_name}
                                                             </td>
                                                             <td className="px-4 py-2.5">
-                                                                <Link
-                                                                    href="/orders"
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() =>
+                                                                        setDetailModalOrderId(
+                                                                            row.order_id,
+                                                                        )
+                                                                    }
                                                                     className="font-mono text-xs text-primary hover:underline"
                                                                 >
                                                                     #
@@ -544,7 +553,7 @@ export default function DashboardPage() {
                                                                         5,
                                                                         "0",
                                                                     )}
-                                                                </Link>
+                                                                </button>
                                                             </td>
                                                             <td className="px-4 py-2.5 text-muted-foreground">
                                                                 {
@@ -619,8 +628,13 @@ export default function DashboardPage() {
                                                                 {row.item_name}
                                                             </td>
                                                             <td className="px-4 py-2.5">
-                                                                <Link
-                                                                    href="/orders"
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() =>
+                                                                        setDetailModalOrderId(
+                                                                            row.order_id,
+                                                                        )
+                                                                    }
                                                                     className="font-mono text-xs text-primary hover:underline"
                                                                 >
                                                                     #
@@ -630,7 +644,7 @@ export default function DashboardPage() {
                                                                         5,
                                                                         "0",
                                                                     )}
-                                                                </Link>
+                                                                </button>
                                                             </td>
                                                             <td className="px-4 py-2.5 text-muted-foreground">
                                                                 {
@@ -704,8 +718,13 @@ export default function DashboardPage() {
                                                             className="hover:bg-muted/20"
                                                         >
                                                             <td className="px-4 py-2.5">
-                                                                <Link
-                                                                    href="/orders"
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() =>
+                                                                        setDetailModalOrderId(
+                                                                            o.id,
+                                                                        )
+                                                                    }
                                                                     className="font-bold text-primary hover:underline"
                                                                 >
                                                                     #
@@ -715,7 +734,7 @@ export default function DashboardPage() {
                                                                         5,
                                                                         "0",
                                                                     )}
-                                                                </Link>
+                                                                </button>
                                                             </td>
                                                             <td className="px-4 py-2.5 text-muted-foreground">
                                                                 {
@@ -800,8 +819,13 @@ export default function DashboardPage() {
                                                             className="hover:bg-muted/20"
                                                         >
                                                             <td className="px-4 py-2.5">
-                                                                <Link
-                                                                    href="/orders"
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() =>
+                                                                        setDetailModalOrderId(
+                                                                            o.id,
+                                                                        )
+                                                                    }
                                                                     className="font-bold text-primary hover:underline"
                                                                 >
                                                                     #
@@ -811,7 +835,7 @@ export default function DashboardPage() {
                                                                         5,
                                                                         "0",
                                                                     )}
-                                                                </Link>
+                                                                </button>
                                                             </td>
                                                             <td className="px-4 py-2.5 text-muted-foreground">
                                                                 {
@@ -903,8 +927,13 @@ export default function DashboardPage() {
                                                             className="hover:bg-muted/20"
                                                         >
                                                             <td className="px-4 py-2.5">
-                                                                <Link
-                                                                    href="/orders"
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() =>
+                                                                        setDetailModalOrderId(
+                                                                            o.id,
+                                                                        )
+                                                                    }
                                                                     className="font-bold text-primary hover:underline"
                                                                 >
                                                                     #
@@ -914,7 +943,7 @@ export default function DashboardPage() {
                                                                         5,
                                                                         "0",
                                                                     )}
-                                                                </Link>
+                                                                </button>
                                                             </td>
                                                             <td className="px-4 py-2.5 text-muted-foreground">
                                                                 {
@@ -1243,6 +1272,12 @@ export default function DashboardPage() {
                     )}
                 </div>
             </div>
+
+            <OrderDetailModal
+                isOpen={detailModalOrderId !== null}
+                onClose={() => setDetailModalOrderId(null)}
+                orderId={detailModalOrderId}
+            />
         </div>
     );
 }

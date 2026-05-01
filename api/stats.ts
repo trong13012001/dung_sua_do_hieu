@@ -86,6 +86,10 @@ function parsePaymentTime(raw: string | null | undefined): Date | null {
     return Number.isNaN(d.getTime()) ? null : d;
 }
 
+function monthKeyLocal(d: Date): string {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
 export function useMonthlyRevenue() {
     return useQuery({
         queryKey: ["stats", "monthly"],
@@ -116,17 +120,15 @@ export function useMonthlyRevenue() {
             for (const p of data || []) {
                 const d = parsePaymentTime(p.payment_time);
                 if (d == null) continue;
-                const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+                const key = monthKeyLocal(d);
                 monthMap.set(key, (monthMap.get(key) || 0) + Number(p.amount));
             }
 
             const now = new Date();
             const last12Keys = new Set<string>();
             for (let i = 11; i >= 0; i--) {
-                const d = new Date(
-                    Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1),
-                );
-                const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+                const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                const key = monthKeyLocal(d);
                 last12Keys.add(key);
             }
 

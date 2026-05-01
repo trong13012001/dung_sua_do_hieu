@@ -1160,16 +1160,16 @@ export function useDeleteOrder() {
         ) => {
             const id = typeof arg === "number" ? arg : arg.id;
             const updated_by = typeof arg === "number" ? null : arg.updated_by;
-            const { error } = await supabase
-                .from("orders")
-                .delete()
-                .eq("id", id);
-            if (error) throw error;
             await insertOrderLog({
                 order_id: id,
                 action: "order_deleted",
                 updated_by,
             });
+            const { error } = await supabase
+                .from("orders")
+                .delete()
+                .eq("id", id);
+            if (error) throw error;
         },
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: ["orders"] });

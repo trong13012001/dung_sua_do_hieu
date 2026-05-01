@@ -115,7 +115,7 @@ export default function POSPage() {
   const currentUserId = useCurrentUserId();
   const [selectedCreatorId, setSelectedCreatorId] = useState<string>('');
 
-  // Optional return appointment time
+  // Optional return appointment date (time defaults to 16:00)
   const [returnDate, setReturnDate] = useState('');
 
   /** Hàng đợi in sau tạo đơn: 1) tem XP-235B → 2) hóa đơn XP-80C */
@@ -462,6 +462,7 @@ export default function POSPage() {
                     value={returnDate}
                     onChange={e => setReturnDate(e.target.value)}
                   />
+                  <p className="text-[11px] text-muted-foreground">Giờ hẹn trả mặc định: 16:00.</p>
                 </div>
               </div>
               <div className="space-y-1">

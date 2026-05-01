@@ -37,8 +37,18 @@ export async function insertOrderLog(params: {
   new_value?: Record<string, unknown>;
   updated_by?: string | null;
 }) {
+  const orderId = Number(params.order_id);
+  if (!Number.isFinite(orderId) || orderId <= 0) return;
+
+  const { data: orderExists, error: orderCheckError } = await supabase
+    .from('orders')
+    .select('id')
+    .eq('id', orderId)
+    .maybeSingle();
+  if (orderCheckError || !orderExists) return;
+
   const { error } = await supabase.from('order_logs').insert({
-    order_id: params.order_id,
+    order_id: orderId,
     action: params.action,
     entity_type: params.entity_type ?? null,
     entity_id: params.entity_id ?? null,
@@ -46,5 +56,9 @@ export async function insertOrderLog(params: {
     new_value: params.new_value ?? null,
     updated_by: params.updated_by ?? null,
   });
-  if (error) throw error;
+  if (error) {
+    // Never block business flow (create/update/payment) because of audit-log FK drift.
+    if (error.code === '23503' && error.message.includes('order_logs_order_id_fkey')) return;
+    throw error;
+  }
 }
