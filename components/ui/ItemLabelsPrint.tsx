@@ -12,10 +12,6 @@ export interface ItemLabelData {
     readonly description?: string;
 }
 
-/** Giống pd_PrintPage2: `newLine.Length > 20` */
-const ITEM_LABEL_WRAP_CHARS = 20;
-const ITEM_LABEL_HEADER_INFO_WRAP_CHARS = 14;
-
 export interface ItemLabelsPrintProps {
     readonly orderId: number;
     readonly transactionCode?: string | null;
@@ -26,42 +22,15 @@ export interface ItemLabelsPrintProps {
     readonly returnTime?: string | null;
 }
 
-function splitLongToken(token: string, maxLen: number): string[] {
-    if (token.length <= maxLen) return [token];
-    const chunks: string[] = [];
-    for (let i = 0; i < token.length; i += maxLen) {
-        chunks.push(token.slice(i, i + maxLen));
-    }
-    return chunks;
-}
-
-function wrapItemLabelText(
-    raw: string,
-    maxLen: number,
-): string[] {
-    const noiDung = raw
-        .trim()
-        .split(/\s+/)
-        .filter(Boolean)
-        .flatMap((token) => splitLongToken(token, maxLen));
-    if (noiDung.length === 0) return [];
-    const lines: string[] = [];
-    let newLine = "";
-    for (let j = 0; j < noiDung.length; j++) {
-        newLine += `${noiDung[j]} `;
-        if (newLine.length > maxLen || j === noiDung.length - 1) {
-            lines.push(newLine.trimEnd());
-            newLine = "";
-        }
-    }
-    return lines;
-}
-
 function rowTextLikeWpf(item: ItemLabelData): string {
     const parts = [item.name?.trim(), item.description?.trim()].filter(
         (s): s is string => Boolean(s),
     );
     return parts.join(" ");
+}
+
+function normalizeLabelText(raw: string | null | undefined): string {
+    return raw?.trim().replace(/\s+/g, " ") ?? "";
 }
 
 /** Ngày trả — dòng riêng như tem mẫu (05/03/2026) */
@@ -142,82 +111,41 @@ export function ItemLabelsPrint({
                         { id: orderId, transaction_code: transactionCode },
                         lineIndex,
                     );
-                    const lines = wrapItemLabelText(
-                        rowTextLikeWpf(item),
-                        ITEM_LABEL_WRAP_CHARS,
-                    );
-                    const customerLines = customerName?.trim()
-                        ? wrapItemLabelText(
-                              `${customerName.trim()}`,
-                              ITEM_LABEL_HEADER_INFO_WRAP_CHARS,
-                          )
-                        : [];
-                    const addressLines = customerAddress?.trim()
-                        ? wrapItemLabelText(
-                              `${customerAddress.trim()}`,
-                              ITEM_LABEL_HEADER_INFO_WRAP_CHARS,
-                          )
-                        : [];
+                    const itemText = normalizeLabelText(rowTextLikeWpf(item));
+                    const customerLine = normalizeLabelText(customerName);
+                    const addressLine = normalizeLabelText(customerAddress);
                     const returnLines: string[] = [];
                     if (returnDateLine?.trim()) {
-                        returnLines.push(
-                            ...wrapItemLabelText(
-                                returnDateLine.trim(),
-                                ITEM_LABEL_HEADER_INFO_WRAP_CHARS,
-                            ),
-                        );
+                        returnLines.push(returnDateLine.trim());
                     }
                     if (returnClockLine?.trim()) {
-                        returnLines.push(
-                            ...wrapItemLabelText(
-                                returnClockLine.trim(),
-                                ITEM_LABEL_HEADER_INFO_WRAP_CHARS,
-                            ),
-                        );
+                        returnLines.push(returnClockLine.trim());
                     }
-                    const hasCustomerCol =
-                        customerLines.length > 0 ||
-                        addressLines.length > 0 ||
-                        returnLines.length > 0;
+                    const hasCustomerMetaCol =
+                        addressLine.length > 0 || returnLines.length > 0;
                     return (
                         <div key={`${index}-${item.name}`} className="item-label-page">
                             <div className="item-label-row border-b border-dashed border-gray-300 last:border-b-0 print:border-b-0 ">
                                 <div
-                                    className={`item-label-header-row${hasCustomerCol ? "" : " item-label-header-row--solo"}`}
+                                    className={`item-label-header-row${hasCustomerMetaCol ? "" : " item-label-header-row--solo"}`}
                                 >
                                     <div className="item-label-left-block">
                                         <div className="item-label-barcode-block">
                                             <OrderBarcode value={code} itemLabel />
                                         </div>
-                                        <div className="item-label-desc-block">
-                                            {lines.map((line, li) => (
-                                                <p
-                                                    key={`${code}-L${li}`}
-                                                    className="item-label-desc-line"
-                                                >
-                                                    {line}
-                                                </p>
-                                            ))}
-                                        </div>
                                     </div>
-                                    {hasCustomerCol && (
+                                    {hasCustomerMetaCol && (
                                         <div className="item-label-customer-block">
-                                            {customerLines.map((line, li) => (
-                                                <p
-                                                    key={`${code}-kh-${li}`}
-                                                    className="item-label-customer-line"
-                                                >
-                                                    {line}
+                                               {customerLine && (
+                                        <p className="item-label-customer-name-line">
+                                            {customerLine}
+                                        </p>
+                                    )}
+                                            {addressLine && (
+                                                <p className="item-label-customer-line">
+                                                    {addressLine}
                                                 </p>
-                                            ))}
-                                            {addressLines.map((line, li) => (
-                                                <p
-                                                    key={`${code}-dc-${li}`}
-                                                    className="item-label-customer-line"
-                                                >
-                                                    {line}
-                                                </p>
-                                            ))}
+                                            )}
                                             {returnLines.map((line, li) => (
                                                 <p
                                                     key={`${code}-tr-${li}`}
@@ -228,6 +156,12 @@ export function ItemLabelsPrint({
                                             ))}
                                         </div>
                                     )}
+                                </div>
+                                <div className="item-label-desc-block">
+                                 
+                                    <p className="item-label-desc-line">
+                                        {itemText}
+                                    </p>
                                 </div>
                             </div>
                         </div>

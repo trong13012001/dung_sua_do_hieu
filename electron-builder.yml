@@ -15,6 +15,7 @@ publish:
 # PC quầy Windows Intel/AMD — chỉ NSIS x64 (schema v25 không có `win.arch` ở root).
 win:
   icon: electron/build/icon.png
+  signAndEditExecutable: false
   target:
     - target: nsis
       arch:

@@ -8,7 +8,6 @@ import {
     invoiceBarcodeFromOrder,
     invoiceDisplayNoFromBarcodeCode,
 } from "@/lib/barcode";
-import { wrapDetailLines } from "@/lib/invoicePrintLayout";
 import { SmartPrintButton } from "@/components/print/SmartPrintButton";
 import { InvoiceThermalHtmlPreviewButton } from "@/components/print/InvoiceThermalHtmlPreviewButton";
 import { BrowserHtmlPrintButton } from "@/components/print/BrowserHtmlPrintButton";
@@ -193,16 +192,7 @@ export function InvoicePrintContent({
                                         {idx + 1}
                                     </td>
                                     <td className="py-1 px-1 leading-snug text-[10px]">
-                                        {wrapDetailLines(
-                                            formatInvoiceDetailLine(d),
-                                            38,
-                                        ).map((line, i) => (
-                                            <div
-                                                key={`detail-${d.id}-line-${i}`}
-                                            >
-                                                {line}
-                                            </div>
-                                        ))}
+                                        <div>{formatInvoiceDetailLine(d)}</div>
                                     </td>
                                     <td className="py-1 text-right whitespace-nowrap text-[10px]">
                                         {new Intl.NumberFormat("vi-VN").format(
