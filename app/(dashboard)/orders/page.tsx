@@ -12,6 +12,7 @@ import {
     FileDown,
     Printer,
     Loader2,
+    ListOrdered,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import {
@@ -183,6 +184,10 @@ export default function OrdersPage() {
         number | string | null
     >(null);
     const [labelOrder, setLabelOrder] = useState<Order | null>(null);
+    /** null = in tất cả món; mảng STT 1-based = chỉ các dòng đó (barcode đúng vị trí trong đơn). */
+    const [labelLineIndices, setLabelLineIndices] = useState<number[] | null>(
+        null,
+    );
     const [selectedForPrint, setSelectedForPrint] = useState<Set<number>>(
         new Set(),
     );
@@ -846,6 +851,19 @@ export default function OrdersPage() {
                                                 )}
                                             </div>
                                             <div className="flex gap-1.5">
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setDetailModalOrderId(
+                                                            order.id,
+                                                        );
+                                                    }}
+                                                    className="p-2 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                                                    title="Chi tiết đơn và danh sách mặt hàng"
+                                                >
+                                                    <ListOrdered size={16} />
+                                                </button>
                                                 {debt > 0 && (
                                                     <Can permission="process_payment">
                                                         <button
@@ -891,6 +909,9 @@ export default function OrdersPage() {
                                                                 e.stopPropagation();
                                                                 setLabelOrder(
                                                                     order,
+                                                                );
+                                                                setLabelLineIndices(
+                                                                    null,
                                                                 );
                                                             }}
                                                             className="p-2 rounded-md text-info hover:bg-info/10 transition-colors"
@@ -1654,13 +1675,19 @@ export default function OrdersPage() {
                 </div>
             </Modal>
 
-            {/* Item labels print modal from Orders page */}
+            {/* Item labels print modal from Orders page (stackOnTop: mở từ chi tiết đơn) */}
             <Modal
                 isOpen={Boolean(labelOrder?.details?.length)}
-                onClose={() => setLabelOrder(null)}
+                stackOnTop
+                onClose={() => {
+                    setLabelOrder(null);
+                    setLabelLineIndices(null);
+                }}
                 title={
                     labelOrder
-                        ? `In tem barcode đơn #${labelOrder.id.toString().padStart(5, "0")}`
+                        ? labelLineIndices?.length === 1
+                            ? `In tem 1 món · Đơn #${labelOrder.id.toString().padStart(5, "0")}`
+                            : `In tem barcode đơn #${labelOrder.id.toString().padStart(5, "0")}`
                         : "In tem barcode"
                 }
                 maxWidth="max-w-lg"
@@ -1673,10 +1700,18 @@ export default function OrdersPage() {
                             name: d.item_name,
                             description: d.description || undefined,
                         }))}
+                        lineIndices1Based={
+                            labelLineIndices?.length
+                                ? labelLineIndices
+                                : undefined
+                        }
                         customerName={labelOrder.customer?.name ?? null}
                         customerAddress={labelOrder.customer?.address ?? null}
                         returnTime={labelOrder.return_time ?? null}
-                        onClose={() => setLabelOrder(null)}
+                        onClose={() => {
+                            setLabelOrder(null);
+                            setLabelLineIndices(null);
+                        }}
                     />
                 ) : null}
             </Modal>
@@ -1686,6 +1721,10 @@ export default function OrdersPage() {
                 isOpen={detailModalOrderId != null}
                 onClose={() => setDetailModalOrderId(null)}
                 orderId={detailModalOrderId}
+                onPrintItemBarcode={(order, lineIndex1Based) => {
+                    setLabelOrder(order);
+                    setLabelLineIndices([lineIndex1Based]);
+                }}
             />
 
             {toast && (

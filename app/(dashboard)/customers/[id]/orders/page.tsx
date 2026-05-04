@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import {
   ChevronLeft,
@@ -16,7 +16,9 @@ import {
 } from 'lucide-react';
 import { useGetCustomerOrders } from '@/hooks/customer/useGetCustomerOrders';
 import { useGetCustomerDetail } from '@/hooks/customer/useGetCustomerDetail';
+import { Modal } from '@/components/ui/Modal';
 import { OrderDetailModal } from '@/components/ui/OrderDetailModal';
+import { ItemLabelsPrint } from '@/components/ui/ItemLabelsPrint';
 import { Order } from '@/lib/types';
 
 export default function CustomerOrdersPage() {
@@ -29,6 +31,9 @@ export default function CustomerOrdersPage() {
   const { data: orders, isLoading: isLoadingOrders } = useGetCustomerOrders(customerId);
 
   const selectedOrderId = searchParams.get('orderId');
+
+  const [labelOrder, setLabelOrder] = useState<Order | null>(null);
+  const [labelLineIndices, setLabelLineIndices] = useState<number[] | null>(null);
 
   const handleBack = () => {
     router.push('/customers');
@@ -207,11 +212,51 @@ export default function CustomerOrdersPage() {
         </div>
       </div>
 
+      <Modal
+        isOpen={Boolean(labelOrder?.details?.length)}
+        stackOnTop
+        onClose={() => {
+          setLabelOrder(null);
+          setLabelLineIndices(null);
+        }}
+        title={
+          labelOrder
+            ? labelLineIndices?.length === 1
+              ? `In tem 1 món · Đơn #${labelOrder.id.toString().padStart(5, '0')}`
+              : `In tem barcode đơn #${labelOrder.id.toString().padStart(5, '0')}`
+            : 'In tem barcode'
+        }
+        maxWidth="max-w-lg"
+      >
+        {labelOrder?.details?.length ? (
+          <ItemLabelsPrint
+            orderId={labelOrder.id}
+            transactionCode={labelOrder.transaction_code}
+            items={labelOrder.details.map((d) => ({
+              name: d.item_name,
+              description: d.description || undefined,
+            }))}
+            lineIndices1Based={labelLineIndices?.length ? labelLineIndices : undefined}
+            customerName={labelOrder.customer?.name ?? null}
+            customerAddress={labelOrder.customer?.address ?? null}
+            returnTime={labelOrder.return_time ?? null}
+            onClose={() => {
+              setLabelOrder(null);
+              setLabelLineIndices(null);
+            }}
+          />
+        ) : null}
+      </Modal>
+
       {/* Order Detail Modal */}
       <OrderDetailModal
         isOpen={!!selectedOrderId}
         onClose={closeOrderDetail}
         orderId={selectedOrderId}
+        onPrintItemBarcode={(order, lineIndex1Based) => {
+          setLabelOrder(order);
+          setLabelLineIndices([lineIndex1Based]);
+        }}
       />
     </div>
   );

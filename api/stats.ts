@@ -240,6 +240,7 @@ async function fetchAllReturnedOrderIdsInRange(
         const { data, error } = await supabase
             .from("orders")
             .select("id")
+            .eq("status", "Delivered")
             .not("return_time", "is", null)
             .gte("return_time", startIso)
             .lte("return_time", endIso)
@@ -291,6 +292,7 @@ async function fetchPeriodAnalytics(
             supabase
                 .from("orders")
                 .select("*", { count: "exact", head: true })
+                .eq("status", "Delivered")
                 .not("return_time", "is", null)
                 .gte("return_time", startIso)
                 .lte("return_time", endIso),
@@ -338,6 +340,7 @@ async function fetchPeriodAnalytics(
                 .select(
                     "id, customer_id, total_amount, status, return_time, created_at",
                 )
+                .eq("status", "Delivered")
                 .not("return_time", "is", null)
                 .gte("return_time", startIso)
                 .lte("return_time", endIso)

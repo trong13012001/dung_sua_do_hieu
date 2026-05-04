@@ -9,14 +9,25 @@ interface ModalProps {
   title: string;
   children: React.ReactNode;
   maxWidth?: string;
+  /** z-index cao hơn modal thường — khi mở chồng lên modal khác (vd. in tem từ chi tiết đơn). */
+  stackOnTop?: boolean;
 }
 
-export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, maxWidth = 'max-w-md' }) => {
+export const Modal: React.FC<ModalProps> = ({
+  isOpen,
+  onClose,
+  title,
+  children,
+  maxWidth = 'max-w-md',
+  stackOnTop = false,
+}) => {
   if (!isOpen) return null;
+
+  const zOverlay = stackOnTop ? 'z-[110]' : 'z-[100]';
 
   return (
     <div
-      className="fixed inset-0 bg-[#00000080] backdrop-blur-sm z-[100] flex items-center justify-center p-0 md:p-4"
+      className={`fixed inset-0 bg-[#00000080] backdrop-blur-sm ${zOverlay} flex items-center justify-center p-0 md:p-4`}
       onClick={onClose}
       role="dialog"
       aria-modal="true"

@@ -115,37 +115,38 @@ export function InvoicePrintContent({
                     <OrderBarcode value={orderCode} compact />
                 </div>
 
-                <p className="text-center text-[15px] font-bold text-black leading-tight">
-                    {settings?.shop_name || "DŨNG SỬA ĐỒ HIỆU"}
-                </p>
-                <p className="text-center text-[11px] font-bold text-black mt-1">
-                    Hotline: {settings?.shop_hotline || "0904672288"}
-                </p>
-
-                <p className="text-center text-[12px] font-bold text-black mt-3">
-                    HÓA ĐƠN GIAO DỊCH
-                </p>
+                <div className="invoice-xp80c-titles flex flex-col gap-0">
+                    <p className="text-center text-[15px] font-bold text-black leading-none m-0">
+                        {settings?.shop_name || "DŨNG SỬA ĐỒ HIỆU"}
+                    </p>
+                    <p className="text-center text-[11px] font-bold text-black mt-0.5 m-0 leading-none">
+                        Hotline: {settings?.shop_hotline || "0904672288"}
+                    </p>
+                    <p className="text-center text-[12px] font-bold text-black mt-2 m-0 leading-none">
+                        HÓA ĐƠN GIAO DỊCH
+                    </p>
+                </div>
 
                 <div className="invoice-xp80c-meta flex flex-row justify-between items-start gap-2  mt-2 text-black">
-                    <p className="min-w-0 font-semibold text-[10px]">
+                    <p className="min-w-0 font-semibold text-[9px]">
                         Khách hàng: {order.customer?.name || "Vãng lai"}
                     </p>
-                    <p className="shrink-0 text-right whitespace-nowrap font-semibold text-[10px]">
+                    <p className="shrink-0 text-right whitespace-nowrap font-semibold text-[9px]">
                         No {invoiceNo} Ngày: {invoiceDate}
                     </p>
                 </div>
 
                 <div className="invoice-xp80c-details mt-1 space-y-0.5   text-black">
-                    <p className="font-semibold text-[9px]">
+                    <p className="font-semibold text-[8px]">
                         SĐT: {order.customer?.phone || "-"}
                     </p>
-                    <p className="font-semibold text-[9px]">
+                    <p className="font-semibold text-[8px]">
                         Địa chỉ: {order.customer?.address?.trim() || "-"}
                     </p>
-                    <p className="font-semibold text-[9px]">
+                    <p className="font-semibold text-[8px]">
                         Nhân viên: {order.created_by_name?.trim() || "-"}
                     </p>
-                    <p className="font-semibold text-[12px]">
+                    <p className="font-semibold text-[11px]">
                         Hẹn trả đồ:{" "}
                         <span className="font-bold">
                             {order.return_time

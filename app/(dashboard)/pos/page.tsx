@@ -7,17 +7,24 @@ import {
   Search,
   CheckCircle2,
   ChevronDown,
+  ChevronRight,
   Users,
   Phone,
   X,
-  UserPlus
+  UserPlus,
+  ShoppingBag,
+  Calendar,
+  Clock,
+  History,
 } from 'lucide-react';
 import { useGetCustomer } from '@/hooks/customer/useGetCustomer';
+import { useGetCustomerOrders } from '@/hooks/customer/useGetCustomerOrders';
 import { useCreateCustomer } from '@/hooks/customer/useCreateCustomer';
 import { useCreateOrder } from '@/api/orders';
 import { useEmployees } from '@/api/users';
 import { Toast, useToast } from '@/components/ui/Toast';
 import { Modal } from '@/components/ui/Modal';
+import { OrderDetailModal } from '@/components/ui/OrderDetailModal';
 import { ItemLabelsPrint } from '@/components/ui/ItemLabelsPrint';
 import { InvoicePrint } from '@/components/ui/InvoicePrint';
 import { buildOrderForInvoicePrint } from '@/lib/buildOrderForInvoicePrint';
@@ -217,6 +224,27 @@ export default function POSPage() {
   const [newCustomerForm, setNewCustomerForm] = useState({ name: '', phone: '', address: '' });
   const [newCustomerErrors, setNewCustomerErrors] = useState<{ name?: string; phone?: string; address?: string }>({});
 
+  const [customerOrderHistoryOpen, setCustomerOrderHistoryOpen] = useState(false);
+  const [posHistoryOrderDetailId, setPosHistoryOrderDetailId] = useState<number | null>(null);
+
+  const { data: customerOrders, isLoading: isLoadingCustomerOrders } = useGetCustomerOrders(
+    selectedCustomer?.id ?? '',
+    { enabled: Boolean(selectedCustomer?.id && customerOrderHistoryOpen) }
+  );
+  const customerOrdersList = customerOrders ?? [];
+
+  useEffect(() => {
+    if (!selectedCustomer) {
+      setCustomerOrderHistoryOpen(false);
+      setPosHistoryOrderDetailId(null);
+    }
+  }, [selectedCustomer]);
+
+  const closeCustomerOrderHistory = () => {
+    setCustomerOrderHistoryOpen(false);
+    setPosHistoryOrderDetailId(null);
+  };
+
   const tailors = useMemo(() =>
     employees?.filter((e: User & { role: Role | null }) =>
       e.role?.name === 'Thợ may'
@@ -393,17 +421,34 @@ export default function POSPage() {
 
           {selectedCustomer ? (
             <div className="space-y-3">
-              <div className="flex items-center justify-between p-3 md:p-4 bg-primary/5 border border-primary/20 rounded-lg">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+              <div className="flex items-stretch justify-between gap-2 p-3 md:p-4 bg-primary/5 border border-primary/20 rounded-lg">
+                <button
+                  type="button"
+                  onClick={() => setCustomerOrderHistoryOpen(true)}
+                  className="flex min-w-0 flex-1 items-center gap-3 rounded-md text-left outline-none transition-colors hover:bg-primary/10 focus-visible:ring-2 focus-visible:ring-primary -m-1 p-1"
+                  title="Xem lịch sử đơn hàng"
+                >
+                  <div className="w-10 h-10 shrink-0 rounded-full bg-primary/10 flex items-center justify-center text-primary">
                     <Users size={20} />
                   </div>
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <p className="font-bold text-foreground text-sm">{selectedCustomer.name}</p>
                     <p className="text-xs text-muted-foreground flex items-center gap-1"><Phone size={11} />{selectedCustomer.phone || 'N/A'}</p>
+                    <p className="mt-1 flex items-center gap-1 text-[10px] font-medium text-primary">
+                      <History size={12} className="shrink-0" />
+                      Lịch sử đơn hàng
+                    </p>
                   </div>
-                </div>
-                <button onClick={() => setSelectedCustomer(null)} className="p-1.5 rounded-md text-muted-foreground hover:text-danger hover:bg-danger/10 transition-colors"><X size={16} /></button>
+                  <ChevronRight size={18} className="shrink-0 self-center text-muted-foreground" aria-hidden />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedCustomer(null)}
+                  className="shrink-0 self-start p-1.5 rounded-md text-muted-foreground hover:text-danger hover:bg-danger/10 transition-colors"
+                  title="Bỏ chọn khách"
+                >
+                  <X size={16} />
+                </button>
               </div>
 
               {/* Return appointment (optional) */}
@@ -538,10 +583,19 @@ export default function POSPage() {
           <h4 className="text-base md:text-lg font-bold text-foreground mb-4 md:mb-6">Tổng kết đơn hàng</h4>
 
           {selectedCustomer && (
-            <div className="mb-4 p-3 bg-muted/20 rounded-lg text-xs">
+            <button
+              type="button"
+              onClick={() => setCustomerOrderHistoryOpen(true)}
+              className="mb-4 w-full rounded-lg border border-transparent p-3 text-left text-xs transition-colors hover:border-border hover:bg-muted/30"
+              title="Xem lịch sử đơn hàng"
+            >
               <p className="font-bold text-foreground">{selectedCustomer.name}</p>
               <p className="text-muted-foreground">{selectedCustomer.phone}</p>
-            </div>
+              <p className="mt-1.5 flex items-center gap-1 text-[10px] font-medium text-primary">
+                <History size={12} />
+                Lịch sử đơn hàng
+              </p>
+            </button>
           )}
 
           <div className="space-y-3 mb-6 pt-4 border-t border-border">
@@ -613,6 +667,109 @@ export default function POSPage() {
           </div>
         </form>
       </Modal>
+
+      <Modal
+        isOpen={customerOrderHistoryOpen && !!selectedCustomer}
+        onClose={closeCustomerOrderHistory}
+        title={
+          selectedCustomer
+            ? `Lịch sử đơn hàng — ${selectedCustomer.name}`
+            : 'Lịch sử đơn hàng'
+        }
+        maxWidth="max-w-3xl"
+      >
+        {selectedCustomer ? (
+          <div className="space-y-4">
+            <p className="text-xs text-muted-foreground">
+              Chọn một đơn để xem chi tiết. Số điện thoại:{' '}
+              <span className="font-medium text-foreground">{selectedCustomer.phone || 'N/A'}</span>
+            </p>
+            {isLoadingCustomerOrders ? (
+              <div className="space-y-3">
+                {[0, 1, 2].map((i) => (
+                  <div key={i} className="h-24 animate-pulse rounded-lg border border-border bg-muted/20" />
+                ))}
+              </div>
+            ) : customerOrdersList.length > 0 ? (
+              <div className="space-y-3">
+                {customerOrdersList.map((order: Order) => (
+                  <button
+                    key={order.id}
+                    type="button"
+                    onClick={() => setPosHistoryOrderDetailId(order.id)}
+                    className="vuexy-card w-full border border-border p-4 text-left transition-all hover:shadow-md group"
+                  >
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="flex min-w-0 flex-1 items-start gap-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary shadow-sm transition-all group-hover:bg-primary group-hover:text-white">
+                          <ShoppingBag size={20} />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-bold text-foreground">#{order.id}</span>
+                            <span
+                              className={`rounded px-2 py-0.5 text-[9px] font-black uppercase tracking-widest ${
+                                order.status === 'New'
+                                  ? 'bg-info/10 text-info'
+                                  : order.status === 'In Progress'
+                                    ? 'bg-warning/10 text-warning'
+                                    : order.status === 'Ready'
+                                      ? 'bg-success/10 text-success'
+                                      : 'bg-secondary/10 text-secondary'
+                              }`}
+                            >
+                              {order.status === 'New'
+                                ? 'Mới'
+                                : order.status === 'In Progress'
+                                  ? 'Đang làm'
+                                  : order.status === 'Ready'
+                                    ? 'Đã xong'
+                                    : 'Đã giao'}
+                            </span>
+                          </div>
+                          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-muted-foreground">
+                            <span className="flex items-center gap-1 font-medium">
+                              <Calendar size={12} className="text-primary" />
+                              {new Date(order.receive_time).toLocaleDateString('vi-VN')}
+                            </span>
+                            <span className="flex items-center gap-1 font-medium">
+                              <Clock size={12} className="text-primary" />
+                              {new Date(order.receive_time).toLocaleTimeString('vi-VN', {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border pt-2 sm:border-none sm:pt-0 sm:text-right">
+                        <p className="text-base font-black text-foreground">
+                          {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(
+                            order.total_amount
+                          )}
+                        </p>
+                        <ChevronRight size={18} className="text-primary opacity-70 group-hover:opacity-100" />
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-border py-14 text-center">
+                <ShoppingBag size={40} className="text-muted-foreground opacity-30" />
+                <p className="text-sm font-medium italic text-muted-foreground">Chưa có đơn hàng nào cho khách này.</p>
+              </div>
+            )}
+          </div>
+        ) : null}
+      </Modal>
+
+      <OrderDetailModal
+        isOpen={posHistoryOrderDetailId != null}
+        onClose={() => setPosHistoryOrderDetailId(null)}
+        orderId={posHistoryOrderDetailId}
+        stackOnTop
+      />
 
       {/* Hàng đợi in: tem XP-235B → hóa đơn XP-80C */}
       <Modal

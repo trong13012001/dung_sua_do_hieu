@@ -15,20 +15,27 @@ import {
   CreditCard,
   Wallet,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Printer,
 } from 'lucide-react';
-import { OrderDetail, Payment } from '@/lib/types';
+import { Order, OrderDetail, Payment } from '@/lib/types';
 
 interface OrderDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   orderId: number | string | null;
+  /** In tem barcode XP-235B cho một dòng (STT món 1-based, khớp mã quét). */
+  onPrintItemBarcode?: (order: Order, lineIndex1Based: number) => void;
+  /** z-index cao hơn khi mở chồng lên modal khác (vd. lịch sử đơn ở POS). */
+  stackOnTop?: boolean;
 }
 
 export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
   isOpen,
   onClose,
   orderId,
+  onPrintItemBarcode,
+  stackOnTop = false,
 }) => {
   const { data: order, isLoading, error } = useGetOrder(orderId);
 
@@ -68,6 +75,7 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
       onClose={onClose}
       title={`Chi tiết đơn hàng: #${orderId}`}
       maxWidth="max-w-3xl"
+      stackOnTop={stackOnTop}
     >
       {isLoading ? (
         <div className="flex justify-center py-20">
@@ -203,16 +211,23 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-muted/5">
+                    <th className="px-6 py-3 text-left font-bold text-muted-foreground uppercase tracking-wider text-[10px]">STT</th>
                     <th className="px-6 py-3 text-left font-bold text-muted-foreground uppercase tracking-wider text-[10px]">Tên mục</th>
                     <th className="px-6 py-3 text-left font-bold text-muted-foreground uppercase tracking-wider text-[10px]">Mô tả</th>
                     <th className="px-6 py-3 text-left font-bold text-muted-foreground uppercase tracking-wider text-[10px]">Trạng thái</th>
                     <th className="px-6 py-3 text-right font-bold text-muted-foreground uppercase tracking-wider text-[10px]">Đơn giá</th>
+                    {onPrintItemBarcode ? (
+                      <th className="px-4 py-3 text-center font-bold text-muted-foreground uppercase tracking-wider text-[10px] w-[1%] whitespace-nowrap">
+                        Tem
+                      </th>
+                    ) : null}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
                   {order.details && order.details.length > 0 ? (
-                    order.details.map((detail: OrderDetail) => (
+                    order.details.map((detail: OrderDetail, rowIdx: number) => (
                       <tr key={detail.id} className="hover:bg-muted/5 transition-colors">
+                        <td className="px-6 py-4 font-bold text-foreground">{rowIdx + 1}</td>
                         <td className="px-6 py-4 font-bold text-foreground">{detail.item_name}</td>
                         <td className="px-6 py-4 text-muted-foreground max-w-[200px] truncate">{detail.description || '-'}</td>
                         <td className="px-6 py-4">
@@ -223,11 +238,23 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
                         <td className="px-6 py-4 text-right font-bold text-foreground">
                           {new Intl.NumberFormat('vi-VN').format(detail.unit_price)}
                         </td>
+                        {onPrintItemBarcode ? (
+                          <td className="px-3 py-4 text-center">
+                            <button
+                              type="button"
+                              onClick={() => onPrintItemBarcode(order, rowIdx + 1)}
+                              className="inline-flex p-2 rounded-md text-info hover:bg-info/10 transition-colors"
+                              title="In tem barcode món này"
+                            >
+                              <Printer size={16} className="scale-90" />
+                            </button>
+                          </td>
+                        ) : null}
                       </tr>
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={4} className="px-6 py-8 text-center text-muted-foreground italic">Không có chi tiết sản phẩm</td>
+                      <td colSpan={onPrintItemBarcode ? 5 : 4} className="px-6 py-8 text-center text-muted-foreground italic">Không có chi tiết sản phẩm</td>
                     </tr>
                   )}
                 </tbody>
@@ -237,11 +264,23 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
             {/* Mobile Card View */}
             <div className="md:hidden divide-y divide-border">
               {order.details && order.details.length > 0 ? (
-                order.details.map((detail: OrderDetail) => (
+                order.details.map((detail: OrderDetail, rowIdx: number) => (
                   <div key={detail.id} className="p-4 space-y-3">
-                    <div className="flex justify-between items-start">
+                    <div className="flex justify-between items-start gap-2">
                       <p className="font-bold text-foreground text-sm">{detail.item_name}</p>
-                      <p className="font-black text-primary text-sm">{new Intl.NumberFormat('vi-VN').format(detail.unit_price)}đ</p>
+                      <div className="flex items-start gap-2 shrink-0">
+                        <p className="font-black text-primary text-sm">{new Intl.NumberFormat('vi-VN').format(detail.unit_price)}đ</p>
+                        {onPrintItemBarcode ? (
+                          <button
+                            type="button"
+                            onClick={() => onPrintItemBarcode(order, rowIdx + 1)}
+                            className="p-1.5 rounded-md text-info hover:bg-info/10 transition-colors"
+                            title="In tem barcode món này"
+                          >
+                            <Printer size={16} className="scale-90" />
+                          </button>
+                        ) : null}
+                      </div>
                     </div>
                     {detail.description && (
                       <p className="text-xs text-muted-foreground leading-relaxed">{detail.description}</p>

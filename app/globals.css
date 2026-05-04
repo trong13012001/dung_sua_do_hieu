@@ -148,8 +148,8 @@ body.sidebar-open {
 /* Print: only #print-root (cloned invoices). One order per page. */
 @media print {
   @page {
-    /* Xprinter XP-80C & other 80mm thermal rolls (hóa đơn) */
-    size: 80mm auto;
+    /* XP-80C: một trang PDF cao — đồng bộ THERMAL_INVOICE_HTML_PAGE_HEIGHT_MM; tránh `auto`+Electron ~240mm cắt giữa bill */
+    size: 80mm 2000mm;
     margin: 2mm;
   }
   /*
@@ -190,8 +190,6 @@ body.sidebar-open {
     background: white !important;
     color: black !important;
     box-shadow: none !important;
-    page-break-inside: avoid;
-    break-inside: avoid;
   }
 
   /* Hóa đơn 80mm: đồng bộ invoiceThermalLayoutMaxWidthMm(80) ≈ 74.5mm — tránh lẹm phải trên nhiệt */
@@ -201,6 +199,9 @@ body.sidebar-open {
     margin-right: 0 !important;
     padding-right: 3mm !important;
     box-sizing: border-box !important;
+    /* break-inside: avoid trên cả bill dài → Chromium tách trang lệch / mất dòng; cho phép flow, giữ avoid từng <tr> */
+    page-break-inside: auto;
+    break-inside: auto;
   }
   /* Single invoice: exactly 1 page */
   .invoice-print-area.invoice-single {
@@ -215,8 +216,6 @@ body.sidebar-open {
     page-break-after: always;
     break-before: page;
     break-after: page;
-    page-break-inside: avoid;
-    break-inside: avoid;
   }
   .invoice-print-area.invoice-page:first-of-type {
     page-break-before: avoid;
@@ -385,6 +384,8 @@ body.sidebar-open {
 
   .invoice-xp80c .invoice-cs-table tbody tr {
     border-bottom: 1px solid #000 !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
   }
   /* Logo ~65px C# template ≈ 17mm trên 80mm — img gốc đủ nét khi co (PNG đầy đủ + unoptimized) */
   .invoice-xp80c .invoice-brand-mark {

@@ -23,8 +23,6 @@
     box-shadow: none !important;
     border-radius: 0 !important;
     border: none !important;
-    page-break-inside: avoid;
-    break-inside: avoid;
   }
 
   html.thermal-print .invoice-print-area:not(.item-labels-print) {
@@ -33,6 +31,8 @@
     margin-right: 0 !important;
     padding-right: 3mm !important;
     box-sizing: border-box !important;
+    page-break-inside: auto;
+    break-inside: auto;
   }
 
   html.thermal-print .invoice-print-area.invoice-single {
@@ -47,8 +47,6 @@
     page-break-after: always;
     break-before: page;
     break-after: page;
-    page-break-inside: avoid;
-    break-inside: avoid;
   }
 
   html.thermal-print .invoice-print-area.invoice-page:first-of-type {
@@ -241,6 +239,8 @@
 
   html.thermal-print .invoice-xp80c .invoice-cs-table tbody tr {
     border-bottom: 1px solid #000 !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
   }
 
   html.thermal-print .invoice-cs-table th,

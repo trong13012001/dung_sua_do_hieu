@@ -4,6 +4,7 @@ import {
   PRINT_TARGET_LABEL_XP235B,
 } from "@/lib/printTargets";
 import {
+  isSilentThermalConfigured,
   printThermalElement,
   type ThermalPrintMethod,
 } from "@/lib/print/thermalPrint";
@@ -99,6 +100,9 @@ export async function printElementSmart(
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[printSmart] thermal print failed, falling back:", msg);
+    if (isSilentThermalConfigured()) {
+      return { method: "browser", error: msg };
+    }
     if (!isElectronThermalPrintAvailable()) {
       globalThis.print();
     }
@@ -146,6 +150,9 @@ export async function printTargetElementSmart(
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[printSmart] batch thermal failed, falling back:", msg);
+    if (isSilentThermalConfigured()) {
+      return { method: "browser", error: msg };
+    }
     if (!isElectronThermalPrintAvailable()) {
       globalThis.print();
     }

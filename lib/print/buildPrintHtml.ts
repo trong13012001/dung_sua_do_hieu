@@ -3,6 +3,7 @@ import {
   THERMAL_INVOICE_HTML_PAGE_MARGIN_MM,
   invoiceThermalLayoutMaxWidthMm,
   invoiceThermalViewportWidthMm,
+  THERMAL_INVOICE_HTML_PAGE_HEIGHT_MM,
 } from "@/lib/print/invoiceThermalMetrics";
 import {
   LABEL_THERMAL_PAGE_HEIGHT_MM,
@@ -110,6 +111,10 @@ html.thermal-print #print-root .invoice-xp80c .font-bold { font-weight: 700 !imp
 html.thermal-print #print-root .invoice-xp80c .font-semibold { font-weight: 600 !important; }
 html.thermal-print #print-root .invoice-xp80c .leading-tight { line-height: 1.25 !important; }
 html.thermal-print #print-root .invoice-xp80c .leading-snug { line-height: 1.375 !important; }
+html.thermal-print #print-root .invoice-xp80c .leading-none { line-height: 1 !important; }
+html.thermal-print #print-root .invoice-xp80c .m-0 { margin: 0 !important; }
+html.thermal-print #print-root .invoice-xp80c .gap-0 { gap: 0 !important; }
+html.thermal-print #print-root .invoice-xp80c .mt-0\\.5 { margin-top: 0.125rem !important; }
 html.thermal-print #print-root .invoice-xp80c .align-top { vertical-align: top !important; }
 html.thermal-print #print-root .invoice-xp80c .align-bottom { vertical-align: bottom !important; }
 html.thermal-print #print-root .invoice-xp80c .object-contain { object-fit: contain !important; }
@@ -128,6 +133,7 @@ html.thermal-print #print-root .invoice-xp80c .py-1 { padding-top: 0.25rem !impo
 html.thermal-print #print-root .invoice-xp80c .px-1 { padding-left: 0.25rem !important; padding-right: 0.25rem !important; }
 html.thermal-print #print-root .invoice-xp80c .pl-1 { padding-left: 0.25rem !important; }
 html.thermal-print #print-root .invoice-xp80c .pr-1 { padding-right: 0.25rem !important; }
+html.thermal-print #print-root .invoice-xp80c .text-\\[6px\\] { font-size: 6px !important; }
 html.thermal-print #print-root .invoice-xp80c .text-\\[7px\\] { font-size: 7px !important; }
 html.thermal-print #print-root .invoice-xp80c .text-\\[8px\\] { font-size: 8px !important; }
 html.thermal-print #print-root .invoice-xp80c .text-\\[9px\\] { font-size: 9px !important; }
@@ -277,7 +283,7 @@ export async function buildPrintableHtmlFromElement(
   const inlinedCss = escapeForStyleTag(combined);
 
   const pageCss = isInvoice
-    ? `@page { size: ${paperMm}mm auto; margin: ${THERMAL_INVOICE_HTML_PAGE_MARGIN_MM}mm; }`
+    ? `@page { size: ${paperMm}mm ${THERMAL_INVOICE_HTML_PAGE_HEIGHT_MM}mm; margin: ${THERMAL_INVOICE_HTML_PAGE_MARGIN_MM}mm; }`
     : `@page { size: ${paperMm}mm ${LABEL_THERMAL_PAGE_HEIGHT_MM}mm; margin: 0; }`;
 
   const layoutWpx = isInvoice ? mmToCssPx(invoiceThermalViewportWidthMm(paperMm)) : null;

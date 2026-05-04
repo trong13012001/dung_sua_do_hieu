@@ -39,7 +39,7 @@ export function OrderBarcode({
         barWidth = 0.95;
         mod = "invoice-order-barcode--compact";
         hriClass =
-            "tracking-wide font-normal text-black tabular-nums text-[7px] leading-none";
+            "tracking-wide font-normal text-black tabular-nums text-[6px] leading-none";
     }
 
     return (

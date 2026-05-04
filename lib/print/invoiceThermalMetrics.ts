@@ -7,6 +7,14 @@ export const INVOICE_PAGE_MARGIN_MM = 2 as const;
  */
 export const THERMAL_INVOICE_HTML_PAGE_MARGIN_MM = 1.25 as const;
 
+/**
+ * Chiều cao một @page hóa đơn nhiệt (mm). Dùng số cố định thay vì `auto`:
+ * Chromium/Electron khi map sang `pageSize` microns hay rơi về ~240mm → bill dài
+ * bị cắt trang / nhảy STT. Khổ cao lớn = một trang PDF liền (máy cuộn cắt theo nội dung).
+ * Đồng bộ `electron/main.cjs` (fallback khi parse được `auto`) và `app/globals.css` @page.
+ */
+export const THERMAL_INVOICE_HTML_PAGE_HEIGHT_MM = 2000 as const;
+
 /** Rộng vùng nội dung sau @page (theo margin trình duyệt 2mm). */
 export function invoicePaperContentInnerMm(paperWidthMm: number): number {
   return Math.max(36, paperWidthMm - 2 * INVOICE_PAGE_MARGIN_MM);

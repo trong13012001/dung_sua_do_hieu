@@ -125,6 +125,12 @@ async function dispatchThermalHtml(
     return { method: "silent", channel: "agent", dispatched: true };
   }
 
+  if (isSilentThermalConfigured()) {
+    throw new Error(
+      "Chỉ in im lặng: Electron hoặc agent chưa in được. Kiểm tra POS chạy bằng app Windows, tên máy in trong Cài đặt, hoặc agent (NEXT_PUBLIC_PRINT_AGENT_URL).",
+    );
+  }
+
   if (isInvoice && isInvoiceBrowserPrintEnabled()) {
     await printHtmlThroughBrowserDialog(html);
     return { method: "browser", channel: "browser", dispatched: true };
@@ -160,8 +166,8 @@ function createSingleLabelHost(row: HTMLElement): HTMLElement {
 }
 
 /**
- * In nhiệt: **Electron silent** → agent localhost (tuỳ chọn) → hộp thoại Chrome (tuỳ chọn env) → **luôn** fallback dialog HTML.
- * Electron silent → agent (tuỳ chọn) → dialog.
+ * In nhiệt: **Electron silent** → agent localhost (tuỳ chọn) → hộp thoại Chrome (chỉ khi *chưa* cấu hình im lặng).
+ * Khi `isSilentThermalConfigured()` (Electron hoặc `NEXT_PUBLIC_PRINT_AGENT_URL`): không mở dialog in trình duyệt — lỗi nếu cả hai kênh im lặng thất bại.
  */
 export async function printThermalElementWithStatus(
   sourceEl: HTMLElement,

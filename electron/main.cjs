@@ -125,7 +125,8 @@ function extractThermalPageSizeMicronsFromHtml(html) {
   const m = s.match(/@page\s*\{[\s\S]*?\bsize\s*:\s*([0-9.]+)mm(?:\s+([0-9.]+)mm|\s+auto)?/i);
   if (!m) return undefined;
   const widthMm = Number(m[1]);
-  const heightMm = m[2] ? Number(m[2]) : 240; // receipt cuộn: dùng chiều cao đủ lớn thay vì auto
+  /* `auto` → Chromium hay coi như ~240mm khi đẩy pageSize → bill dài cắt trang. Đồng bộ THERMAL_INVOICE_HTML_PAGE_HEIGHT_MM (lib/print/invoiceThermalMetrics.ts). */
+  const heightMm = m[2] ? Number(m[2]) : 2000;
   const width = clampMicrons(widthMm * 1000);
   const height = clampMicrons(heightMm * 1000);
   if (!width || !height) return undefined;
