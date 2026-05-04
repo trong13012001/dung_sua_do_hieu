@@ -8,6 +8,7 @@ import type {
     DashboardPeriodSelection,
     MonthlyRevenue,
 } from "@/lib/types";
+import { ORDER_STATUS_FILTER_SEQUENCE } from "@/lib/orderStatusUi";
 
 export interface DashboardStats {
     totalRevenue: number;
@@ -243,7 +244,7 @@ async function fetchAllReturnedOrderIdsInRange(
         const { data, error } = await supabase
             .from("orders")
             .select("id")
-            .eq("status", "Delivered")
+            .in("status", ["Delivered", "DeliveredOwing"])
             .not("return_time", "is", null)
             .gte("return_time", startIso)
             .lte("return_time", endIso)
@@ -286,6 +287,7 @@ async function fetchPeriodAnalytics(
         itemsCreatedCountRes,
         periodRevenue,
         periodUnpaidOnOrdersCreated,
+        ...createdStatusCountRes
     ] = await Promise.all([
             supabase
                 .from("orders")
@@ -295,7 +297,7 @@ async function fetchPeriodAnalytics(
             supabase
                 .from("orders")
                 .select("*", { count: "exact", head: true })
-                .eq("status", "Delivered")
+                .in("status", ["Delivered", "DeliveredOwing"])
                 .not("return_time", "is", null)
                 .gte("return_time", startIso)
                 .lte("return_time", endIso),
@@ -306,11 +308,26 @@ async function fetchPeriodAnalytics(
                 .lte("created_at", endIso),
             sumPaymentsAmountInRange(startIso, endIso),
             sumUnpaidOnOrdersCreatedInRange(startIso, endIso),
+            ...ORDER_STATUS_FILTER_SEQUENCE.map((st) =>
+                supabase
+                    .from("orders")
+                    .select("*", { count: "exact", head: true })
+                    .eq("status", st)
+                    .gte("created_at", startIso)
+                    .lte("created_at", endIso),
+            ),
         ]);
 
     if (createdCountRes.error) throw createdCountRes.error;
     if (returnedCountRes.error) throw returnedCountRes.error;
     if (itemsCreatedCountRes.error) throw itemsCreatedCountRes.error;
+
+    const ordersCreatedStatusCounts: Record<string, number> = {};
+    ORDER_STATUS_FILTER_SEQUENCE.forEach((st, i) => {
+        const r = createdStatusCountRes[i];
+        if (r.error) throw r.error;
+        ordersCreatedStatusCounts[st] = r.count ?? 0;
+    });
 
     const allReturnedOrderIds = await fetchAllReturnedOrderIdsInRange(
         startIso,
@@ -337,13 +354,13 @@ async function fetchPeriodAnalytics(
                 .gte("created_at", startIso)
                 .lte("created_at", endIso)
                 .order("created_at", { ascending: false })
-                .limit(150),
+                .limit(300),
             supabase
                 .from("orders")
                 .select(
-                    "id, customer_id, total_amount, status, return_time, created_at",
+                    "id, customer_id, total_amount, paid_amount, status, return_time, created_at",
                 )
-                .eq("status", "Delivered")
+                .in("status", ["Delivered", "DeliveredOwing"])
                 .not("return_time", "is", null)
                 .gte("return_time", startIso)
                 .lte("return_time", endIso)
@@ -385,15 +402,21 @@ async function fetchPeriodAnalytics(
     const customerMap = await fetchCustomerNames(custIds);
 
     const ordersCreated: DashboardPeriodOrderRow[] = ordersCreatedRaw.map(
-        (o) => ({
-            id: o.id,
-            created_at: o.created_at,
-            return_time: o.return_time,
-            status: o.status,
-            customer_name:
-                customerMap[o.customer_id as number] || "Vãng lai",
-            total_amount: Number(o.total_amount),
-        }),
+        (o) => {
+            const total = Number(o.total_amount);
+            const paid = Number(o.paid_amount ?? 0);
+            return {
+                id: o.id,
+                created_at: o.created_at,
+                return_time: o.return_time,
+                status: o.status,
+                customer_name:
+                    customerMap[o.customer_id as number] || "Vãng lai",
+                total_amount: total,
+                paid_amount: paid,
+                unpaid_amount: Math.max(0, total - paid),
+            };
+        },
     );
 
     const ordersDebt: DashboardPeriodDebtOrderRow[] = ordersCreatedRaw
@@ -417,15 +440,21 @@ async function fetchPeriodAnalytics(
         .sort((a, b) => b.unpaid_amount - a.unpaid_amount);
 
     const ordersReturned: DashboardPeriodOrderRow[] = ordersReturnedRaw.map(
-        (o) => ({
-            id: o.id,
-            created_at: o.created_at,
-            return_time: o.return_time,
-            status: o.status,
-            customer_name:
-                customerMap[o.customer_id as number] || "Vãng lai",
-            total_amount: Number(o.total_amount),
-        }),
+        (o) => {
+            const total = Number(o.total_amount);
+            const paid = Number(o.paid_amount ?? 0);
+            return {
+                id: o.id,
+                created_at: o.created_at,
+                return_time: o.return_time,
+                status: o.status,
+                customer_name:
+                    customerMap[o.customer_id as number] || "Vãng lai",
+                total_amount: total,
+                paid_amount: paid,
+                unpaid_amount: Math.max(0, total - paid),
+            };
+        },
     );
 
     const orderIdToCustomerId: Record<number, number | null> = {};
@@ -495,6 +524,7 @@ async function fetchPeriodAnalytics(
         itemsReturnedCount,
         periodRevenue,
         periodUnpaidOnOrdersCreated,
+        ordersCreatedStatusCounts,
         ordersCreated,
         ordersDebt,
         ordersReturned,

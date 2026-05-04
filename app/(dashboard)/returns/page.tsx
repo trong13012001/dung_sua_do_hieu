@@ -16,6 +16,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Toast, useToast } from '@/components/ui/Toast';
 import { useDebounce } from '@/hooks/useDebounce';
 import { Order, OrderDetail } from '@/lib/types';
+import { resolveStatusWhenMarkingDelivered } from '@/lib/orderStatusUi';
 
 export default function ReturnsPage() {
   const { data: orders, isLoading } = useOrders();
@@ -40,7 +41,7 @@ export default function ReturnsPage() {
   }) || [];
 
   const deliveredOrders = orders?.filter(o => {
-    if (o.status !== 'Delivered') return false;
+    if (o.status !== 'Delivered' && o.status !== 'DeliveredOwing') return false;
     const matchSearch = !debouncedSearch ||
       o.id.toString().includes(debouncedSearch) ||
       o.customer?.name?.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
@@ -53,15 +54,22 @@ export default function ReturnsPage() {
   const handleReturn = async () => {
     if (!returningOrder) return;
     try {
+      const status = resolveStatusWhenMarkingDelivered(returningOrder);
+      const id = returningOrder.id;
       await mutateAsyncUpdateOrder({
-        id: returningOrder.id,
+        id,
         order: {
-          status: 'Delivered' as Order['status'],
+          status,
           return_time: new Date().toISOString(),
         },
       });
       setReturningOrder(null);
-      showToast(`Đã trả đồ đơn #${returningOrder.id} thành công`, 'success');
+      showToast(
+        status === 'DeliveredOwing'
+          ? `Đã trả đồ đơn #${id} — Trạng thái: Trả thiếu tiền.`
+          : `Đã trả đồ đơn #${id} thành công.`,
+        'success',
+      );
     } catch (err: any) {
       showToast('Lỗi: ' + err.message, 'error');
     }
@@ -73,7 +81,7 @@ export default function ReturnsPage() {
         <h4 className="text-lg md:text-xl font-bold text-foreground">Trả đồ cho khách</h4>
         <div className="flex items-center gap-3 text-xs font-bold">
           <span className="px-2.5 py-1 rounded-md bg-success/10 text-success">Chờ trả: {orders?.filter(o => o.status === 'Ready').length || 0}</span>
-          <span className="px-2.5 py-1 rounded-md bg-primary/10 text-primary">Đã trả: {orders?.filter(o => o.status === 'Delivered').length || 0}</span>
+          <span className="px-2.5 py-1 rounded-md bg-primary/10 text-primary">Đã trả: {orders?.filter(o => o.status === 'Delivered' || o.status === 'DeliveredOwing').length || 0}</span>
         </div>
       </div>
 
@@ -110,13 +118,14 @@ export default function ReturnsPage() {
               <div key={order.id} className="vuexy-card p-4 md:p-5 hover:shadow-md transition-all">
                 <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
                   <div className="flex items-start gap-3 md:gap-4 flex-1 min-w-0">
-                    <div className={`w-11 h-11 md:w-12 md:h-12 rounded-lg flex items-center justify-center shrink-0 ${order.status === 'Delivered' ? 'bg-primary/10 text-primary' : 'bg-success/10 text-success'}`}>
-                      {order.status === 'Delivered' ? <PackageCheck size={22} /> : <Scissors size={22} />}
+                    <div className={`w-11 h-11 md:w-12 md:h-12 rounded-lg flex items-center justify-center shrink-0 ${order.status === 'Delivered' || order.status === 'DeliveredOwing' ? 'bg-primary/10 text-primary' : 'bg-success/10 text-success'}`}>
+                      {order.status === 'Delivered' || order.status === 'DeliveredOwing' ? <PackageCheck size={22} /> : <Scissors size={22} />}
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2 mb-1">
                         <h6 className="font-bold text-foreground">#{order.id.toString().padStart(5, '0')}</h6>
                         {order.status === 'Delivered' && <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-primary/10 text-primary">Đã trả</span>}
+                        {order.status === 'DeliveredOwing' && <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-orange-500/15 text-orange-800 dark:text-orange-300">Trả thiếu tiền</span>}
                         {order.status === 'Ready' && <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-success/10 text-success">Chờ trả</span>}
                       </div>
 
@@ -208,17 +217,29 @@ export default function ReturnsPage() {
 
               {(() => {
                 const debt = returningOrder.total_amount - (returningOrder.paid_amount || 0);
+                const paid = Number(returningOrder.paid_amount || 0);
                 if (debt > 0) {
+                  const next =
+                    paid > 0 && paid < returningOrder.total_amount
+                      ? 'Trả thiếu tiền'
+                      : 'Đã trả đồ (chưa thu gì — còn nợ đủ)';
                   return (
                     <div className="p-3 bg-warning/10 border border-warning/20 rounded-lg">
-                      <p className="text-xs font-bold text-warning">Khách còn nợ {new Intl.NumberFormat('vi-VN').format(debt)}đ. Hãy thu tiền trước khi trả đồ.</p>
+                      <p className="text-xs font-bold text-warning leading-relaxed">
+                        Còn nợ {new Intl.NumberFormat('vi-VN').format(debt)}đ. Sau khi xác nhận trả đồ, trạng thái đơn:{' '}
+                        <span className="text-foreground">{next}</span>.
+                      </p>
                     </div>
                   );
                 }
                 return null;
               })()}
 
-              <p className="text-sm text-muted-foreground">Xác nhận đã trả đồ cho khách? Trạng thái đơn sẽ chuyển sang <span className="font-bold text-primary">&quot;Đã trả đồ&quot;</span>.</p>
+              <p className="text-sm text-muted-foreground">
+                Xác nhận đã giao đồ cho khách? Trạng thái sẽ là{' '}
+                <span className="font-bold text-primary">Đã trả đồ</span> nếu đã thu đủ hoặc chưa thu; nếu đã thu một phần thì{' '}
+                <span className="font-bold text-orange-700 dark:text-orange-300">Trả thiếu tiền</span>.
+              </p>
 
               <div className="flex gap-4">
                 <button onClick={() => setReturningOrder(null)} className="flex-1 bg-muted/40 text-foreground py-2.5 rounded-md font-bold text-sm border border-border hover:bg-muted transition-colors">Hủy</button>

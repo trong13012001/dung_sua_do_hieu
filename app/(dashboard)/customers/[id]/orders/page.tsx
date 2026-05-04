@@ -20,6 +20,7 @@ import { Modal } from '@/components/ui/Modal';
 import { OrderDetailModal } from '@/components/ui/OrderDetailModal';
 import { ItemLabelsPrint } from '@/components/ui/ItemLabelsPrint';
 import { Order } from '@/lib/types';
+import { orderStatusBadgeClass, orderStatusLabelVi } from '@/lib/orderStatusUi';
 
 export default function CustomerOrdersPage() {
   const params = useParams();
@@ -144,13 +145,8 @@ export default function CustomerOrdersPage() {
                     <div className="flex-1">
                       <div className="flex items-center gap-2 md:gap-3">
                         <h6 className="font-bold text-foreground md:text-lg">#{order.id}</h6>
-                        <span className={`px-2 py-0.5 rounded text-[9px] md:text-[10px] font-black uppercase tracking-widest
-                          ${order.status === 'New' ? 'bg-info/10 text-info' :
-                            order.status === 'In Progress' ? 'bg-warning/10 text-warning' :
-                              order.status === 'Ready' ? 'bg-success/10 text-success' : 'bg-secondary/10 text-secondary'}`}>
-                          {order.status === 'New' ? 'Mới' :
-                            order.status === 'In Progress' ? 'Đang làm' :
-                              order.status === 'Ready' ? 'Đã xong' : 'Đã giao'}
+                        <span className={`px-2 py-0.5 rounded text-[9px] md:text-[10px] font-black uppercase tracking-widest ${orderStatusBadgeClass(order.status)}`}>
+                          {orderStatusLabelVi(order.status)}
                         </span>
                       </div>
                       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] md:text-xs text-muted-foreground mt-1 md:mt-2">

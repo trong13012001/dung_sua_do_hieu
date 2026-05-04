@@ -4,15 +4,26 @@ import React from 'react';
 import { useCurrentUserPermissions } from '@/hooks/useCurrentUserPermissions';
 
 interface CanProps {
-  permission: string;
+  /** Một quyền cụ thể (hành vi mặc định). */
+  permission?: string;
+  /** Ít nhất một quyền trong danh sách (OR) — dùng khi trùng với `canAccessRoute`. */
+  anyOf?: readonly string[] | string[];
   children: React.ReactNode;
   fallback?: React.ReactNode;
 }
 
 /**
- * Renders children only if the current user has the given permission.
+ * Renders children if the user has `permission`, or if `anyOf` is set, any listed permission.
  */
-export function Can({ permission, children, fallback = null }: CanProps) {
+export function Can({
+  permission,
+  anyOf,
+  children,
+  fallback = null,
+}: CanProps) {
   const { has } = useCurrentUserPermissions();
-  return has(permission) ? <>{children}</> : <>{fallback}</>;
+  const fromAny = anyOf != null && anyOf.some((name) => has(name));
+  const fromSingle = permission != null && has(permission);
+  const allowed = fromAny || fromSingle;
+  return allowed ? <>{children}</> : <>{fallback}</>;
 }

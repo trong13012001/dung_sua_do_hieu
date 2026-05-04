@@ -1,6 +1,12 @@
 "use client";
 
-import React, { useState, useRef, useCallback, useEffect } from "react";
+import React, {
+    useState,
+    useRef,
+    useCallback,
+    useEffect,
+    useMemo,
+} from "react";
 import {
     Search,
     ShoppingBag,
@@ -13,6 +19,8 @@ import {
     Printer,
     Loader2,
     ListOrdered,
+    PackageCheck,
+    CheckCircle2,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import {
@@ -40,12 +48,17 @@ import { ItemLabelsPrint } from "@/components/ui/ItemLabelsPrint";
 import { OrderDetailModal } from "@/components/ui/OrderDetailModal";
 import { decodeBarcode } from "@/lib/barcode";
 import { useDebounce } from "@/hooks/useDebounce";
-import { Can } from "@/components/auth/Can";
 import { Order, OrderDetail, User, Role } from "@/lib/types";
 import { validateRequired, validateNumber } from "@/lib/validation";
 import { printElementSmart } from "@/lib/printSmart";
 import { PRINT_TARGET_INVOICE_XP80C } from "@/lib/printTargets";
 import { isSilentThermalConfigured } from "@/lib/print/thermalPrint";
+import { resolveStatusWhenMarkingDelivered } from "@/lib/orderStatusUi";
+import {
+    orderDetailStatusBadgeClass,
+    orderDetailStatusLabelVi,
+    orderDetailStatusSelectOptions,
+} from "@/lib/orderDetailStatusUi";
 
 const statusOptions = [
     { value: "New", label: "Mới", color: "bg-info/10 text-info" },
@@ -56,22 +69,25 @@ const statusOptions = [
     },
     { value: "Ready", label: "Đã xong", color: "bg-success/10 text-success" },
     {
+        value: "Paid",
+        label: "Đã thanh toán",
+        color: "bg-emerald-600/12 text-emerald-800 dark:text-emerald-400",
+    },
+    {
         value: "Delivered",
         label: "Đã trả đồ",
         color: "bg-primary/10 text-primary",
+    },
+    {
+        value: "DeliveredOwing",
+        label: "Trả thiếu tiền",
+        color: "bg-orange-500/15 text-orange-800 dark:text-orange-300",
     },
     {
         value: "Completed",
         label: "Hoàn thành",
         color: "bg-secondary/10 text-secondary",
     },
-];
-
-const detailStatusOptions = [
-    { value: "New", label: "Mới" },
-    { value: "In Progress", label: "Đang làm" },
-    { value: "Ready", label: "Đã xong" },
-    { value: "Completed", label: "Hoàn thành" },
 ];
 
 const getStatusStyle = (status: string) =>
@@ -81,7 +97,9 @@ const statusLabelMap: Record<string, string> = {
     New: "Mới",
     "In Progress": "Đang làm",
     Ready: "Đã xong",
+    Paid: "Đã thanh toán",
     Delivered: "Đã trả đồ",
+    DeliveredOwing: "Trả thiếu tiền",
     Completed: "Hoàn thành",
 };
 
@@ -175,6 +193,7 @@ export default function OrdersPage() {
     const [endDate, setEndDate] = useState("");
     const [editingOrder, setEditingOrder] = useState<Order | null>(null);
     const [deletingOrder, setDeletingOrder] = useState<Order | null>(null);
+    const [completingOrder, setCompletingOrder] = useState<Order | null>(null);
     const [deletingDetailId, setDeletingDetailId] = useState<number | null>(
         null,
     );
@@ -197,6 +216,27 @@ export default function OrdersPage() {
         amount: string;
         method: "Cash" | "Card" | "Transfer";
     }>({ amount: "", method: "Cash" });
+
+    const paymentModalPreview = useMemo(() => {
+        if (!payingOrder) return null;
+        const total = payingOrder.total_amount;
+        const paid = payingOrder.paid_amount ?? 0;
+        const raw = payForm.amount.trim();
+        const parsed = raw === "" ? 0 : Number(raw);
+        const thisPayment =
+            Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+        const currentDebt = Math.max(0, total - paid);
+        const paidAfter = paid + thisPayment;
+        const remainingAfter = Math.max(0, total - paidAfter);
+        return {
+            total,
+            paid,
+            thisPayment,
+            currentDebt,
+            paidAfter,
+            remainingAfter,
+        };
+    }, [payingOrder, payForm.amount]);
     const [exporting, setExporting] = useState(false);
     type DetailEdit = {
         item_name: string;
@@ -340,11 +380,17 @@ export default function OrdersPage() {
         if (!editingOrder) return;
         const fd = new FormData(e.currentTarget);
         try {
-            const newOrderStatus = fd.get("order-status") as string;
-            if (newOrderStatus && newOrderStatus !== editingOrder.status) {
+            const orderStatusChoice =
+                (fd.get("order-status") as string) || editingOrder.status;
+            if (
+                orderStatusChoice &&
+                orderStatusChoice !== editingOrder.status
+            ) {
                 await mutateAsyncUpdateOrder({
                     id: editingOrder.id,
-                    order: { status: newOrderStatus as Order["status"] },
+                    order: {
+                        status: orderStatusChoice as Order["status"],
+                    },
                     updated_by: currentUserId ?? undefined,
                 });
             }
@@ -372,8 +418,14 @@ export default function OrdersPage() {
                     patch.unit_price = priceNum;
                 if (edit.description !== (detail.description ?? ""))
                     patch.description = edit.description.trim() || null;
-                if (edit.status !== detail.status)
+                if (
+                    orderStatusChoice === "Completed" &&
+                    detail.status !== "Completed"
+                ) {
+                    patch.status = "Completed";
+                } else if (edit.status !== detail.status) {
                     patch.status = edit.status as OrderDetail["status"];
+                }
                 const origTailor = detail.assigned_tailor_id
                     ? String(detail.assigned_tailor_id)
                     : "";
@@ -502,10 +554,67 @@ export default function OrdersPage() {
             });
             setPayingOrder(null);
             setPayForm({ amount: "", method: "Cash" });
-            showToast("Thanh toán thành công", "success");
+            showToast("Đã ghi nhận thanh toán.", "success");
         } catch (err: any) {
             showToast("Lỗi: " + err.message, "error");
         }
+    };
+
+    const handleMarkDeliveredFromList = async (order: Order) => {
+        try {
+            const status = resolveStatusWhenMarkingDelivered(order);
+            await mutateAsyncUpdateOrder({
+                id: order.id,
+                order: {
+                    status,
+                    return_time: new Date().toISOString(),
+                },
+                updated_by: currentUserId ?? undefined,
+            });
+            showToast(
+                status === "DeliveredOwing"
+                    ? "Đã ghi nhận trả đồ — Trả thiếu tiền (còn nợ)."
+                    : "Đã ghi nhận trả đồ.",
+                "success",
+            );
+        } catch (err: any) {
+            showToast("Lỗi: " + err.message, "error");
+        }
+    };
+
+    const handleMarkCompletedFromList = async (
+        order: Order,
+    ): Promise<boolean> => {
+        if (order.status === "Completed") return false;
+        try {
+            for (const d of order.details ?? []) {
+                if (d.status === "Completed") continue;
+                await mutateAsyncUpdateDetail({
+                    id: d.id,
+                    detail: { status: "Completed" },
+                    updated_by: currentUserId ?? undefined,
+                });
+            }
+            await mutateAsyncUpdateOrder({
+                id: order.id,
+                order: { status: "Completed" },
+                updated_by: currentUserId ?? undefined,
+            });
+            showToast(
+                "Đã hoàn thành đơn và cập nhật tất cả món thành Xong việc (thợ).",
+                "success",
+            );
+            return true;
+        } catch (err: any) {
+            showToast("Lỗi: " + err.message, "error");
+            return false;
+        }
+    };
+
+    const handleConfirmCompleteOrder = async () => {
+        if (!completingOrder) return;
+        const ok = await handleMarkCompletedFromList(completingOrder);
+        if (ok) setCompletingOrder(null);
     };
 
     const handleExportExcel = async () => {
@@ -684,17 +793,15 @@ export default function OrdersPage() {
                             size={16}
                         />
                     </div>
-                    <Can permission="view_orders">
-                        <button
-                            type="button"
-                            onClick={handleExportExcel}
-                            disabled={exporting}
-                            className="flex items-center gap-2 px-4 py-2.5 bg-success/10 text-success border border-success/30 rounded-md font-bold text-sm hover:bg-success/20 disabled:opacity-50"
-                        >
-                            <FileDown size={16} />{" "}
-                            {exporting ? "Đang xuất..." : "Xuất Excel"}
-                        </button>
-                    </Can>
+                    <button
+                        type="button"
+                        onClick={handleExportExcel}
+                        disabled={exporting}
+                        className="flex items-center gap-2 px-4 py-2.5 bg-success/10 text-success border border-success/30 rounded-md font-bold text-sm hover:bg-success/20 disabled:opacity-50"
+                    >
+                        <FileDown size={16} />{" "}
+                        {exporting ? "Đang xuất..." : "Xuất Excel"}
+                    </button>
                     {selectedForPrint.size > 0 && (
                         <button
                             type="button"
@@ -798,15 +905,24 @@ export default function OrdersPage() {
                                                                         key={
                                                                             d.id
                                                                         }
-                                                                        className="text-[10px] px-2 py-0.5 bg-muted/30 rounded border border-border text-muted-foreground"
+                                                                        className="inline-flex flex-wrap items-center gap-1 text-[10px] px-2 py-0.5 bg-muted/30 rounded border border-border text-muted-foreground"
                                                                     >
-                                                                        {
-                                                                            d.item_name
-                                                                        }
+                                                                        <span>
+                                                                            {
+                                                                                d.item_name
+                                                                            }
+                                                                        </span>
+                                                                        <span
+                                                                            className={`px-1 py-0 rounded text-[9px] font-bold ${orderDetailStatusBadgeClass(d.status)}`}
+                                                                        >
+                                                                            {orderDetailStatusLabelVi(
+                                                                                d.status,
+                                                                            )}
+                                                                        </span>
                                                                         {d
                                                                             .tailor
                                                                             ?.name && (
-                                                                            <span className="text-primary ml-1">
+                                                                            <span className="text-primary">
                                                                                 ·{" "}
                                                                                 {
                                                                                     d
@@ -850,7 +966,7 @@ export default function OrdersPage() {
                                                     </p>
                                                 )}
                                             </div>
-                                            <div className="flex gap-1.5">
+                                            <div className="flex flex-wrap justify-end gap-1.5 shrink-0 max-w-full">
                                                 <button
                                                     type="button"
                                                     onClick={(e) => {
@@ -859,35 +975,74 @@ export default function OrdersPage() {
                                                             order.id,
                                                         );
                                                     }}
-                                                    className="p-2 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                                                    className="p-2 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors shrink-0"
                                                     title="Chi tiết đơn và danh sách mặt hàng"
                                                 >
                                                     <ListOrdered size={16} />
                                                 </button>
                                                 {debt > 0 && (
-                                                    <Can permission="process_payment">
-                                                        <button
-                                                            type="button"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                setPayingOrder(
-                                                                    order,
-                                                                );
-                                                                setPayForm({
-                                                                    amount: String(
-                                                                        debt,
-                                                                    ),
-                                                                    method: "Cash",
-                                                                });
-                                                            }}
-                                                            className="p-2 rounded-md text-success hover:bg-success/10 transition-colors"
-                                                            title="Thanh toán"
-                                                        >
-                                                            <DollarSign
-                                                                size={16}
-                                                            />
-                                                        </button>
-                                                    </Can>
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setPayingOrder(order);
+                                                            setPayForm({
+                                                                amount: String(
+                                                                    debt,
+                                                                ),
+                                                                method: "Cash",
+                                                            });
+                                                        }}
+                                                        disabled={
+                                                            isPendingUpdateOrder
+                                                        }
+                                                        className="p-2 rounded-md text-success hover:bg-success/10 transition-colors disabled:opacity-40 shrink-0"
+                                                        title="Ghi nhận thanh toán (chỉ tiền)"
+                                                    >
+                                                        <DollarSign size={16} />
+                                                    </button>
+                                                )}
+                                                {(order.status === "Ready" ||
+                                                    order.status ===
+                                                        "Paid") && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            void handleMarkDeliveredFromList(
+                                                                order,
+                                                            );
+                                                        }}
+                                                        disabled={
+                                                            isPendingUpdateOrder
+                                                        }
+                                                        className="p-2 rounded-md text-primary hover:bg-primary/10 transition-colors disabled:opacity-40 shrink-0"
+                                                        title="Đã trả đồ cho khách"
+                                                    >
+                                                        <PackageCheck size={16} />
+                                                    </button>
+                                                )}
+                                                {order.status !==
+                                                    "Completed" && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setCompletingOrder(
+                                                                order,
+                                                            );
+                                                        }}
+                                                        disabled={
+                                                            isPendingUpdateOrder ||
+                                                            isPendingUpdateDetail
+                                                        }
+                                                        className="p-2 rounded-md text-secondary hover:bg-secondary/10 transition-colors disabled:opacity-40 shrink-0"
+                                                        title="Hoàn thành đơn (xác nhận)"
+                                                    >
+                                                        <CheckCircle2
+                                                            size={16}
+                                                        />
+                                                    </button>
                                                 )}
                                                 <button
                                                     type="button"
@@ -1018,6 +1173,12 @@ export default function OrdersPage() {
                                     Chi tiết sản phẩm (
                                     {editingOrder.details.length})
                                 </p>
+                                <p className="text-[10px] text-muted-foreground leading-snug">
+                                    Giao từng món: chọn &quot;Đã giao món&quot;
+                                    hoặc &quot;Đã giao — nợ món&quot; khi khách chỉ
+                                    nhận / chỉ trả trước một phần đồ. Tiền vẫn ghi
+                                    ở nút thanh toán đơn.
+                                </p>
                                 <div className="border border-border rounded-lg overflow-hidden">
                                     <div className="max-h-[min(50vh,400px)] overflow-y-auto">
                                         <table className="w-full text-sm border-collapse">
@@ -1032,8 +1193,8 @@ export default function OrdersPage() {
                                                     <th className="text-left p-2 font-bold text-[10px] uppercase text-muted-foreground w-[18%]">
                                                         Mô tả
                                                     </th>
-                                                    <th className="text-left p-2 font-bold text-[10px] uppercase text-muted-foreground w-[18%]">
-                                                        Trạng thái
+                                                    <th className="text-left p-2 font-bold text-[10px] uppercase text-muted-foreground w-[22%]">
+                                                        Trạng thái món
                                                     </th>
                                                     <th className="text-left p-2 font-bold text-[10px] uppercase text-muted-foreground w-[22%]">
                                                         Thợ
@@ -1147,7 +1308,7 @@ export default function OrdersPage() {
                                                                                 " min-w-0"
                                                                             }
                                                                         >
-                                                                            {detailStatusOptions.map(
+                                                                            {orderDetailStatusSelectOptions.map(
                                                                                 (
                                                                                     s,
                                                                                 ) => (
@@ -1450,51 +1611,84 @@ export default function OrdersPage() {
             <Modal
                 isOpen={!!payingOrder}
                 onClose={() => setPayingOrder(null)}
-                title={`Thanh toán đơn #${payingOrder?.id}`}
+                title={`Ghi nhận thanh toán · Đơn #${payingOrder?.id}`}
             >
                 <form onSubmit={handlePayment} className="space-y-5">
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                        Chỉ cộng tiền đã thu. Khi đủ tiền, hệ thống tự đặt trạng thái{" "}
+                        <span className="font-semibold text-foreground">
+                            Đã thanh toán
+                        </span>{" "}
+                        (hoặc chuyển{" "}
+                        <span className="font-semibold text-foreground">
+                            Trả thiếu tiền
+                        </span>{" "}
+                        → Đã trả đồ nếu đơn đang nợ sau khi giao).
+                    </p>
                     <div className="p-4 bg-muted/10 rounded-lg border border-border space-y-2">
                         <div className="flex justify-between text-sm">
                             <span className="text-muted-foreground">
                                 Tổng cộng
                             </span>
                             <span className="font-bold">
-                                {payingOrder &&
+                                {paymentModalPreview &&
                                     new Intl.NumberFormat("vi-VN", {
                                         style: "currency",
                                         currency: "VND",
-                                    }).format(payingOrder.total_amount)}
+                                    }).format(paymentModalPreview.total)}
                             </span>
                         </div>
                         <div className="flex justify-between text-sm">
                             <span className="text-muted-foreground">
-                                Đã trả
+                                Đã thu đến nay
                             </span>
                             <span className="font-bold text-success">
-                                {payingOrder &&
+                                {paymentModalPreview &&
                                     new Intl.NumberFormat("vi-VN", {
                                         style: "currency",
                                         currency: "VND",
-                                    }).format(payingOrder.paid_amount)}
+                                    }).format(paymentModalPreview.paid)}
                             </span>
                         </div>
+                        {paymentModalPreview &&
+                            paymentModalPreview.thisPayment > 0 && (
+                                <div className="flex justify-between text-sm">
+                                    <span className="text-muted-foreground">
+                                        Sau khi ghi nhận lần này
+                                    </span>
+                                    <span className="font-bold text-success">
+                                        {new Intl.NumberFormat("vi-VN", {
+                                            style: "currency",
+                                            currency: "VND",
+                                        }).format(
+                                            paymentModalPreview.paidAfter,
+                                        )}
+                                    </span>
+                                </div>
+                            )}
                         <div className="flex justify-between text-sm font-bold border-t border-border pt-2">
-                            <span className="text-primary">Còn lại</span>
                             <span className="text-primary">
-                                {payingOrder &&
+                                {paymentModalPreview &&
+                                paymentModalPreview.thisPayment > 0
+                                    ? "Còn lại (dự kiến)"
+                                    : "Còn lại"}
+                            </span>
+                            <span className="text-primary">
+                                {paymentModalPreview &&
                                     new Intl.NumberFormat("vi-VN", {
                                         style: "currency",
                                         currency: "VND",
                                     }).format(
-                                        payingOrder.total_amount -
-                                            (payingOrder?.paid_amount || 0),
+                                        paymentModalPreview.thisPayment > 0
+                                            ? paymentModalPreview.remainingAfter
+                                            : paymentModalPreview.currentDebt,
                                     )}
                             </span>
                         </div>
                     </div>
                     <div className="space-y-1.5">
                         <label className="text-[11px] font-bold text-muted-foreground uppercase">
-                            Số tiền thanh toán
+                            Số tiền thu
                         </label>
                         <input
                             required
@@ -1547,10 +1741,66 @@ export default function OrdersPage() {
                         >
                             {isPendingProcessPayment
                                 ? "Đang xử lý..."
-                                : "Xác nhận"}
+                                : "Ghi nhận thanh toán"}
                         </button>
                     </div>
                 </form>
+            </Modal>
+
+            {/* Xác nhận hoàn thành đơn */}
+            <Modal
+                isOpen={!!completingOrder}
+                onClose={() => setCompletingOrder(null)}
+                title={
+                    completingOrder
+                        ? `Hoàn thành đơn #${String(completingOrder.id).padStart(5, "0")}`
+                        : "Hoàn thành đơn"
+                }
+            >
+                <div className="space-y-4">
+                    <p className="text-sm text-muted-foreground leading-relaxed">
+                        Bạn xác nhận <strong>hoàn thành đơn</strong> này? Hệ
+                        thống sẽ đặt <strong>tất cả món</strong> trong đơn sang
+                        trạng thái <strong>Xong việc (thợ)</strong> và đơn sang{" "}
+                        <strong>Hoàn thành</strong>.{" "}
+                        <span className="text-foreground">
+                            Không thay đổi thanh toán.
+                        </span>
+                    </p>
+                    {completingOrder &&
+                        (completingOrder.details?.length ?? 0) > 0 && (
+                            <p className="text-[11px] text-muted-foreground">
+                                {completingOrder.details?.length ?? 0} dòng món
+                                trong đơn.
+                            </p>
+                        )}
+                    <div className="flex gap-3 pt-2">
+                        <button
+                            type="button"
+                            onClick={() => setCompletingOrder(null)}
+                            disabled={
+                                isPendingUpdateOrder ||
+                                isPendingUpdateDetail
+                            }
+                            className="flex-1 bg-muted/40 text-foreground py-2.5 rounded-md font-bold text-sm border border-border disabled:opacity-50"
+                        >
+                            Hủy
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => void handleConfirmCompleteOrder()}
+                            disabled={
+                                isPendingUpdateOrder ||
+                                isPendingUpdateDetail
+                            }
+                            className="flex-1 btn-primary py-2.5 rounded-md font-bold text-sm disabled:opacity-50"
+                        >
+                            {isPendingUpdateOrder || isPendingUpdateDetail
+                                ? "Đang xử lý..."
+                                : "Xác nhận hoàn thành"}
+                        </button>
+                    </div>
+                </div>
             </Modal>
 
             {/* Delete Modal */}

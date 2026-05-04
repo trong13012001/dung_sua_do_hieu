@@ -48,7 +48,7 @@ CREATE TABLE orders (
     customer_id BIGINT REFERENCES customers(id),
     total_amount DECIMAL(10, 2) DEFAULT 0.00,
     paid_amount DECIMAL(10, 2) DEFAULT 0.00,
-    status TEXT DEFAULT 'New', -- New, In Progress, Ready, Completed, Delivered
+    status TEXT DEFAULT 'New', -- New, In Progress, Ready, Paid, Delivered, DeliveredOwing, Completed
     receive_time TIMESTAMPTZ DEFAULT NOW(),
     return_time TIMESTAMPTZ,
     transaction_code TEXT, -- mã 11 số WPF; sinh bởi trigger (xem supabase_migration_order_transaction_code.sql)
@@ -65,6 +65,7 @@ CREATE TABLE order_details (
     unit_price DECIMAL(10, 2) NOT NULL,
     status TEXT DEFAULT 'New',
     assigned_tailor_id BIGINT REFERENCES users(id),
+    handed_over_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -118,20 +119,26 @@ RETURNS VOID AS $$
 DECLARE
     new_paid DECIMAL(10,2);
     total DECIMAL(10,2);
+    st TEXT;
 BEGIN
-    -- Update paid_amount in orders (COALESCE so NULL + amount works)
-    UPDATE orders 
+    UPDATE orders
     SET paid_amount = COALESCE(paid_amount, 0) + amount,
         updated_at = NOW()
     WHERE id = order_id;
 
-    -- If fully paid, set status to Completed
-    SELECT paid_amount, total_amount INTO new_paid, total FROM orders WHERE id = order_id;
+    SELECT paid_amount, total_amount, status INTO new_paid, total, st FROM orders WHERE id = order_id;
+
     IF new_paid >= total THEN
-        UPDATE orders SET status = 'Completed', updated_at = NOW() WHERE id = order_id;
+        UPDATE orders
+        SET status = CASE
+            WHEN st = 'DeliveredOwing' THEN 'Delivered'
+            WHEN st IN ('Ready', 'Delivered') THEN st
+            ELSE 'Paid'
+        END,
+        updated_at = NOW()
+        WHERE id = order_id;
     END IF;
 
-    -- Update total_debt in customers (minus when pay: debt = sum of unpaid per order)
     UPDATE customers
     SET total_debt = (
         SELECT COALESCE(SUM(o.total_amount - COALESCE(o.paid_amount, 0)), 0)

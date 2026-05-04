@@ -44,8 +44,18 @@ export interface OrderDetail {
     item_name: string;
     description: string | null;
     unit_price: number;
-    status: "New" | "In Progress" | "Ready" | "Completed";
+    status:
+        | "New"
+        | "In Progress"
+        | "Ready"
+        | "Completed"
+        /** Đã trao món cho khách — coi đã thu tiền món (ghi nhận thủ công / đối chiếu thanh toán đơn) */
+        | "Delivered"
+        /** Đã trao món, tiền món này còn nợ (thu sau trên đơn) */
+        | "DeliveredOwing";
     assigned_tailor_id: string | null;
+    /** Khi giao món (Delivered / DeliveredOwing) được set tự động */
+    handed_over_at?: string | null;
     created_at: string;
     updated_at: string;
 
@@ -66,7 +76,15 @@ export interface Order {
     customer_id: number;
     total_amount: number;
     paid_amount: number;
-    status: "New" | "In Progress" | "Ready" | "Delivered" | "Completed";
+    status:
+        | "New"
+        | "In Progress"
+        | "Ready"
+        | "Paid"
+        | "Delivered"
+        /** Đã giao đồ nhưng paid < total và đã có thu một phần */
+        | "DeliveredOwing"
+        | "Completed";
     receive_time: string;
     return_time: string | null;
     created_at: string;
@@ -114,13 +132,13 @@ export interface DashboardPeriodOrderRow {
     status: string;
     customer_name: string;
     total_amount: number;
-}
-
-export interface DashboardPeriodDebtOrderRow
-    extends DashboardPeriodOrderRow {
+    /** Thu trên đơn (lúc tạo + các lần thanh toán sau) */
     paid_amount: number;
     unpaid_amount: number;
 }
+
+/** Đơn trong kỳ còn nợ (bảng “Công nợ đơn trong kỳ”) — cùng shape với dòng đơn tạo. */
+export type DashboardPeriodDebtOrderRow = DashboardPeriodOrderRow;
 
 export interface DashboardPeriodAnalytics {
     ordersCreatedCount: number;
@@ -134,6 +152,8 @@ export interface DashboardPeriodAnalytics {
      * (max(0, total_amount − paid_amount) cộng dồn).
      */
     periodUnpaidOnOrdersCreated: number;
+    /** Đếm đơn lập trong kỳ theo `orders.status` (đầy đủ, không giới hạn 300 dòng list). */
+    ordersCreatedStatusCounts: Record<string, number>;
     ordersCreated: DashboardPeriodOrderRow[];
     ordersDebt: DashboardPeriodDebtOrderRow[];
     ordersReturned: DashboardPeriodOrderRow[];

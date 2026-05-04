@@ -1,7 +1,10 @@
 'use client';
 
-import React from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useGetOrder } from '@/hooks/order/useGetOrder';
+import { useCurrentUserId } from '@/hooks/useCurrentUserId';
+import { useCurrentUserPermissions } from '@/hooks/useCurrentUserPermissions';
+import { useUpdateOrderDetail } from '@/api/orders';
 import { Modal } from '@/components/ui/Modal';
 import {
   ShoppingBag,
@@ -17,8 +20,14 @@ import {
   CheckCircle2,
   AlertCircle,
   Printer,
+  ChevronDown,
 } from 'lucide-react';
 import { Order, OrderDetail, Payment } from '@/lib/types';
+import {
+  orderDetailStatusBadgeClass,
+  orderDetailStatusLabelVi,
+  orderDetailStatusSelectOptions,
+} from '@/lib/orderDetailStatusUi';
 
 interface OrderDetailModalProps {
   isOpen: boolean;
@@ -38,6 +47,44 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
   stackOnTop = false,
 }) => {
   const { data: order, isLoading, error } = useGetOrder(orderId);
+  const { mutateAsync: mutateUpdateDetail } = useUpdateOrderDetail();
+  const currentUserId = useCurrentUserId();
+  const { has } = useCurrentUserPermissions();
+  const canEditLineStatus =
+    has('view_orders') || has('create_order') || has('update_tasks');
+  const [savingLineId, setSavingLineId] = useState<number | null>(null);
+  const [lineStatusErr, setLineStatusErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setLineStatusErr(null);
+      setSavingLineId(null);
+    }
+  }, [isOpen]);
+
+  const handleLineStatusChange = useCallback(
+    async (detail: OrderDetail, next: string) => {
+      if (next === detail.status) return;
+      setLineStatusErr(null);
+      setSavingLineId(detail.id);
+      try {
+        await mutateUpdateDetail({
+          id: detail.id,
+          detail: { status: next as OrderDetail['status'] },
+          updated_by: currentUserId ?? undefined,
+        });
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        setLineStatusErr(msg);
+      } finally {
+        setSavingLineId(null);
+      }
+    },
+    [currentUserId, mutateUpdateDetail],
+  );
+
+  const lineStatusSelectClass =
+    'w-full appearance-none bg-muted/20 border border-border rounded-md pl-2 pr-8 py-2 text-[10px] md:text-[11px] font-bold text-foreground outline-none focus:ring-1 focus:ring-primary disabled:opacity-50';
 
   const getStatusInfo = (status: string) => {
     switch (status) {
@@ -47,12 +94,24 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
         return { label: 'Đang xử lý', color: 'bg-warning/10 text-warning', icon: <Clock size={16} /> };
       case 'Ready':
         return { label: 'Sẵn sàng', color: 'bg-success/10 text-success', icon: <CheckCircle2 size={16} /> };
+      case 'Paid':
+        return { label: 'Đã thanh toán', color: 'bg-emerald-600/12 text-emerald-800 dark:text-emerald-400', icon: <CheckCircle2 size={16} /> };
+      case 'Delivered':
+        return { label: 'Đã trả đồ', color: 'bg-primary/10 text-primary', icon: <Package size={16} /> };
+      case 'DeliveredOwing':
+        return { label: 'Trả thiếu tiền', color: 'bg-orange-500/15 text-orange-800 dark:text-orange-400', icon: <Package size={16} /> };
       case 'Completed':
         return { label: 'Hoàn thành', color: 'bg-secondary/10 text-secondary', icon: <CheckCircle2 size={16} /> };
       default:
         return { label: status, color: 'bg-muted/10 text-muted-foreground', icon: <Package size={16} /> };
     }
   };
+
+  const getDetailLineStatusInfo = (status: string) => ({
+    label: orderDetailStatusLabelVi(status),
+    color: orderDetailStatusBadgeClass(status),
+    icon: <Package size={16} />,
+  });
 
   const getPaymentMethodInfo = (method: string) => {
     switch (method) {
@@ -205,6 +264,11 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
                 <Package size={12} className="md:w-[14px] md:h-[14px]" /> Sản phẩm & Dịch vụ
               </h6>
             </div>
+            {lineStatusErr && canEditLineStatus ? (
+              <div className="px-4 md:px-6 py-2 text-[11px] md:text-xs text-danger bg-danger/5 border-b border-danger/20">
+                {lineStatusErr}
+              </div>
+            ) : null}
 
             {/* Desktop Table View */}
             <div className="hidden md:block overflow-x-auto">
@@ -214,7 +278,9 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
                     <th className="px-6 py-3 text-left font-bold text-muted-foreground uppercase tracking-wider text-[10px]">STT</th>
                     <th className="px-6 py-3 text-left font-bold text-muted-foreground uppercase tracking-wider text-[10px]">Tên mục</th>
                     <th className="px-6 py-3 text-left font-bold text-muted-foreground uppercase tracking-wider text-[10px]">Mô tả</th>
-                    <th className="px-6 py-3 text-left font-bold text-muted-foreground uppercase tracking-wider text-[10px]">Trạng thái</th>
+                    <th className="px-6 py-3 text-left font-bold text-muted-foreground uppercase tracking-wider text-[10px] min-w-[200px]">
+                      Trạng thái món
+                    </th>
                     <th className="px-6 py-3 text-right font-bold text-muted-foreground uppercase tracking-wider text-[10px]">Đơn giá</th>
                     {onPrintItemBarcode ? (
                       <th className="px-4 py-3 text-center font-bold text-muted-foreground uppercase tracking-wider text-[10px] w-[1%] whitespace-nowrap">
@@ -231,9 +297,39 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
                         <td className="px-6 py-4 font-bold text-foreground">{detail.item_name}</td>
                         <td className="px-6 py-4 text-muted-foreground max-w-[200px] truncate">{detail.description || '-'}</td>
                         <td className="px-6 py-4">
-                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${getStatusInfo(detail.status).color}`}>
-                            {getStatusInfo(detail.status).label}
-                          </span>
+                          {canEditLineStatus ? (
+                            <div className="relative max-w-[min(280px,100%)]">
+                              <select
+                                value={detail.status}
+                                disabled={savingLineId !== null}
+                                onChange={(e) => {
+                                  void handleLineStatusChange(
+                                    detail,
+                                    e.target.value,
+                                  );
+                                }}
+                                className={lineStatusSelectClass}
+                                aria-label={`Trạng thái ${detail.item_name}`}
+                              >
+                                {orderDetailStatusSelectOptions.map((opt) => (
+                                  <option key={opt.value} value={opt.value}>
+                                    {opt.label}
+                                  </option>
+                                ))}
+                              </select>
+                              <ChevronDown
+                                size={14}
+                                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
+                                aria-hidden
+                              />
+                            </div>
+                          ) : (
+                            <span
+                              className={`inline-flex px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${getDetailLineStatusInfo(detail.status).color}`}
+                            >
+                              {getDetailLineStatusInfo(detail.status).label}
+                            </span>
+                          )}
                         </td>
                         <td className="px-6 py-4 text-right font-bold text-foreground">
                           {new Intl.NumberFormat('vi-VN').format(detail.unit_price)}
@@ -254,7 +350,7 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={onPrintItemBarcode ? 5 : 4} className="px-6 py-8 text-center text-muted-foreground italic">Không có chi tiết sản phẩm</td>
+                      <td colSpan={onPrintItemBarcode ? 6 : 5} className="px-6 py-8 text-center text-muted-foreground italic">Không có chi tiết sản phẩm</td>
                     </tr>
                   )}
                 </tbody>
@@ -285,10 +381,43 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
                     {detail.description && (
                       <p className="text-xs text-muted-foreground leading-relaxed">{detail.description}</p>
                     )}
-                    <div className="flex justify-start">
-                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest ${getStatusInfo(detail.status).color}`}>
-                        {getStatusInfo(detail.status).label}
-                      </span>
+                    <div className="space-y-1">
+                      <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">
+                        Trạng thái món
+                      </p>
+                      {canEditLineStatus ? (
+                        <div className="relative">
+                          <select
+                            value={detail.status}
+                            disabled={savingLineId !== null}
+                            onChange={(e) => {
+                              void handleLineStatusChange(
+                                detail,
+                                e.target.value,
+                              );
+                            }}
+                            className={lineStatusSelectClass}
+                            aria-label={`Trạng thái ${detail.item_name}`}
+                          >
+                            {orderDetailStatusSelectOptions.map((opt) => (
+                              <option key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </option>
+                            ))}
+                          </select>
+                          <ChevronDown
+                            size={14}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
+                            aria-hidden
+                          />
+                        </div>
+                      ) : (
+                        <span
+                          className={`inline-flex px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest ${getDetailLineStatusInfo(detail.status).color}`}
+                        >
+                          {getDetailLineStatusInfo(detail.status).label}
+                        </span>
+                      )}
                     </div>
                   </div>
                 ))

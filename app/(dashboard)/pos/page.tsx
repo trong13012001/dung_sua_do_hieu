@@ -16,6 +16,7 @@ import {
   Calendar,
   Clock,
   History,
+  Banknote,
 } from 'lucide-react';
 import { useGetCustomer } from '@/hooks/customer/useGetCustomer';
 import { useGetCustomerOrders } from '@/hooks/customer/useGetCustomerOrders';
@@ -30,11 +31,12 @@ import { InvoicePrint } from '@/components/ui/InvoicePrint';
 import { buildOrderForInvoicePrint } from '@/lib/buildOrderForInvoicePrint';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useCurrentUserId } from '@/hooks/useCurrentUserId';
-import { Customer, Order, User, Role } from '@/lib/types';
+import { Customer, Order, User, Role, Payment } from '@/lib/types';
 import { validateRequired, validateNumber, validatePhone, validateMaxLength } from '@/lib/validation';
 import { isSilentThermalConfigured } from '@/lib/print/thermalPrint';
 import { printTargetElementSmart } from '@/lib/printSmart';
 import { PRINT_TARGET_LABEL_XP235B, PRINT_TARGET_INVOICE_XP80C } from '@/lib/printTargets';
+import { orderStatusBadgeClass, orderStatusLabelVi } from '@/lib/orderStatusUi';
 
 interface PosItem {
   name: string;
@@ -117,6 +119,9 @@ export default function POSPage() {
 
   // Optional return appointment date (time defaults to 16:00)
   const [returnDate, setReturnDate] = useState('');
+  /** Thu ngay khi lập đơn (tùy chọn) */
+  const [initialPaidInput, setInitialPaidInput] = useState('');
+  const [initialPayMethod, setInitialPayMethod] = useState<Payment['payment_method']>('Cash');
 
   /** Hàng đợi in sau tạo đơn: 1) tem XP-235B → 2) hóa đơn XP-80C */
   const [printQueue, setPrintQueue] = useState<PosPrintQueue | null>(null);
@@ -282,6 +287,21 @@ export default function POSPage() {
 
   const totalAmount = items.reduce((sum, item) => sum + (Number(item.price) || 0), 0);
 
+  const parsedInitialPaidPreview = useMemo(() => {
+    const s = initialPaidInput.trim().replace(/\s/g, '').replace(/,/g, '');
+    if (s === '') return null;
+    const n = Number(s);
+    if (!Number.isFinite(n) || n < 0) return null;
+    return n;
+  }, [initialPaidInput]);
+
+  const initialPayRemainderPreview =
+    parsedInitialPaidPreview != null &&
+    parsedInitialPaidPreview > 0 &&
+    parsedInitialPaidPreview < totalAmount
+      ? totalAmount - parsedInitialPaidPreview
+      : null;
+
   const handleSelectCustomer = (customer: Customer) => {
     setSelectedCustomer(customer);
     setShowCustomerList(false);
@@ -333,6 +353,16 @@ export default function POSPage() {
         return;
       }
     }
+    const paidStr = initialPaidInput.trim().replace(/\s/g, '').replace(/,/g, '');
+    const paidNum = paidStr === '' ? 0 : Number(paidStr);
+    if (paidStr !== '' && (!Number.isFinite(paidNum) || paidNum < 0)) {
+      showToast('Số tiền đã thu không hợp lệ.', 'error');
+      return;
+    }
+    if (paidNum > totalAmount) {
+      showToast('Số tiền đã thu không được lớn hơn tổng đơn.', 'error');
+      return;
+    }
     try {
       let return_time: string | null = null;
       if (returnDate) {
@@ -356,8 +386,25 @@ export default function POSPage() {
           assigned_tailor_id: i.assigned_tailor_id || null,
         })),
         updated_by: selectedCreatorId || undefined,
+        initial_payment:
+          paidNum > 0
+            ? { amount: paidNum, payment_method: initialPayMethod }
+            : undefined,
       });
-      showToast('Đơn hàng đã được tạo thành công!', 'success');
+      const unpaidAfter = Math.max(
+        0,
+        Math.round(
+          Number((created as Order).total_amount) - Number((created as Order).paid_amount ?? 0),
+        ),
+      );
+      if (unpaidAfter > 0) {
+        showToast(
+          `Đơn đã tạo. Còn nợ ${new Intl.NumberFormat('vi-VN').format(unpaidAfter)}đ — thu bù tại màn Đơn hàng.`,
+          'success',
+        );
+      } else {
+        showToast('Đơn hàng đã được tạo thành công!', 'success');
+      }
       const creatorName =
         employees?.find((u: User & { role: Role | null }) => String(u.id) === String(selectedCreatorId))?.name ??
         null;
@@ -394,6 +441,8 @@ export default function POSPage() {
       setItems([]);
       setSelectedCustomer(null);
       setReturnDate('');
+      setInitialPaidInput('');
+      setInitialPayMethod('Cash');
     } catch (error: any) {
       showToast('Lỗi: ' + error.message, 'error');
     }
@@ -612,6 +661,57 @@ export default function POSPage() {
             </div>
           </div>
 
+          <div className="mb-4 space-y-2 rounded-lg border border-border bg-muted/10 p-3">
+            <div className="flex items-center gap-2 text-xs font-bold text-muted-foreground uppercase">
+              <Banknote size={14} className="text-primary shrink-0" />
+              Đã thu khi lập đơn
+            </div>
+            <p className="text-[10px] text-muted-foreground leading-snug">
+              Ghi nhận như màn thanh toán đơn. Thu ít hơn tổng đơn vẫn được: đơn giữ trạng thái Mới, phần chưa thu ghi vào công nợ khách; thu nốt ở màn Đơn hàng. Nếu thu đủ tổng tiền, hệ thống tự đặt trạng thái Đã thanh toán (trừ khi đơn đã ở trạng thái đã xong / đã trả đồ).
+            </p>
+            {initialPayRemainderPreview != null ? (
+              <p className="text-[10px] font-semibold text-warning leading-snug">
+                Ước tính còn nợ sau khi tạo đơn:{' '}
+                {new Intl.NumberFormat('vi-VN').format(initialPayRemainderPreview)}đ
+              </p>
+            ) : null}
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <div className="space-y-1">
+                <label htmlFor="pos-initial-paid" className="text-[11px] font-semibold text-muted-foreground">
+                  Số tiền (đ)
+                </label>
+                <input
+                  id="pos-initial-paid"
+                  type="text"
+                  inputMode="decimal"
+                  className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm"
+                  placeholder="0 — để trống nếu chưa thu"
+                  value={initialPaidInput}
+                  onChange={(e) => setInitialPaidInput(e.target.value)}
+                  disabled={totalAmount <= 0}
+                />
+              </div>
+              <div className="space-y-1">
+                <label htmlFor="pos-initial-pay-method" className="text-[11px] font-semibold text-muted-foreground">
+                  Hình thức
+                </label>
+                <select
+                  id="pos-initial-pay-method"
+                  className="w-full appearance-none rounded-md border border-border bg-card px-3 py-2 text-sm outline-none"
+                  value={initialPayMethod}
+                  onChange={(e) =>
+                    setInitialPayMethod(e.target.value as Payment['payment_method'])
+                  }
+                  disabled={totalAmount <= 0}
+                >
+                  <option value="Cash">Tiền mặt</option>
+                  <option value="Card">Thẻ</option>
+                  <option value="Transfer">Chuyển khoản</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
           <button onClick={handleSubmit} disabled={isPendingCreateOrder} className="w-full btn-primary py-3 rounded-md font-bold mb-3 disabled:opacity-50">
             {isPendingCreateOrder ? 'Đang xử lý...' : 'Đặt hàng'}
           </button>
@@ -709,23 +809,9 @@ export default function POSPage() {
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="font-bold text-foreground">#{order.id}</span>
                             <span
-                              className={`rounded px-2 py-0.5 text-[9px] font-black uppercase tracking-widest ${
-                                order.status === 'New'
-                                  ? 'bg-info/10 text-info'
-                                  : order.status === 'In Progress'
-                                    ? 'bg-warning/10 text-warning'
-                                    : order.status === 'Ready'
-                                      ? 'bg-success/10 text-success'
-                                      : 'bg-secondary/10 text-secondary'
-                              }`}
+                              className={`rounded px-2 py-0.5 text-[9px] font-black uppercase tracking-widest ${orderStatusBadgeClass(order.status)}`}
                             >
-                              {order.status === 'New'
-                                ? 'Mới'
-                                : order.status === 'In Progress'
-                                  ? 'Đang làm'
-                                  : order.status === 'Ready'
-                                    ? 'Đã xong'
-                                    : 'Đã giao'}
+                              {orderStatusLabelVi(order.status)}
                             </span>
                           </div>
                           <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-muted-foreground">

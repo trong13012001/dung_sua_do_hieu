@@ -187,15 +187,44 @@ function taskRowPatchFromDetail(d: OrderDetail): Partial<OrderDetail> {
         unit_price: d.unit_price,
         status: d.status,
         assigned_tailor_id: d.assigned_tailor_id,
+        handed_over_at: d.handed_over_at ?? null,
     };
 }
 
-async function enrichOrders(orders: any[]): Promise<Order[]> {
+export type EnrichOrdersOptions = {
+    /**
+     * Không gọi order_logs + không resolve created_by_name (màn danh sách không dùng).
+     * Giảm ~2 round-trip Supabase mỗi lần tải trang đơn.
+     */
+    skipCreatedBy?: boolean;
+};
+
+async function enrichOrders(
+    orders: any[],
+    options?: EnrichOrdersOptions,
+): Promise<Order[]> {
     if (!orders || orders.length === 0) return [];
+    const skipCreatedBy = options?.skipCreatedBy === true;
     const orderIds = orders.map((o) => o.id);
     const customerIds = [
         ...new Set(orders.map((o) => o.customer_id).filter(Boolean)),
     ] as number[];
+    const createdLogsPromise = skipCreatedBy
+        ? Promise.resolve({
+              data: [] as {
+                  order_id: number;
+                  updated_by: string | number | null;
+                  created_at: string;
+              }[],
+              error: null,
+          })
+        : supabase
+              .from("order_logs")
+              .select("order_id, updated_by, created_at")
+              .eq("action", "order_created")
+              .in("order_id", orderIds)
+              .order("created_at", { ascending: true });
+
     const [customersRes, detailsRes, createdLogsRes] = await Promise.all([
         customerIds.length > 0
             ? supabase
@@ -206,16 +235,15 @@ async function enrichOrders(orders: any[]): Promise<Order[]> {
         supabase
             .from("order_details")
             .select(
-                "id, order_id, item_name, unit_price, description, status, assigned_tailor_id",
+                "id, order_id, item_name, unit_price, description, status, assigned_tailor_id, handed_over_at, created_at, updated_at",
             )
             .in("order_id", orderIds),
-        supabase
-            .from("order_logs")
-            .select("order_id, updated_by, created_at")
-            .eq("action", "order_created")
-            .in("order_id", orderIds)
-            .order("created_at", { ascending: true }),
+        createdLogsPromise,
     ]);
+    if (customersRes.error) throw customersRes.error;
+    if (detailsRes.error) throw detailsRes.error;
+    if (createdLogsRes.error) throw createdLogsRes.error;
+
     const customerMap: Record<
         number,
         {
@@ -237,44 +265,50 @@ async function enrichOrders(orders: any[]): Promise<Order[]> {
                 tailorIds.add(d.assigned_tailor_id);
         }
     }
-    const tailorMap: Record<string, { id: string; name: string }> = {};
-    if (tailorIds.size > 0) {
-        const { data: tailors } = await supabase
-            .from("users")
-            .select("id, name")
-            .in("id", [...tailorIds]);
-        if (tailors)
-            for (const t of tailors)
-                tailorMap[String(t.id)] = { id: String(t.id), name: t.name };
-    }
 
     const firstCreatorByOrder: Record<number, string> = {};
     const creatorIds = new Set<string | number>();
-    for (const log of createdLogsRes.data || []) {
-        const oid = Number(log.order_id);
-        if (!Number.isFinite(oid)) continue;
-        if (firstCreatorByOrder[oid] != null) continue;
-        const uid = log.updated_by;
-        if (uid == null) continue;
-        const sid = String(uid);
-        firstCreatorByOrder[oid] = sid;
-        creatorIds.add(uid);
+    if (!skipCreatedBy) {
+        for (const log of createdLogsRes.data || []) {
+            const oid = Number(log.order_id);
+            if (!Number.isFinite(oid)) continue;
+            if (firstCreatorByOrder[oid] != null) continue;
+            const uid = log.updated_by;
+            if (uid == null) continue;
+            const sid = String(uid);
+            firstCreatorByOrder[oid] = sid;
+            creatorIds.add(uid);
+        }
     }
-    const creatorNameById: Record<string, string> = {};
-    if (creatorIds.size > 0) {
-        const { data: creators } = await supabase
+
+    const allUserIds = new Set<string | number>([
+        ...tailorIds,
+        ...creatorIds,
+    ]);
+    const userNameById: Record<string, string> = {};
+    if (allUserIds.size > 0) {
+        const { data: users, error: usersErr } = await supabase
             .from("users")
             .select("id, name")
-            .in("id", [...creatorIds]);
-        for (const u of creators || []) {
-            creatorNameById[String(u.id)] = u.name;
+            .in("id", [...allUserIds]);
+        if (usersErr) throw usersErr;
+        for (const u of users || []) {
+            userNameById[String(u.id)] = u.name;
         }
+    }
+
+    const tailorMap: Record<string, { id: string; name: string }> = {};
+    for (const tid of tailorIds) {
+        const sid = String(tid);
+        const nm = userNameById[sid];
+        if (nm) tailorMap[sid] = { id: sid, name: nm };
     }
 
     return orders.map((o) => ({
         ...o,
-        created_by_name:
-            creatorNameById[firstCreatorByOrder[o.id] ?? ""] ?? null,
+        created_by_name: skipCreatedBy
+            ? null
+            : (userNameById[firstCreatorByOrder[o.id] ?? ""] ?? null),
         customer: customerMap[o.customer_id] || null,
         details: (detailsByOrder[o.id] || []).map((d: any) => ({
             ...d,
@@ -294,6 +328,8 @@ export type OrdersFilters = {
 export function useOrders() {
     return useQuery({
         queryKey: ["orders"],
+        staleTime: 60_000,
+        gcTime: 5 * 60_000,
         queryFn: async (): Promise<Order[]> => {
             const { data: orders, error } = await supabase
                 .from("orders")
@@ -303,7 +339,7 @@ export function useOrders() {
                 .order("created_at", { ascending: false })
                 .limit(100);
             if (error) throw error;
-            return enrichOrders(orders || []);
+            return enrichOrders(orders || [], { skipCreatedBy: true });
         },
     });
 }
@@ -316,6 +352,8 @@ export function useOrdersInfinite(filters: OrdersFilters) {
             filters.end_date,
             filters.status,
         ],
+        staleTime: 60_000,
+        gcTime: 5 * 60_000,
         initialPageParam: 0,
         getNextPageParam: (lastPage: Order[], _allPages) =>
             lastPage.length === PAGE_SIZE
@@ -339,7 +377,7 @@ export function useOrdersInfinite(filters: OrdersFilters) {
             if (filters.status) q = q.eq("status", filters.status);
             const { data: orders, error } = await q;
             if (error) throw error;
-            return enrichOrders(orders || []);
+            return enrichOrders(orders || [], { skipCreatedBy: true });
         },
     });
 }
@@ -361,7 +399,7 @@ export async function fetchOrdersForExport(
     if (filters.status) q = q.eq("status", filters.status);
     const { data: orders, error } = await q;
     if (error) throw error;
-    return enrichOrders(orders || []);
+    return enrichOrders(orders || [], { skipCreatedBy: true });
 }
 
 export function useOrderItems(tailorId?: string | number | null) {
@@ -514,6 +552,7 @@ export function useCreateOrder() {
             order,
             items,
             updated_by,
+            initial_payment,
         }: {
             order: Partial<Order>;
             items: {
@@ -523,6 +562,11 @@ export function useCreateOrder() {
                 assigned_tailor_id?: string | null;
             }[];
             updated_by?: string | null;
+            /** Thu ngay khi lập đơn (POS): ghi `payments` + cập nhật `paid_amount` giống màn thanh toán. */
+            initial_payment?: {
+                amount: number;
+                payment_method: "Cash" | "Card" | "Transfer";
+            } | null;
         }) => {
             const { data: orderData, error: orderError } = await supabase
                 .from("orders")
@@ -545,6 +589,62 @@ export function useCreateOrder() {
                     .insert(details);
                 if (detailsError) throw detailsError;
             }
+
+            await insertOrderLog({
+                order_id: orderData.id,
+                action: "order_created",
+                new_value: orderData as unknown as Record<string, unknown>,
+                updated_by,
+            });
+
+            const total = Number(orderData.total_amount ?? 0);
+            const payRaw = initial_payment?.amount;
+            if (
+                payRaw != null &&
+                Number.isFinite(Number(payRaw)) &&
+                Number(payRaw) > 0 &&
+                initial_payment?.payment_method
+            ) {
+                const amount = Math.min(Number(payRaw), total);
+                if (amount > 0) {
+                    const { data: payRow, error: payErr } = await supabase
+                        .from("payments")
+                        .insert({
+                            order_id: orderData.id,
+                            amount,
+                            payment_method: initial_payment.payment_method,
+                        })
+                        .select()
+                        .single();
+                    if (payErr) throw payErr;
+                    const { error: rpcErr } = await supabase.rpc(
+                        "increment_order_payment",
+                        {
+                            order_id: orderData.id,
+                            amount,
+                        },
+                    );
+                    if (rpcErr) {
+                        throw new Error(
+                            rpcErr.message ||
+                                "Cập nhật paid_amount sau thanh toán ban đầu thất bại",
+                        );
+                    }
+                    await insertOrderLog({
+                        order_id: orderData.id,
+                        action: "payment",
+                        entity_type: "payment",
+                        entity_id: payRow.id,
+                        new_value: {
+                            amount,
+                            payment_method: initial_payment.payment_method,
+                            initial_on_create: true,
+                        } as Record<string, unknown>,
+                        updated_by,
+                    });
+                }
+            }
+
             const customerId =
                 orderData.customer_id != null
                     ? Number(orderData.customer_id)
@@ -556,13 +656,14 @@ export function useCreateOrder() {
                 );
                 if (debtError) throw debtError;
             }
-            await insertOrderLog({
-                order_id: orderData.id,
-                action: "order_created",
-                new_value: orderData as unknown as Record<string, unknown>,
-                updated_by,
-            });
-            return orderData as Order;
+
+            const { data: finalOrder, error: finalErr } = await supabase
+                .from("orders")
+                .select()
+                .eq("id", orderData.id)
+                .single();
+            if (finalErr) throw finalErr;
+            return finalOrder as Order;
         },
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: ["orders"] });
@@ -571,6 +672,7 @@ export function useCreateOrder() {
             qc.invalidateQueries({ queryKey: ["stats"] });
             qc.invalidateQueries({ queryKey: ["all-order-items"] });
             qc.invalidateQueries({ queryKey: ["order-items"] });
+            qc.invalidateQueries({ queryKey: ["payments"] });
         },
     });
 }
@@ -725,6 +827,19 @@ export function useUpdateOrderDetail() {
                 payload.assigned_tailor_id =
                     v == null || v === "" ? null : String(v);
             }
+            if ("status" in detail && detail.status != null) {
+                const ns = detail.status;
+                if (ns === "Delivered" || ns === "DeliveredOwing") {
+                    payload.handed_over_at = new Date().toISOString();
+                } else if (
+                    ns === "New" ||
+                    ns === "In Progress" ||
+                    ns === "Ready" ||
+                    ns === "Completed"
+                ) {
+                    payload.handed_over_at = null;
+                }
+            }
             const { data, error } = await supabase
                 .from("order_details")
                 .update(payload)
@@ -777,15 +892,29 @@ export function useUpdateOrderDetail() {
                     .from("order_details")
                     .select("status")
                     .eq("order_id", data.order_id);
+                const { data: curOrdRow } = await supabase
+                    .from("orders")
+                    .select("status")
+                    .eq("id", data.order_id)
+                    .single();
+                const curOrderSt = (curOrdRow?.status as string) || "New";
                 if (siblings && siblings.length > 0) {
-                    const allReady = siblings.every(
-                        (s) => s.status === "Ready" || s.status === "Completed",
+                    const lineWorkDone = (st: string) =>
+                        st === "Ready" ||
+                        st === "Completed" ||
+                        st === "Delivered" ||
+                        st === "DeliveredOwing";
+                    const allReady = siblings.every((s) =>
+                        lineWorkDone(s.status),
                     );
                     const anyInProgress = siblings.some(
                         (s) => s.status === "In Progress",
                     );
                     let newOrderStatus: string | null = null;
-                    if (allReady) {
+                    if (
+                        allReady &&
+                        (curOrderSt === "New" || curOrderSt === "In Progress")
+                    ) {
                         newOrderStatus = "Ready";
                     } else if (
                         anyInProgress ||
@@ -938,6 +1067,14 @@ export function useUpdateOrderDetail() {
                           )
                         : old,
             );
+
+            qc.invalidateQueries({
+                predicate: (q) =>
+                    Array.isArray(q.queryKey) &&
+                    q.queryKey[0] === "orders" &&
+                    q.queryKey[1] != null &&
+                    String(q.queryKey[1]) === String(detail.order_id),
+            });
         },
         onError: (_err, _vars, ctx) => {
             if (ctx?.prev) qc.setQueryData(["orders"], ctx.prev);
