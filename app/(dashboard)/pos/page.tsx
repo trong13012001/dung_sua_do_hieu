@@ -327,7 +327,7 @@ export default function POSPage() {
     for (let i = 0; i < filled.length; i++) {
       const item = filled[i];
       const nameErr = validateRequired(item.name, 'Tên sản phẩm');
-      const priceErr = validateNumber(item.price, { min: 1, fieldName: 'Đơn giá' });
+      const priceErr = validateNumber(item.price, { min: 0, fieldName: 'Đơn giá' });
       if (nameErr || priceErr) {
         showToast(`Sản phẩm ${i + 1}: ${nameErr || priceErr}`, 'error');
         return;
@@ -349,7 +349,7 @@ export default function POSPage() {
           status: 'New',
           return_time,
         } as Partial<Order>,
-        items: items.filter(i => i.name.trim() !== '' && Number(i.price) > 0).map(i => ({
+        items: items.filter(i => i.name.trim() !== '' && Number(i.price) >= 0).map(i => ({
           name: i.name.trim(),
           price: Number(i.price),
           description: i.description?.trim() ?? '',

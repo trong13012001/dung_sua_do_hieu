@@ -393,7 +393,7 @@ export default function OrdersPage() {
                 const row = newItems[i];
                 const hasName = row.name.trim() !== "";
                 const priceErr = validateNumber(row.price, {
-                    min: 1,
+                    min: 0,
                     required: hasName,
                     fieldName: "Đơn giá",
                 });
@@ -415,7 +415,7 @@ export default function OrdersPage() {
             }
             const toAdd: NewOrderDetailItem[] = newItems
                 .filter(
-                    (row) => row.name.trim() !== "" && Number(row.price) > 0,
+                    (row) => row.name.trim() !== "" && Number(row.price) >= 0,
                 )
                 .map((row) => ({
                     item_name: row.name.trim(),
