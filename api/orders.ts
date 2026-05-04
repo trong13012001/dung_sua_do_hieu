@@ -689,6 +689,25 @@ export function useUpdateOrder() {
             order: Partial<Order>;
             updated_by?: string | null;
         }) => {
+            if (order.status === "Completed") {
+                const { data: row, error: selErr } = await supabase
+                    .from("orders")
+                    .select("total_amount, paid_amount")
+                    .eq("id", id)
+                    .single();
+                if (selErr) throw selErr;
+                const total = Number(
+                    order.total_amount ?? row?.total_amount ?? 0,
+                );
+                const paid = Number(
+                    order.paid_amount ?? row?.paid_amount ?? 0,
+                );
+                if (total - paid > 0.001) {
+                    throw new Error(
+                        "Chỉ hoàn thành đơn khi đã thu đủ tiền (còn nợ trên đơn).",
+                    );
+                }
+            }
             const { data, error } = await supabase
                 .from("orders")
                 .update({ ...order, updated_at: new Date().toISOString() })
@@ -736,10 +755,13 @@ export function useUpdateOrder() {
                 }
             }
         },
-        onSettled: () => {
+        onSettled: (_data, _error, variables) => {
             qc.invalidateQueries({ queryKey: ["orders"] });
             qc.invalidateQueries({ queryKey: ["orders-infinite"] });
             qc.invalidateQueries({ queryKey: ["stats"] });
+            if (variables?.id != null) {
+                qc.invalidateQueries({ queryKey: ["orders", variables.id] });
+            }
         },
     });
 }
@@ -754,6 +776,21 @@ export function useUpdateOrderStatus() {
             orderId: number;
             status: string;
         }) => {
+            if (status === "Completed") {
+                const { data: row, error: selErr } = await supabase
+                    .from("orders")
+                    .select("total_amount, paid_amount")
+                    .eq("id", orderId)
+                    .single();
+                if (selErr) throw selErr;
+                const total = Number(row?.total_amount ?? 0);
+                const paid = Number(row?.paid_amount ?? 0);
+                if (total - paid > 0.001) {
+                    throw new Error(
+                        "Chỉ hoàn thành đơn khi đã thu đủ tiền (còn nợ trên đơn).",
+                    );
+                }
+            }
             const { data, error } = await supabase
                 .from("orders")
                 .update({ status, updated_at: new Date().toISOString() })

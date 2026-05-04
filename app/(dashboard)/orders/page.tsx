@@ -21,6 +21,7 @@ import {
     ListOrdered,
     PackageCheck,
     CheckCircle2,
+    UserCheck,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import {
@@ -194,6 +195,7 @@ export default function OrdersPage() {
     const [editingOrder, setEditingOrder] = useState<Order | null>(null);
     const [deletingOrder, setDeletingOrder] = useState<Order | null>(null);
     const [completingOrder, setCompletingOrder] = useState<Order | null>(null);
+    const [deliveringOrder, setDeliveringOrder] = useState<Order | null>(null);
     const [deletingDetailId, setDeletingDetailId] = useState<number | null>(
         null,
     );
@@ -237,6 +239,16 @@ export default function OrdersPage() {
             remainingAfter,
         };
     }, [payingOrder, payForm.amount]);
+    const completingDebt =
+        completingOrder === null
+            ? 0
+            : completingOrder.total_amount -
+              (completingOrder.paid_amount ?? 0);
+    const deliveringDebt =
+        deliveringOrder === null
+            ? 0
+            : deliveringOrder.total_amount -
+              (deliveringOrder.paid_amount ?? 0);
     const [exporting, setExporting] = useState(false);
     type DetailEdit = {
         item_name: string;
@@ -382,6 +394,21 @@ export default function OrdersPage() {
         try {
             const orderStatusChoice =
                 (fd.get("order-status") as string) || editingOrder.status;
+            if (
+                orderStatusChoice === "Completed" &&
+                editingOrder.status !== "Completed"
+            ) {
+                const editDebt =
+                    editingOrder.total_amount -
+                    (editingOrder.paid_amount || 0);
+                if (editDebt > 0) {
+                    showToast(
+                        "Chỉ hoàn thành đơn khi đã thu đủ tiền (còn nợ trên đơn).",
+                        "error",
+                    );
+                    return;
+                }
+            }
             if (
                 orderStatusChoice &&
                 orderStatusChoice !== editingOrder.status
@@ -560,17 +587,19 @@ export default function OrdersPage() {
         }
     };
 
-    const handleMarkDeliveredFromList = async (order: Order) => {
+    const handleConfirmDeliverFromList = async () => {
+        if (!deliveringOrder) return;
         try {
-            const status = resolveStatusWhenMarkingDelivered(order);
+            const status = resolveStatusWhenMarkingDelivered(deliveringOrder);
             await mutateAsyncUpdateOrder({
-                id: order.id,
+                id: deliveringOrder.id,
                 order: {
                     status,
                     return_time: new Date().toISOString(),
                 },
                 updated_by: currentUserId ?? undefined,
             });
+            setDeliveringOrder(null);
             showToast(
                 status === "DeliveredOwing"
                     ? "Đã ghi nhận trả đồ — Trả thiếu tiền (còn nợ)."
@@ -586,6 +615,15 @@ export default function OrdersPage() {
         order: Order,
     ): Promise<boolean> => {
         if (order.status === "Completed") return false;
+        const listDebt =
+            order.total_amount - (order.paid_amount ?? 0);
+        if (listDebt > 0) {
+            showToast(
+                "Chỉ hoàn thành đơn khi đã thu đủ tiền (còn nợ trên đơn).",
+                "error",
+            );
+            return false;
+        }
         try {
             for (const d of order.details ?? []) {
                 if (d.status === "Completed") continue;
@@ -1009,7 +1047,7 @@ export default function OrdersPage() {
                                                         type="button"
                                                         onClick={(e) => {
                                                             e.stopPropagation();
-                                                            void handleMarkDeliveredFromList(
+                                                            setDeliveringOrder(
                                                                 order,
                                                             );
                                                         }}
@@ -1017,7 +1055,7 @@ export default function OrdersPage() {
                                                             isPendingUpdateOrder
                                                         }
                                                         className="p-2 rounded-md text-primary hover:bg-primary/10 transition-colors disabled:opacity-40 shrink-0"
-                                                        title="Đã trả đồ cho khách"
+                                                        title="Trả đồ cho khách (xác nhận)"
                                                     >
                                                         <PackageCheck size={16} />
                                                     </button>
@@ -1028,16 +1066,22 @@ export default function OrdersPage() {
                                                         type="button"
                                                         onClick={(e) => {
                                                             e.stopPropagation();
+                                                            if (debt > 0) return;
                                                             setCompletingOrder(
                                                                 order,
                                                             );
                                                         }}
                                                         disabled={
+                                                            debt > 0 ||
                                                             isPendingUpdateOrder ||
                                                             isPendingUpdateDetail
                                                         }
                                                         className="p-2 rounded-md text-secondary hover:bg-secondary/10 transition-colors disabled:opacity-40 shrink-0"
-                                                        title="Hoàn thành đơn (xác nhận)"
+                                                        title={
+                                                            debt > 0
+                                                                ? "Thu đủ tiền trước khi hoàn thành đơn"
+                                                                : "Hoàn thành đơn (xác nhận)"
+                                                        }
                                                     >
                                                         <CheckCircle2
                                                             size={16}
@@ -1747,6 +1791,136 @@ export default function OrdersPage() {
                 </form>
             </Modal>
 
+            {/* Xác nhận trả đồ (danh sách đơn) */}
+            <Modal
+                isOpen={!!deliveringOrder}
+                onClose={() => setDeliveringOrder(null)}
+                title={
+                    deliveringOrder
+                        ? `Xác nhận trả đồ · Đơn #${String(deliveringOrder.id).padStart(5, "0")}`
+                        : "Xác nhận trả đồ"
+                }
+            >
+                <div className="space-y-4">
+                    {deliveringOrder && (
+                        <>
+                            <div className="p-4 bg-primary/5 border border-primary/20 rounded-lg space-y-3">
+                                <div className="flex items-center justify-between gap-2">
+                                    <span className="text-sm font-bold text-foreground">
+                                        Đơn #
+                                        {String(deliveringOrder.id).padStart(
+                                            5,
+                                            "0",
+                                        )}
+                                    </span>
+                                    <span className="text-sm font-bold text-foreground shrink-0">
+                                        {new Intl.NumberFormat("vi-VN", {
+                                            style: "currency",
+                                            currency: "VND",
+                                        }).format(deliveringOrder.total_amount)}
+                                    </span>
+                                </div>
+                                <div className="flex items-center gap-2 text-sm text-foreground flex-wrap">
+                                    <UserCheck
+                                        size={14}
+                                        className="shrink-0 text-primary"
+                                    />
+                                    <span className="font-medium">
+                                        {deliveringOrder.customer?.name ||
+                                            "Vãng lai"}
+                                    </span>
+                                    {deliveringOrder.customer?.phone && (
+                                        <span className="text-muted-foreground">
+                                            — {deliveringOrder.customer.phone}
+                                        </span>
+                                    )}
+                                </div>
+                                {deliveringOrder.details &&
+                                    deliveringOrder.details.length > 0 && (
+                                        <div className="border-t border-primary/10 pt-3 space-y-1.5">
+                                            <p className="text-[11px] font-bold text-muted-foreground uppercase">
+                                                Món trong đơn
+                                            </p>
+                                            <ul className="max-h-32 overflow-y-auto custom-scrollbar space-y-1 text-xs">
+                                                {deliveringOrder.details.map(
+                                                    (d) => (
+                                                        <li
+                                                            key={d.id}
+                                                            className="flex justify-between gap-2 text-foreground"
+                                                        >
+                                                            <span className="min-w-0 truncate">
+                                                                {d.item_name}
+                                                            </span>
+                                                            <span className="text-muted-foreground shrink-0">
+                                                                {new Intl.NumberFormat(
+                                                                    "vi-VN",
+                                                                ).format(
+                                                                    d.unit_price,
+                                                                )}
+                                                                đ
+                                                            </span>
+                                                        </li>
+                                                    ),
+                                                )}
+                                            </ul>
+                                        </div>
+                                    )}
+                            </div>
+                            {deliveringDebt > 0 && (
+                                <div className="p-3 bg-warning/10 border border-warning/20 rounded-lg">
+                                    <p className="text-xs font-bold text-warning leading-relaxed">
+                                        Còn nợ{" "}
+                                        {new Intl.NumberFormat("vi-VN", {
+                                            style: "currency",
+                                            currency: "VND",
+                                        }).format(deliveringDebt)}
+                                        . Sau khi xác nhận, trạng thái đơn:{" "}
+                                        <span className="text-foreground">
+                                            {resolveStatusWhenMarkingDelivered(
+                                                deliveringOrder,
+                                            ) === "DeliveredOwing"
+                                                ? "Trả thiếu tiền."
+                                                : "Đã trả đồ."}
+                                        </span>
+                                    </p>
+                                </div>
+                            )}
+                            <p className="text-sm text-muted-foreground leading-relaxed">
+                                Xác nhận đã giao đồ cho khách? Hệ thống ghi nhận
+                                thời điểm trả đồ và cập nhật trạng thái đơn.
+                            </p>
+                            <div className="flex gap-3 pt-1">
+                                <button
+                                    type="button"
+                                    onClick={() => setDeliveringOrder(null)}
+                                    disabled={isPendingUpdateOrder}
+                                    className="flex-1 bg-muted/40 text-foreground py-2.5 rounded-md font-bold text-sm border border-border disabled:opacity-50"
+                                >
+                                    Hủy
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() =>
+                                        void handleConfirmDeliverFromList()
+                                    }
+                                    disabled={isPendingUpdateOrder}
+                                    className="flex-1 btn-primary py-2.5 rounded-md font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2"
+                                >
+                                    {isPendingUpdateOrder ? (
+                                        "Đang xử lý..."
+                                    ) : (
+                                        <>
+                                            <PackageCheck size={16} />
+                                            Xác nhận trả đồ
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </>
+                    )}
+                </div>
+            </Modal>
+
             {/* Xác nhận hoàn thành đơn */}
             <Modal
                 isOpen={!!completingOrder}
@@ -1774,6 +1948,16 @@ export default function OrdersPage() {
                                 trong đơn.
                             </p>
                         )}
+                    {completingDebt > 0 && (
+                        <p className="text-sm font-bold text-warning leading-relaxed">
+                            Đơn còn nợ{" "}
+                            {new Intl.NumberFormat("vi-VN", {
+                                style: "currency",
+                                currency: "VND",
+                            }).format(completingDebt)}
+                            . Thu đủ tiền trước khi hoàn thành đơn.
+                        </p>
+                    )}
                     <div className="flex gap-3 pt-2">
                         <button
                             type="button"
@@ -1790,6 +1974,7 @@ export default function OrdersPage() {
                             type="button"
                             onClick={() => void handleConfirmCompleteOrder()}
                             disabled={
+                                completingDebt > 0 ||
                                 isPendingUpdateOrder ||
                                 isPendingUpdateDetail
                             }

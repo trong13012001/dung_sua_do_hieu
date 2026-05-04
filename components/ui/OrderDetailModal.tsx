@@ -1,11 +1,15 @@
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useGetOrder } from '@/hooks/order/useGetOrder';
 import { useCurrentUserId } from '@/hooks/useCurrentUserId';
 import { useCurrentUserPermissions } from '@/hooks/useCurrentUserPermissions';
-import { useUpdateOrderDetail } from '@/api/orders';
+import { useUpdateOrder, useUpdateOrderDetail } from '@/api/orders';
+import { useProcessPayment } from '@/api/payments';
 import { Modal } from '@/components/ui/Modal';
+import { Toast, useToast } from '@/components/ui/Toast';
+import { validateNumber } from '@/lib/validation';
+import { resolveStatusWhenMarkingDelivered } from '@/lib/orderStatusUi';
 import {
   ShoppingBag,
   Calendar,
@@ -21,6 +25,8 @@ import {
   AlertCircle,
   Printer,
   ChevronDown,
+  PackageCheck,
+  UserCheck,
 } from 'lucide-react';
 import { Order, OrderDetail, Payment } from '@/lib/types';
 import {
@@ -48,19 +54,126 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
 }) => {
   const { data: order, isLoading, error } = useGetOrder(orderId);
   const { mutateAsync: mutateUpdateDetail } = useUpdateOrderDetail();
+  const { mutateAsync: mutateUpdateOrder, isPending: isPendingUpdateOrder } =
+    useUpdateOrder();
+  const { mutateAsync: mutateProcessPayment, isPending: isPendingPayment } =
+    useProcessPayment();
   const currentUserId = useCurrentUserId();
   const { has } = useCurrentUserPermissions();
+  const { toast, showToast, hideToast } = useToast();
   const canEditLineStatus =
     has('view_orders') || has('create_order') || has('update_tasks');
+  const canProcessPayment =
+    has('view_orders') || has('create_order') || has('process_payment');
+  const canMarkDelivered =
+    has('view_returns') ||
+    has('update_order_status') ||
+    has('view_orders') ||
+    has('create_order');
   const [savingLineId, setSavingLineId] = useState<number | null>(null);
   const [lineStatusErr, setLineStatusErr] = useState<string | null>(null);
+  const [deliverOpen, setDeliverOpen] = useState(false);
+  const [payForm, setPayForm] = useState<{
+    amount: string;
+    method: 'Cash' | 'Card' | 'Transfer';
+  }>({ amount: '', method: 'Cash' });
 
   useEffect(() => {
     if (!isOpen) {
       setLineStatusErr(null);
       setSavingLineId(null);
+      setDeliverOpen(false);
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen || !order) return;
+    const d = order.total_amount - (order.paid_amount ?? 0);
+    setPayForm((prev) => ({
+      amount: d > 0 ? String(d) : '',
+      method: prev.method,
+    }));
+  }, [isOpen, orderId, order?.total_amount, order?.paid_amount]);
+
+  const paymentPreview = useMemo(() => {
+    if (!order) return null;
+    const total = order.total_amount;
+    const paid = order.paid_amount ?? 0;
+    const raw = payForm.amount.trim();
+    const parsed = raw === '' ? 0 : Number(raw);
+    const thisPayment =
+      Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+    const currentDebt = Math.max(0, total - paid);
+    const paidAfter = paid + thisPayment;
+    const remainingAfter = Math.max(0, total - paidAfter);
+    return {
+      total,
+      paid,
+      thisPayment,
+      currentDebt,
+      paidAfter,
+      remainingAfter,
+    };
+  }, [order, payForm.amount]);
+
+  const handlePayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!order) return;
+    const amountErr = validateNumber(payForm.amount, {
+      min: 1,
+      fieldName: 'Số tiền thanh toán',
+    });
+    if (amountErr) {
+      showToast(amountErr, 'error');
+      return;
+    }
+    const amt = Number(payForm.amount);
+    try {
+      await mutateProcessPayment({
+        order_id: order.id,
+        amount: amt,
+        payment_method: payForm.method,
+        updated_by: currentUserId ?? undefined,
+      });
+      const nextDebt = Math.max(
+        0,
+        order.total_amount - (order.paid_amount ?? 0) - amt,
+      );
+      setPayForm({
+        amount: nextDebt > 0 ? String(nextDebt) : '',
+        method: payForm.method,
+      });
+      showToast('Đã ghi nhận thanh toán.', 'success');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      showToast('Lỗi: ' + msg, 'error');
+    }
+  };
+
+  const handleConfirmDeliver = async () => {
+    if (!order) return;
+    try {
+      const status = resolveStatusWhenMarkingDelivered(order);
+      await mutateUpdateOrder({
+        id: order.id,
+        order: {
+          status,
+          return_time: new Date().toISOString(),
+        },
+        updated_by: currentUserId ?? undefined,
+      });
+      setDeliverOpen(false);
+      showToast(
+        status === 'DeliveredOwing'
+          ? 'Đã ghi nhận trả đồ — Trả thiếu tiền (còn nợ).'
+          : 'Đã ghi nhận trả đồ.',
+        'success',
+      );
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      showToast('Lỗi: ' + msg, 'error');
+    }
+  };
 
   const handleLineStatusChange = useCallback(
     async (detail: OrderDetail, next: string) => {
@@ -127,8 +240,17 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
   };
 
   const statusInfo = order ? getStatusInfo(order.status) : null;
+  const detailDebt =
+    order != null ? order.total_amount - (order.paid_amount ?? 0) : 0;
+  const showDeliverInDetail =
+    order != null &&
+    (order.status === 'Ready' || order.status === 'Paid') &&
+    canMarkDelivered;
+  const showPayInDetail =
+    order != null && detailDebt > 0 && canProcessPayment;
 
   return (
+    <>
     <Modal
       isOpen={isOpen}
       onClose={onClose}
@@ -233,7 +355,7 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
 
             {/* Financial Summary */}
             <div className="vuexy-card p-5 md:p-6 !shadow-none border border-border bg-primary/5">
-              <h6 className="text-[10px] md:text-xs font-bold uppercase tracking-widest text-primary mb-4 md:mb-6">Thanh toán</h6>
+              <h6 className="text-[10px] md:text-xs font-bold uppercase tracking-widest text-primary mb-4 md:mb-6">Thanh toán & trả đồ</h6>
               <div className="space-y-3 md:space-y-4">
                 <div className="flex justify-between items-center pb-2 md:pb-3 border-b border-primary/10">
                   <span className="text-xs md:text-sm text-muted-foreground">Tổng cộng</span>
@@ -244,16 +366,105 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
                 <div className="flex justify-between items-center pb-2 md:pb-3 border-b border-primary/10">
                   <span className="text-xs md:text-sm text-muted-foreground">Đã trả</span>
                   <span className="text-base md:text-lg font-bold text-success">
-                    {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(order.paid_amount)}
+                    {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(order.paid_amount ?? 0)}
                   </span>
                 </div>
                 <div className="flex justify-between items-center pt-1 md:pt-2">
                   <span className="text-xs md:text-sm font-bold text-primary uppercase tracking-wider">Còn lại</span>
                   <span className="text-xl md:text-2xl font-black text-primary">
-                    {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(order.total_amount - (order.paid_amount || 0))}
+                    {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(detailDebt)}
                   </span>
                 </div>
               </div>
+
+              {(showDeliverInDetail || showPayInDetail) && (
+                <div className="mt-4 md:mt-5 pt-4 border-t border-primary/15 space-y-3">
+                  {showDeliverInDetail && (
+                    <button
+                      type="button"
+                      onClick={() => setDeliverOpen(true)}
+                      disabled={isPendingUpdateOrder}
+                      className="w-full flex items-center justify-center gap-2 py-2.5 rounded-md font-bold text-xs md:text-sm bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+                    >
+                      <PackageCheck size={16} />
+                      Trả đồ cho khách
+                    </button>
+                  )}
+                  {showPayInDetail && paymentPreview && (
+                    <form onSubmit={(e) => void handlePayment(e)} className="space-y-3">
+                      <p className="text-[10px] md:text-[11px] text-muted-foreground leading-relaxed">
+                        Ghi nhận tiền đã thu. Khi đủ tiền, hệ thống tự cập nhật trạng thái thanh toán; nếu đơn đang Trả thiếu tiền, có thể chuyển sang Đã trả đồ sau khi thu đủ.
+                      </p>
+                      <div className="p-3 bg-muted/10 rounded-lg border border-border space-y-1.5 text-[11px]">
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Còn nợ hiện tại</span>
+                          <span className="font-bold text-primary">
+                            {new Intl.NumberFormat('vi-VN', {
+                              style: 'currency',
+                              currency: 'VND',
+                            }).format(paymentPreview.currentDebt)}
+                          </span>
+                        </div>
+                        {paymentPreview.thisPayment > 0 && (
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Sau lần này (dự kiến)</span>
+                            <span className="font-bold">
+                              {new Intl.NumberFormat('vi-VN', {
+                                style: 'currency',
+                                currency: 'VND',
+                              }).format(paymentPreview.remainingAfter)}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-muted-foreground uppercase">
+                          Số tiền thu
+                        </label>
+                        <input
+                          required
+                          type="number"
+                          min={1}
+                          className="w-full bg-muted/20 border border-border rounded-md px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-primary"
+                          value={payForm.amount}
+                          onChange={(e) =>
+                            setPayForm((p) => ({ ...p, amount: e.target.value }))
+                          }
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-muted-foreground uppercase">
+                          Phương thức
+                        </label>
+                        <select
+                          className="w-full bg-muted/20 border border-border rounded-md px-3 py-2 text-sm appearance-none outline-none focus:ring-1 focus:ring-primary"
+                          value={payForm.method}
+                          onChange={(e) =>
+                            setPayForm((p) => ({
+                              ...p,
+                              method: e.target.value as
+                                | 'Cash'
+                                | 'Card'
+                                | 'Transfer',
+                            }))
+                          }
+                        >
+                          <option value="Cash">Tiền mặt</option>
+                          <option value="Card">Thẻ</option>
+                          <option value="Transfer">Chuyển khoản</option>
+                        </select>
+                      </div>
+                      <button
+                        type="submit"
+                        disabled={isPendingPayment}
+                        className="w-full btn-primary py-2.5 rounded-md font-bold text-xs md:text-sm disabled:opacity-50"
+                      >
+                        {isPendingPayment ? 'Đang xử lý...' : 'Ghi nhận thanh toán'}
+                      </button>
+                    </form>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -466,5 +677,94 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
         <div className="text-center py-10 text-muted-foreground">Không tìm thấy dữ liệu đơn hàng.</div>
       )}
     </Modal>
+
+    <Modal
+      isOpen={deliverOpen && !!order}
+      onClose={() => setDeliverOpen(false)}
+      title={
+        order
+          ? `Xác nhận trả đồ · #${String(order.id).padStart(5, '0')}`
+          : 'Xác nhận trả đồ'
+      }
+      stackOnTop
+    >
+      {order && (
+        <div className="space-y-4">
+          <div className="p-4 bg-primary/5 border border-primary/20 rounded-lg space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-bold text-foreground">
+                Đơn #{String(order.id).padStart(5, '0')}
+              </span>
+              <span className="text-sm font-bold text-foreground">
+                {new Intl.NumberFormat('vi-VN', {
+                  style: 'currency',
+                  currency: 'VND',
+                }).format(order.total_amount)}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 text-sm text-foreground">
+              <UserCheck size={14} />
+              <span className="font-medium">
+                {order.customer?.name || 'Vãng lai'}
+              </span>
+              {order.customer?.phone && (
+                <span className="text-muted-foreground">
+                  — {order.customer.phone}
+                </span>
+              )}
+            </div>
+            {detailDebt > 0 && (
+              <div className="p-3 bg-warning/10 border border-warning/20 rounded-lg">
+                <p className="text-xs font-bold text-warning leading-relaxed">
+                  Còn nợ{' '}
+                  {new Intl.NumberFormat('vi-VN').format(detailDebt)}đ. Sau khi
+                  xác nhận, trạng thái đơn:{' '}
+                  <span className="text-foreground">
+                    {resolveStatusWhenMarkingDelivered(order) === 'DeliveredOwing'
+                      ? 'Trả thiếu tiền'
+                      : 'Đã trả đồ'}
+                  </span>
+                  .
+                </p>
+              </div>
+            )}
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              Xác nhận đã giao đồ cho khách? Hệ thống ghi nhận thời điểm trả đồ
+              và cập nhật trạng thái đơn tương ứng.
+            </p>
+          </div>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => setDeliverOpen(false)}
+              disabled={isPendingUpdateOrder}
+              className="flex-1 bg-muted/40 text-foreground py-2.5 rounded-md font-bold text-sm border border-border disabled:opacity-50"
+            >
+              Hủy
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleConfirmDeliver()}
+              disabled={isPendingUpdateOrder}
+              className="flex-1 btn-primary py-2.5 rounded-md font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {isPendingUpdateOrder ? (
+                'Đang xử lý...'
+              ) : (
+                <>
+                  <PackageCheck size={16} />
+                  Xác nhận trả đồ
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      )}
+    </Modal>
+
+    {toast && (
+      <Toast message={toast.message} type={toast.type} onClose={hideToast} />
+    )}
+    </>
   );
 };
