@@ -9,6 +9,7 @@ import {
   type ThermalPrintMethod,
 } from "@/lib/print/thermalPrint";
 import { isElectronThermalPrintAvailable } from "@/lib/print/electronPrintClient";
+import { filterOutermostItemLabelPrintHosts } from "@/lib/print/itemLabelPrintHosts";
 
 const THERMAL_MERGED_INVOICE_HOST_CLASS = "thermal-merged-invoice-host";
 
@@ -140,7 +141,8 @@ export async function printTargetElementSmart(
   try {
     let method: ThermalPrintMethod = "browser";
     if (target === PRINT_TARGET_LABEL_XP235B) {
-      const one = visible.at(-1);
+      const hosts = filterOutermostItemLabelPrintHosts(visible);
+      const one = hosts.length > 0 ? hosts.at(-1) : visible.at(-1);
       if (one) method = await printThermalElement(one, { target });
     } else {
       const picked = pickInvoiceAreasForThermalJob(visible);
