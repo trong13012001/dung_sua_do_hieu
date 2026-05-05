@@ -7,6 +7,7 @@ import React, {
     useEffect,
     useMemo,
 } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
     Search,
     ShoppingBag,
@@ -39,6 +40,7 @@ import { useOrderLogs } from "@/api/orderLogs";
 import { useProcessPayment } from "@/api/payments";
 import { useEmployees } from "@/api/users";
 import { useCurrentUserId } from "@/hooks/useCurrentUserId";
+import { useGetOrder } from "@/hooks/order/useGetOrder";
 import { Modal } from "@/components/ui/Modal";
 import { Toast, useToast } from "@/components/ui/Toast";
 import {
@@ -154,6 +156,8 @@ function OrderLogSection({ orderId }: { orderId: number | null }) {
 }
 
 export default function OrdersPage() {
+    const router = useRouter();
+    const searchParams = useSearchParams();
     const currentUserId = useCurrentUserId();
     const { data: employees } = useEmployees();
     const {
@@ -336,6 +340,18 @@ export default function OrdersPage() {
     const orders = ordersRaw.filter(
         (o, i, arr) => arr.findIndex((x) => x.id === o.id) === i,
     );
+    const deepLinkEditIdRaw = searchParams.get("editOrderId");
+    const deepLinkEditId = deepLinkEditIdRaw
+        ? Number(deepLinkEditIdRaw)
+        : null;
+    const shouldFetchDeepLinkOrder =
+        deepLinkEditId != null &&
+        Number.isFinite(deepLinkEditId) &&
+        deepLinkEditId > 0;
+    const { data: deepLinkedOrder } = useGetOrder(
+        shouldFetchDeepLinkOrder ? deepLinkEditId : null,
+    );
+    const deepLinkHandledRef = useRef<string | null>(null);
 
     const decoded = debouncedSearch ? decodeBarcode(debouncedSearch) : null;
     const searchDigits = debouncedSearch.replaceAll(/\D/g, "");
@@ -381,6 +397,31 @@ export default function OrdersPage() {
         obs.observe(el);
         return () => obs.disconnect();
     }, [loadMoreCallback]);
+
+    useEffect(() => {
+        if (!deepLinkEditIdRaw) {
+            deepLinkHandledRef.current = null;
+            return;
+        }
+        if (deepLinkHandledRef.current === deepLinkEditIdRaw) return;
+        if (deepLinkEditId == null || !Number.isFinite(deepLinkEditId)) return;
+        const foundInList = orders.find((o) => o.id === deepLinkEditId);
+        const targetOrder = foundInList ?? deepLinkedOrder ?? null;
+        if (!targetOrder) return;
+        openEditModal(targetOrder);
+        deepLinkHandledRef.current = deepLinkEditIdRaw;
+        const nextParams = new URLSearchParams(searchParams.toString());
+        nextParams.delete("editOrderId");
+        const nextQuery = nextParams.toString();
+        router.replace(nextQuery ? `/orders?${nextQuery}` : "/orders");
+    }, [
+        deepLinkEditId,
+        deepLinkEditIdRaw,
+        deepLinkedOrder,
+        orders,
+        router,
+        searchParams,
+    ]);
 
     const tailors =
         employees?.filter(

@@ -62,10 +62,10 @@ function PrintQueueHint({
   step,
   silent,
 }: Readonly<{ step: PosPrintStep; silent: boolean }>) {
-  if (silent && step === 'labels') {
+  if (silent && step === 'invoice') {
     return (
       <div className="non-print rounded-lg border border-border bg-muted/20 p-3 text-xs text-muted-foreground leading-relaxed">
-        <span className="font-bold text-foreground">Bước 1/2 — XP-235B (tem):</span>{' '}
+        <span className="font-bold text-foreground">Bước 1/2 — XP-80C (hóa đơn):</span>{' '}
         đang in im lặng (Electron hoặc agent). Tự chuyển sang bước 2 khi hoàn tất.
       </div>
     );
@@ -73,24 +73,24 @@ function PrintQueueHint({
   if (silent) {
     return (
       <div className="non-print rounded-lg border border-border bg-muted/20 p-3 text-xs text-muted-foreground leading-relaxed">
-        <span className="font-bold text-foreground">Bước 2/2 — XP-80C (hóa đơn):</span>{' '}
+        <span className="font-bold text-foreground">Bước 2/2 — XP-235B (tem):</span>{' '}
         đang in im lặng (Electron hoặc agent).
       </div>
     );
   }
-  if (step === 'labels') {
+  if (step === 'invoice') {
     return (
       <div className="non-print rounded-lg border border-border bg-muted/20 p-3 text-xs text-muted-foreground leading-relaxed">
-        <span className="font-bold text-foreground">Bước 1 — Xprinter XP-235B:</span>{' '}
+        <span className="font-bold text-foreground">Bước 1 — Xprinter XP-80C (80mm):</span>{' '}
         cửa sổ in <span className="font-bold text-foreground">tự mở</span> ngay sau khi tạo đơn. Sau khi bạn in xong và đóng hộp thoại, hệ thống tự mở{' '}
-        <span className="font-bold text-foreground">bước 2 — XP-80C</span> cho hóa đơn.
+        <span className="font-bold text-foreground">bước 2 — XP-235B</span> cho tem barcode món.
       </div>
     );
   }
   return (
     <div className="non-print rounded-lg border border-border bg-muted/20 p-3 text-xs text-muted-foreground leading-relaxed">
-      <span className="font-bold text-foreground">Bước 2 — Xprinter XP-80C (80mm):</span>{' '}
-      cửa sổ in tự mở — chọn máy nhiệt 80mm và in. Đóng hộp thoại in để kết thúc hàng đợi.
+      <span className="font-bold text-foreground">Bước 2 — Xprinter XP-235B (tem):</span>{' '}
+      cửa sổ in tự mở — chọn máy in tem và in. Đóng hộp thoại in để kết thúc hàng đợi.
     </div>
   );
 }
@@ -123,7 +123,7 @@ export default function POSPage() {
   const [initialPaidInput, setInitialPaidInput] = useState('');
   const [initialPayMethod, setInitialPayMethod] = useState<Payment['payment_method']>('Cash');
 
-  /** Hàng đợi in sau tạo đơn: 1) tem XP-235B → 2) hóa đơn XP-80C */
+  /** Hàng đợi in sau tạo đơn: 1) hóa đơn XP-80C → 2) tem XP-235B */
   const [printQueue, setPrintQueue] = useState<PosPrintQueue | null>(null);
   /** Chỉ tự chuyển bước sau afterprint khi print() do hàng đợi gọi (không áp dụng khi bấm "In lại"). */
   const printQueueAdvanceRef = useRef<PosPrintStep | null>(null);
@@ -143,7 +143,7 @@ export default function POSPage() {
   const skipPrintStep = () => {
     setPrintQueue((q) => {
       if (!q) return null;
-      if (q.step === 'labels') return { ...q, step: 'invoice' };
+      if (q.step === 'invoice') return { ...q, step: 'labels' };
       return null;
     });
   };
@@ -163,8 +163,8 @@ export default function POSPage() {
         result.method === 'silent' ||
         (result.method === 'browser' && result.error == null);
       if (advance) {
-        if (step === 'labels') {
-          setPrintQueue((q) => (q?.step === 'labels' ? { ...q, step: 'invoice' } : q));
+        if (step === 'invoice') {
+          setPrintQueue((q) => (q?.step === 'invoice' ? { ...q, step: 'labels' } : q));
         } else {
           setPrintQueue(null);
         }
@@ -187,8 +187,8 @@ export default function POSPage() {
       if (!expected) return;
       setPrintQueue((q) => {
         if (!q) return null;
-        if (expected === 'labels' && q.step === 'labels') return { ...q, step: 'invoice' };
-        if (expected === 'invoice' && q.step === 'invoice') return null;
+        if (expected === 'invoice' && q.step === 'invoice') return { ...q, step: 'labels' };
+        if (expected === 'labels' && q.step === 'labels') return null;
         return q;
       });
     };
@@ -197,21 +197,21 @@ export default function POSPage() {
   }, [silentAutoPrint]);
 
   /**
-   * Bước 2 (hóa đơn): tự động in khi chuyển step.
+   * Bước 2 (tem): tự động in khi chuyển step.
    * Electron/agent → im lặng; ngược lại → window.print().
    */
   useLayoutEffect(() => {
-    if (!printQueue || printQueue.step !== 'invoice') return;
+    if (!printQueue || printQueue.step !== 'labels') return;
 
     if (silentAutoPrint) {
-      const dedupeKey = `${printQueue.orderId}-invoice`;
+      const dedupeKey = `${printQueue.orderId}-labels`;
       if (invoiceAutoPrintKeyRef.current === dedupeKey) return;
       invoiceAutoPrintKeyRef.current = dedupeKey;
-      runSilentAutoPrint('invoice');
+      runSilentAutoPrint('labels');
       return;
     }
 
-    printQueueAdvanceRef.current = 'invoice';
+    printQueueAdvanceRef.current = 'labels';
     let id0 = 0;
     let id1 = 0;
     id0 = globalThis.requestAnimationFrame(() => {
@@ -417,7 +417,7 @@ export default function POSPage() {
       );
       flushSync(() => {
         setPrintQueue({
-          step: 'labels',
+          step: 'invoice',
           orderId: created.id,
           transactionCode: (created as Order).transaction_code ?? null,
           labelItems: filled,
@@ -429,9 +429,9 @@ export default function POSPage() {
       });
 
       if (silentAutoPrint) {
-        runSilentAutoPrint('labels');
+        runSilentAutoPrint('invoice');
       } else {
-        printQueueAdvanceRef.current = 'labels';
+        printQueueAdvanceRef.current = 'invoice';
         globalThis.requestAnimationFrame(() => {
           globalThis.requestAnimationFrame(() => {
             globalThis.print();
@@ -858,15 +858,15 @@ export default function POSPage() {
         stackOnTop
       />
 
-      {/* Hàng đợi in: tem XP-235B → hóa đơn XP-80C */}
+      {/* Hàng đợi in: hóa đơn XP-80C → tem XP-235B */}
       <Modal
         isOpen={printQueue != null && printQueue.labelItems.length > 0}
         onClose={closePrintQueue}
         title={
           printQueue
-            ? printQueue.step === 'labels'
-              ? `Hàng đợi 1/2 · Tem XP-235B · Đơn #${printQueue.orderId.toString().padStart(5, '0')}`
-              : `Hàng đợi 2/2 · Hóa đơn XP-80C · Đơn #${printQueue.orderId.toString().padStart(5, '0')}`
+            ? printQueue.step === 'invoice'
+              ? `Hàng đợi 1/2 · Hóa đơn XP-80C · Đơn #${printQueue.orderId.toString().padStart(5, '0')}`
+              : `Hàng đợi 2/2 · Tem XP-235B · Đơn #${printQueue.orderId.toString().padStart(5, '0')}`
             : 'In sau tạo đơn'
         }
         maxWidth="max-w-xl"
@@ -890,7 +890,9 @@ export default function POSPage() {
                 Đóng hàng đợi
               </button>
             </div>
-            {printQueue.step === 'labels' ? (
+            {printQueue.step === 'invoice' ? (
+              <InvoicePrint order={printQueue.invoiceOrder} onClose={closePrintQueue} />
+            ) : (
               <ItemLabelsPrint
                 orderId={printQueue.orderId}
                 transactionCode={printQueue.transactionCode}
@@ -900,8 +902,6 @@ export default function POSPage() {
                 returnTime={printQueue.returnTime ?? undefined}
                 onClose={closePrintQueue}
               />
-            ) : (
-              <InvoicePrint order={printQueue.invoiceOrder} onClose={closePrintQueue} />
             )}
           </div>
         )}
