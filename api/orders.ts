@@ -337,6 +337,14 @@ export type OrdersFilters = {
     start_date?: string;
     end_date?: string;
     status?: string;
+    search?: string;
+};
+
+export type OrdersPageResult = {
+    items: Order[];
+    total: number;
+    page: number;
+    pageSize: number;
 };
 
 export function useOrders() {
@@ -348,7 +356,7 @@ export function useOrders() {
             const { data: orders, error } = await supabase
                 .from("orders")
                 .select(
-                    "id, customer_id, total_amount, paid_amount, status, receive_time, return_time, created_at, updated_at",
+                    "id, customer_id, total_amount, paid_amount, status, receive_time, return_time, transaction_code, created_at, updated_at",
                 )
                 .order("created_at", { ascending: false })
                 .limit(100);
@@ -365,6 +373,7 @@ export function useOrdersInfinite(filters: OrdersFilters) {
             filters.start_date,
             filters.end_date,
             filters.status,
+            filters.search,
         ],
         staleTime: 60_000,
         gcTime: 5 * 60_000,
@@ -377,7 +386,7 @@ export function useOrdersInfinite(filters: OrdersFilters) {
             let q = supabase
                 .from("orders")
                 .select(
-                    "id, customer_id, total_amount, paid_amount, status, receive_time, return_time, created_at, updated_at",
+                    "id, customer_id, total_amount, paid_amount, status, receive_time, return_time, transaction_code, created_at, updated_at",
                 )
                 .order("created_at", { ascending: false })
                 .range(
@@ -389,9 +398,90 @@ export function useOrdersInfinite(filters: OrdersFilters) {
             if (filters.end_date)
                 q = q.lte("created_at", filters.end_date + "T23:59:59.999Z");
             if (filters.status) q = q.eq("status", filters.status);
+            if (filters.search) {
+                const normalized = filters.search.trim();
+                const digits = normalized.replaceAll(/\D/g, "");
+                const clauses: string[] = [];
+                if (digits.length > 0) {
+                    const numericId = Number(digits);
+                    if (Number.isFinite(numericId) && numericId > 0) {
+                        clauses.push(`id.eq.${numericId}`);
+                    }
+                    clauses.push(`transaction_code.ilike.%${digits}%`);
+                } else if (normalized.length > 0) {
+                    clauses.push(`transaction_code.ilike.%${normalized}%`);
+                }
+                if (clauses.length > 0) {
+                    q = q.or(clauses.join(","));
+                }
+            }
             const { data: orders, error } = await q;
             if (error) throw error;
             return enrichOrders(orders || [], { skipCreatedBy: true });
+        },
+    });
+}
+
+export function useOrdersPage(
+    filters: OrdersFilters,
+    page: number,
+    pageSize = PAGE_SIZE,
+) {
+    return useQuery({
+        queryKey: [
+            "orders-page",
+            filters.start_date,
+            filters.end_date,
+            filters.status,
+            filters.search,
+            page,
+            pageSize,
+        ],
+        staleTime: 60_000,
+        gcTime: 5 * 60_000,
+        queryFn: async (): Promise<OrdersPageResult> => {
+            const safePage = Number.isFinite(page) && page > 0 ? page : 1;
+            const from = (safePage - 1) * pageSize;
+            const to = from + pageSize - 1;
+            let q = supabase
+                .from("orders")
+                .select(
+                    "id, customer_id, total_amount, paid_amount, status, receive_time, return_time, transaction_code, created_at, updated_at",
+                    { count: "exact" },
+                )
+                .order("created_at", { ascending: false })
+                .range(from, to);
+            if (filters.start_date)
+                q = q.gte("created_at", filters.start_date + "T00:00:00.000Z");
+            if (filters.end_date)
+                q = q.lte("created_at", filters.end_date + "T23:59:59.999Z");
+            if (filters.status) q = q.eq("status", filters.status);
+            if (filters.search) {
+                const normalized = filters.search.trim();
+                const digits = normalized.replaceAll(/\D/g, "");
+                const clauses: string[] = [];
+                if (digits.length > 0) {
+                    const numericId = Number(digits);
+                    if (Number.isFinite(numericId) && numericId > 0) {
+                        clauses.push(`id.eq.${numericId}`);
+                    }
+                    clauses.push(`transaction_code.ilike.%${digits}%`);
+                } else if (normalized.length > 0) {
+                    clauses.push(`transaction_code.ilike.%${normalized}%`);
+                }
+                if (clauses.length > 0) {
+                    q = q.or(clauses.join(","));
+                }
+            }
+            const { data: orders, error, count } = await q;
+            if (error) throw error;
+            const items = await enrichOrders(orders || [], { skipCreatedBy: true });
+            return {
+                items,
+                total: count || 0,
+                page: safePage,
+                pageSize,
+            };
         },
     });
 }
@@ -402,7 +492,7 @@ export async function fetchOrdersForExport(
     let q = supabase
         .from("orders")
         .select(
-            "id, customer_id, total_amount, paid_amount, status, receive_time, return_time, created_at, updated_at",
+            "id, customer_id, total_amount, paid_amount, status, receive_time, return_time, transaction_code, created_at, updated_at",
         )
         .order("created_at", { ascending: false })
         .limit(5000);

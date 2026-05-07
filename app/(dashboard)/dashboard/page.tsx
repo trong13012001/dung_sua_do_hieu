@@ -172,8 +172,7 @@ export default function DashboardPage() {
 
     const ordersForPeriodStatusTab = useMemo(() => {
         if (!periodData || listTab !== "ordersByStatus") return [];
-        if (periodOrderStatusFilter === "all")
-            return periodData.ordersCreated;
+        if (periodOrderStatusFilter === "all") return periodData.ordersCreated;
         return periodData.ordersCreated.filter(
             (o) => o.status === periodOrderStatusFilter,
         );
@@ -212,7 +211,7 @@ export default function DashboardPage() {
                             {" · "}
                             Doanh thu theo{" "}
                             <span className="text-foreground/80">
-                                đơn đã thu đủ trong kỳ
+                                các khoản thanh toán phát sinh trong kỳ
                             </span>
                             {" · "}
                             Công nợ là{" "}
@@ -361,8 +360,8 @@ export default function DashboardPage() {
                                     đ
                                 </p>
                                 <p className="text-[10px] text-muted-foreground mt-1">
-                                    Tổng tiền các đơn đã thu đủ (Đã thanh toán,
-                                    Đã trả đồ, Hoàn thành) và được lập trong kỳ
+                                    Tổng tiền thu thực tế trong kỳ theo thời
+                                    gian thanh toán (kể cả đơn lập từ kỳ trước)
                                 </p>
                             </div>
                             <div className="rounded-xl border border-border bg-warning/5 p-3 md:p-4">
@@ -405,7 +404,7 @@ export default function DashboardPage() {
                                     ],
                                     [
                                         "ordersRevenue",
-                                        "Đơn tạo doanh thu",
+                                        "Đơn ghi nhận doanh thu",
                                         periodData.ordersRevenue.length,
                                     ],
                                     [
@@ -462,13 +461,13 @@ export default function DashboardPage() {
                                     >
                                         Tất cả
                                         <span className="ml-1 tabular-nums opacity-70">
-                                            (
-                                            {periodData.ordersCreatedCount})
+                                            ({periodData.ordersCreatedCount})
                                         </span>
                                     </button>
                                     {ORDER_STATUS_FILTER_SEQUENCE.map((st) => {
                                         const n =
-                                            periodData.ordersCreatedStatusCounts[
+                                            periodData
+                                                .ordersCreatedStatusCounts[
                                                 st
                                             ] ?? 0;
                                         return (
@@ -518,7 +517,7 @@ export default function DashboardPage() {
                                                     Trạng thái
                                                 </th>
                                                 <th className="px-4 py-3 whitespace-nowrap">
-                                                    Tạo lúc
+                                                    Thu gần nhất
                                                 </th>
                                             </tr>
                                         </thead>
@@ -829,9 +828,10 @@ export default function DashboardPage() {
                                             Cột &quot;Xử lý đơn&quot;: trạng
                                             thái đơn trên hệ thống. &quot;Đã
                                             thanh toán&quot; = đã thu đủ tiền
-                                            (tự động khi thanh toán đủ). &quot;Đã
-                                            xong&quot; = hàng xong chờ trả;
-                                            &quot;Đã giao&quot; = đã trả đồ.
+                                            (tự động khi thanh toán đủ).
+                                            &quot;Đã xong&quot; = hàng xong chờ
+                                            trả; &quot;Đã giao&quot; = đã trả
+                                            đồ.
                                         </p>
                                     </>
                                 )}
@@ -865,8 +865,8 @@ export default function DashboardPage() {
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-border">
-                                                {ordersForPeriodStatusTab
-                                                    .length === 0 ? (
+                                                {ordersForPeriodStatusTab.length ===
+                                                0 ? (
                                                     <tr>
                                                         <td
                                                             colSpan={7}
@@ -875,9 +875,8 @@ export default function DashboardPage() {
                                                             {periodData.ordersCreatedCount ===
                                                             0 ? (
                                                                 <>
-                                                                    Không có
-                                                                    đơn nào
-                                                                    được tạo
+                                                                    Không có đơn
+                                                                    nào được tạo
                                                                     trong kỳ
                                                                     này.
                                                                 </>
@@ -886,41 +885,33 @@ export default function DashboardPage() {
                                                               (periodData
                                                                   .ordersCreatedStatusCounts[
                                                                   periodOrderStatusFilter
-                                                              ] ?? 0) >
-                                                                  0 &&
+                                                              ] ?? 0) > 0 &&
                                                               ordersForPeriodStatusTab.length ===
                                                                   0 ? (
                                                                 <>
-                                                                    Trong kỳ
-                                                                    có{" "}
+                                                                    Trong kỳ có{" "}
                                                                     <span className="font-semibold text-foreground not-italic">
-                                                                        {periodData.ordersCreatedStatusCounts[
+                                                                        {periodData
+                                                                            .ordersCreatedStatusCounts[
                                                                             periodOrderStatusFilter
                                                                         ] ?? 0}
                                                                     </span>{" "}
-                                                                    đơn ở
-                                                                    trạng
-                                                                    thái
-                                                                    &quot;
+                                                                    đơn ở trạng
+                                                                    thái &quot;
                                                                     {statusLabel(
                                                                         periodOrderStatusFilter,
                                                                     )}
-                                                                    &quot;;
-                                                                    danh
-                                                                    sách tối
-                                                                    đa 300
-                                                                    đơn mới
-                                                                    nhất
-                                                                    hiện
+                                                                    &quot;; danh
+                                                                    sách tối đa
+                                                                    300 đơn mới
+                                                                    nhất hiện
                                                                     không có
-                                                                    dòng
-                                                                    khớp.
+                                                                    dòng khớp.
                                                                 </>
                                                             ) : (
                                                                 <>
-                                                                    Không có
-                                                                    đơn nào
-                                                                    khớp bộ
+                                                                    Không có đơn
+                                                                    nào khớp bộ
                                                                     lọc.
                                                                 </>
                                                             )}
@@ -1029,9 +1020,8 @@ export default function DashboardPage() {
                                             Số trên chip là tổng đơn{" "}
                                             <strong>lập trong kỳ</strong> theo
                                             từng trạng thái (đếm đủ). Bảng hiển
-                                            thị tối đa{" "}
-                                            <strong>300</strong> đơn mới nhất
-                                            trong kỳ, lọc theo chip.
+                                            thị tối đa <strong>300</strong> đơn
+                                            mới nhất trong kỳ, lọc theo chip.
                                         </p>
                                     </>
                                 )}
@@ -1053,13 +1043,10 @@ export default function DashboardPage() {
                                                     Tổng tiền
                                                 </th>
                                                 <th className="px-4 py-3 text-right">
-                                                    Đã thu
-                                                </th>
-                                                <th className="px-4 py-3">
-                                                    PTTT
+                                                    Thu trong kỳ
                                                 </th>
                                                 <th className="px-4 py-3 whitespace-nowrap">
-                                                    Tạo lúc
+                                                    Thu gần nhất (PTTT)
                                                 </th>
                                             </tr>
                                         </thead>
@@ -1071,8 +1058,8 @@ export default function DashboardPage() {
                                                         colSpan={7}
                                                         className="px-4 py-8 text-center text-muted-foreground italic"
                                                     >
-                                                        Không có đơn tạo doanh
-                                                        thu trong kỳ này.
+                                                        Không có đơn phát sinh
+                                                        thu tiền trong kỳ này.
                                                     </td>
                                                 </tr>
                                             ) : (
@@ -1102,7 +1089,9 @@ export default function DashboardPage() {
                                                                 </button>
                                                             </td>
                                                             <td className="px-4 py-2.5 text-muted-foreground">
-                                                                {o.customer_name}
+                                                                {
+                                                                    o.customer_name
+                                                                }
                                                             </td>
                                                             <td className="px-4 py-2.5">
                                                                 <span
@@ -1137,17 +1126,11 @@ export default function DashboardPage() {
                                                                     o.paid_amount,
                                                                 )}
                                                             </td>
-                                                            <td className="px-4 py-2.5 text-muted-foreground">
-                                                                {paymentMethodLabel(
-                                                                    o.payment_method,
-                                                                )}
-                                                            </td>
                                                             <td className="px-4 py-2.5 text-xs text-muted-foreground whitespace-nowrap">
-                                                                {new Date(
-                                                                    o.created_at,
-                                                                ).toLocaleString(
-                                                                    "vi-VN",
-                                                                )}
+                                                                {new Date(o.created_at).toLocaleString("vi-VN")}
+                                                                <span className="ml-1">
+                                                                    ({paymentMethodLabel(o.payment_method)})
+                                                                </span>
                                                             </td>
                                                         </tr>
                                                     ),
@@ -1283,7 +1266,7 @@ export default function DashboardPage() {
                                                     Còn nợ
                                                 </th>
                                                 <th className="px-4 py-3 whitespace-nowrap">
-                                                    Tạo lúc
+                                                    Thu gần nhất
                                                 </th>
                                             </tr>
                                         </thead>

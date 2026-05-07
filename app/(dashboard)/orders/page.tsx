@@ -3,7 +3,6 @@
 import React, {
     useState,
     useRef,
-    useCallback,
     useEffect,
     useMemo,
 } from "react";
@@ -26,7 +25,7 @@ import {
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import {
-    useOrdersInfinite,
+    useOrdersPage,
     useUpdateOrder,
     useUpdateOrderDetail,
     useAddOrderDetails,
@@ -184,6 +183,7 @@ function OrderLogSection({ orderId }: { orderId: number | null }) {
 }
 
 export default function OrdersPage() {
+    const PAGE_SIZE = 25;
     const router = useRouter();
     const searchParams = useSearchParams();
     const currentUserId = useCurrentUserId();
@@ -244,6 +244,7 @@ export default function OrdersPage() {
     const [selectedForPrint, setSelectedForPrint] = useState<Set<number>>(
         new Set(),
     );
+    const [page, setPage] = useState(1);
     const [batchPrintOpen, setBatchPrintOpen] = useState(false);
     const [batchPrinting, setBatchPrinting] = useState(false);
     const [payForm, setPayForm] = useState<{
@@ -360,14 +361,27 @@ export default function OrdersPage() {
         status: statusFilter || undefined,
         start_date: startDate || undefined,
         end_date: endDate || undefined,
+        search: (() => {
+            const kw = debouncedSearch.trim();
+            if (!kw) return undefined;
+            const parsed = decodeBarcode(kw);
+            if (parsed?.kind === "invoice" || parsed?.kind === "item") {
+                return parsed.transactionCode;
+            }
+            if (parsed?.kind === "legacy_invoice") {
+                return String(parsed.orderId);
+            }
+            return kw;
+        })(),
     };
-    const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } =
-        useOrdersInfinite(filters);
-
-    const ordersRaw = data?.pages.flat() ?? [];
-    const orders = ordersRaw.filter(
-        (o, i, arr) => arr.findIndex((x) => x.id === o.id) === i,
+    const { data, isLoading, isFetching } = useOrdersPage(
+        filters,
+        page,
+        PAGE_SIZE,
     );
+    const orders = data?.items ?? [];
+    const totalOrders = data?.total ?? 0;
+    const totalPages = Math.max(1, Math.ceil(totalOrders / PAGE_SIZE));
     const deepLinkEditIdRaw = searchParams.get("editOrderId");
     const deepLinkEditId = deepLinkEditIdRaw
         ? Number(deepLinkEditIdRaw)
@@ -381,50 +395,10 @@ export default function OrdersPage() {
     );
     const deepLinkHandledRef = useRef<string | null>(null);
 
-    const decoded = debouncedSearch ? decodeBarcode(debouncedSearch) : null;
-    const searchDigits = debouncedSearch.replaceAll(/\D/g, "");
-
-    const filtered = orders.filter((o) => {
-        if (decoded?.kind === "invoice") {
-            return o.transaction_code === decoded.transactionCode;
-        }
-        if (decoded?.kind === "item") {
-            return o.transaction_code === decoded.transactionCode;
-        }
-        if (decoded?.kind === "legacy_invoice") {
-            return o.id === decoded.orderId;
-        }
-        const matchSearch =
-            !debouncedSearch ||
-            o.id.toString().includes(debouncedSearch) ||
-            (searchDigits.length > 0 &&
-                o.transaction_code?.includes(searchDigits)) ||
-            o.customer?.name
-                ?.toLowerCase()
-                .includes(debouncedSearch.toLowerCase()) ||
-            o.customer?.phone?.includes(debouncedSearch);
-        return matchSearch;
-    });
-
-    const loadMoreRef = useRef<HTMLDivElement>(null);
     const batchPrintRootRef = useRef<HTMLDivElement>(null);
-    const loadMoreCallback = useCallback(() => {
-        if (!hasNextPage || isFetchingNextPage) return;
-        fetchNextPage();
-    }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
-
     useEffect(() => {
-        const el = loadMoreRef.current;
-        if (!el) return;
-        const obs = new IntersectionObserver(
-            (entries) => {
-                if (entries[0]?.isIntersecting) loadMoreCallback();
-            },
-            { rootMargin: "200px", threshold: 0.1 },
-        );
-        obs.observe(el);
-        return () => obs.disconnect();
-    }, [loadMoreCallback]);
+        setPage(1);
+    }, [debouncedSearch, statusFilter, startDate, endDate]);
 
     useEffect(() => {
         if (!deepLinkEditIdRaw) {
@@ -777,7 +751,7 @@ export default function OrdersPage() {
             return next;
         });
     };
-    const batchOrders = filtered.filter((o) => selectedForPrint.has(o.id));
+    const batchOrders = orders.filter((o) => selectedForPrint.has(o.id));
     const silentBatchReady = isSilentThermalConfigured();
 
     const handleBatchPrint = async () => {
@@ -855,13 +829,8 @@ export default function OrdersPage() {
                     Quản lý đơn hàng
                 </h4>
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <ShoppingBag size={16} /> Đã tải: {orders.length}
-                    {hasNextPage && (
-                        <span className="text-primary">
-                            {" "}
-                            (cuộn để tải thêm)
-                        </span>
-                    )}
+                    <ShoppingBag size={16} /> Tổng: {totalOrders} · Trang {page}/
+                    {totalPages}
                 </div>
             </div>
 
@@ -945,9 +914,9 @@ export default function OrdersPage() {
                             className="vuexy-card h-24 animate-pulse"
                         />
                     ))
-                ) : filtered.length > 0 ? (
+                ) : orders.length > 0 ? (
                     <>
-                        {filtered.map((order) => {
+                        {orders.map((order) => {
                             const st = getStatusStyle(order.status);
                             const debt =
                                 order.total_amount - (order.paid_amount || 0);
@@ -1249,14 +1218,32 @@ export default function OrdersPage() {
                                 </div>
                             );
                         })}
-                        <div
-                            ref={loadMoreRef}
-                            className="py-4 flex justify-center"
-                        >
-                            {isFetchingNextPage && (
+                        <div className="py-4 flex items-center justify-center gap-3">
+                            <button
+                                type="button"
+                                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                                disabled={page <= 1 || isFetching}
+                                className="px-3 py-1.5 rounded-md border border-border text-sm disabled:opacity-50"
+                            >
+                                Prev
+                            </button>
+                            <span className="text-xs text-muted-foreground tabular-nums">
+                                {page}/{totalPages}
+                            </span>
+                            <button
+                                type="button"
+                                onClick={() =>
+                                    setPage((p) => Math.min(totalPages, p + 1))
+                                }
+                                disabled={page >= totalPages || isFetching}
+                                className="px-3 py-1.5 rounded-md border border-border text-sm disabled:opacity-50"
+                            >
+                                Next
+                            </button>
+                            {isFetching && (
                                 <Loader2
                                     className="animate-spin text-primary"
-                                    size={24}
+                                    size={18}
                                 />
                             )}
                         </div>

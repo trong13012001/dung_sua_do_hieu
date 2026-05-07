@@ -128,6 +128,8 @@ export interface DashboardPeriodItemRow {
 export interface DashboardPeriodOrderRow {
     id: number;
     created_at: string;
+    /** Ngày tạo đơn gốc; dùng riêng cho tab doanh thu khi created_at hiển thị thời điểm thu. */
+    order_created_at?: string;
     return_time: string | null;
     status: string;
     customer_name: string;
@@ -137,6 +139,12 @@ export interface DashboardPeriodOrderRow {
     unpaid_amount: number;
     /** Phương thức lần thu gần nhất trên đơn (nếu có) */
     payment_method?: Payment["payment_method"] | null;
+    /** Chi tiết các lần thu phát sinh trong kỳ đang xem (nếu có). */
+    revenue_payments?: {
+        amount: number;
+        payment_time: string;
+        payment_method: Payment["payment_method"] | null;
+    }[];
 }
 
 /** Đơn trong kỳ còn nợ (bảng “Công nợ đơn trong kỳ”) — cùng shape với dòng đơn tạo. */
@@ -147,7 +155,7 @@ export interface DashboardPeriodAnalytics {
     ordersReturnedCount: number;
     itemsCreatedCount: number;
     itemsReturnedCount: number;
-    /** Tổng doanh thu của các đơn đã thu đủ (Paid/Delivered/Completed) được lập trong kỳ */
+    /** Tổng tiền thu thực tế trong kỳ (theo payment_time trên bảng payments) */
     periodRevenue: number;
     /**
      * Tổng dư chưa thu trên các đơn có ngày lập trong kỳ
@@ -157,7 +165,7 @@ export interface DashboardPeriodAnalytics {
     /** Đếm đơn lập trong kỳ theo `orders.status` (đầy đủ, không giới hạn 300 dòng list). */
     ordersCreatedStatusCounts: Record<string, number>;
     ordersCreated: DashboardPeriodOrderRow[];
-    /** Đơn tạo doanh thu trong kỳ: đã thu đủ và thuộc trạng thái Paid/Delivered/Completed */
+    /** Đơn có phát sinh thu tiền trong kỳ (kể cả đơn lập từ kỳ trước) */
     ordersRevenue: DashboardPeriodOrderRow[];
     ordersDebt: DashboardPeriodDebtOrderRow[];
     ordersReturned: DashboardPeriodOrderRow[];

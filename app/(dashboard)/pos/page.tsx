@@ -10,6 +10,7 @@ import {
   ChevronRight,
   Users,
   Phone,
+  MapPin,
   X,
   UserPlus,
   ShoppingBag,
@@ -483,6 +484,10 @@ export default function POSPage() {
                   <div className="min-w-0 flex-1">
                     <p className="font-bold text-foreground text-sm">{selectedCustomer.name}</p>
                     <p className="text-xs text-muted-foreground flex items-center gap-1"><Phone size={11} />{selectedCustomer.phone || 'N/A'}</p>
+                    <p className="text-xs text-muted-foreground flex items-center gap-1 truncate">
+                      <MapPin size={11} className="shrink-0" />
+                      {selectedCustomer.address?.trim() || 'Chưa có địa chỉ'}
+                    </p>
                     <p className="mt-1 flex items-center gap-1 text-[10px] font-medium text-primary">
                       <History size={12} className="shrink-0" />
                       Lịch sử đơn hàng
