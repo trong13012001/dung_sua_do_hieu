@@ -106,6 +106,34 @@ const statusLabelMap: Record<string, string> = {
     Completed: "Hoàn thành",
 };
 
+const paymentMethodLabelMap: Record<string, string> = {
+    Cash: "Tiền mặt",
+    Card: "Thẻ",
+    Transfer: "Chuyển khoản",
+};
+
+function getLatestPaymentMethod(order: Order): string {
+    const latest = (order.payments || [])
+        .slice()
+        .sort(
+            (a, b) =>
+                new Date(b.payment_time).getTime() -
+                new Date(a.payment_time).getTime(),
+        )[0];
+    if (!latest?.payment_method) return "";
+    return paymentMethodLabelMap[latest.payment_method] || latest.payment_method;
+}
+
+function getDeliveryStatusLabel(order: Order): string {
+    if (order.status === "Delivered" || order.status === "Completed") {
+        return "Đã trả đồ";
+    }
+    if (order.status === "DeliveredOwing") {
+        return "Đã trả đồ (còn nợ)";
+    }
+    return "";
+}
+
 function OrderLogSection({ orderId }: { orderId: number | null }) {
     const { data: logs, isLoading } = useOrderLogs(orderId);
     const [open, setOpen] = useState(false);
@@ -701,14 +729,28 @@ export default function OrdersPage() {
         try {
             const rows = await fetchOrdersForExport(filters);
             const data = rows.map((o) => ({
+                debt: Math.max(0, Number(o.total_amount) - Number(o.paid_amount || 0)),
+                deliveryStatus: getDeliveryStatusLabel(o),
+                paymentMethod: getLatestPaymentMethod(o),
+                isReturned:
+                    o.status === "Delivered" ||
+                    o.status === "DeliveredOwing" ||
+                    o.status === "Completed",
+            })).map((x, idx) => {
+                const o = rows[idx];
+                return {
                 "Mã đơn": o.id,
                 "Ngày tạo": new Date(o.created_at).toLocaleDateString("vi-VN"),
                 "Khách hàng": o.customer?.name || "Vãng lai",
                 SĐT: o.customer?.phone || "",
                 "Tổng tiền": o.total_amount,
                 "Đã trả": o.paid_amount || 0,
+                "Còn nợ": x.debt,
                 "Trạng thái": statusLabelMap[o.status] ?? "Đang xử lý",
-            }));
+                "Trạng thái trả đồ": x.deliveryStatus || "",
+                "Phương thức thanh toán": x.isReturned && x.debt <= 0 ? x.paymentMethod : "",
+            };
+            });
             const ws = XLSX.utils.json_to_sheet(data);
             const wb = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(wb, ws, "Đơn hàng");
@@ -910,6 +952,12 @@ export default function OrdersPage() {
                             const debt =
                                 order.total_amount - (order.paid_amount || 0);
                             const isPaid = debt <= 0;
+                            const deliveryStatusLabel =
+                                getDeliveryStatusLabel(order);
+                            const paymentMethodLabel =
+                                isPaid && deliveryStatusLabel
+                                    ? getLatestPaymentMethod(order)
+                                    : "";
                             return (
                                 <div
                                     key={order.id}
@@ -1042,6 +1090,16 @@ export default function OrdersPage() {
                                                 {isPaid && (
                                                     <p className="text-[10px] font-bold text-success">
                                                         Đã thanh toán
+                                                    </p>
+                                                )}
+                                                {deliveryStatusLabel && (
+                                                    <p className="text-[10px] font-bold text-primary">
+                                                        {deliveryStatusLabel}
+                                                    </p>
+                                                )}
+                                                {paymentMethodLabel && (
+                                                    <p className="text-[10px] font-bold text-info">
+                                                        PTTT: {paymentMethodLabel}
                                                     </p>
                                                 )}
                                             </div>

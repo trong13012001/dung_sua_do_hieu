@@ -225,7 +225,8 @@ async function enrichOrders(
               .in("order_id", orderIds)
               .order("created_at", { ascending: true });
 
-    const [customersRes, detailsRes, createdLogsRes] = await Promise.all([
+    const [customersRes, detailsRes, paymentsRes, createdLogsRes] =
+        await Promise.all([
         customerIds.length > 0
             ? supabase
                   .from("customers")
@@ -238,10 +239,15 @@ async function enrichOrders(
                 "id, order_id, item_name, unit_price, description, status, assigned_tailor_id, handed_over_at, created_at, updated_at",
             )
             .in("order_id", orderIds),
+        supabase
+            .from("payments")
+            .select("id, order_id, amount, payment_time, payment_method")
+            .in("order_id", orderIds),
         createdLogsPromise,
-    ]);
+        ]);
     if (customersRes.error) throw customersRes.error;
     if (detailsRes.error) throw detailsRes.error;
+    if (paymentsRes.error) throw paymentsRes.error;
     if (createdLogsRes.error) throw createdLogsRes.error;
 
     const customerMap: Record<
@@ -263,6 +269,13 @@ async function enrichOrders(
             detailsByOrder[d.order_id].push(d);
             if (d.assigned_tailor_id != null)
                 tailorIds.add(d.assigned_tailor_id);
+        }
+    }
+    const paymentsByOrder: Record<number, any[]> = {};
+    if (paymentsRes.data) {
+        for (const p of paymentsRes.data) {
+            if (!paymentsByOrder[p.order_id]) paymentsByOrder[p.order_id] = [];
+            paymentsByOrder[p.order_id].push(p);
         }
     }
 
@@ -316,6 +329,7 @@ async function enrichOrders(
                 ? tailorMap[String(d.assigned_tailor_id)] || null
                 : null,
         })),
+        payments: paymentsByOrder[o.id] || [],
     })) as Order[];
 }
 

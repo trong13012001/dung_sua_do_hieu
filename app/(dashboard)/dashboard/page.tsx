@@ -82,6 +82,19 @@ const statusColor = (s: string) => {
     }
 };
 
+const paymentMethodLabel = (m?: "Cash" | "Card" | "Transfer" | null) => {
+    switch (m) {
+        case "Cash":
+            return "Tiền mặt";
+        case "Card":
+            return "Thẻ";
+        case "Transfer":
+            return "Chuyển khoản";
+        default:
+            return "—";
+    }
+};
+
 function pad2(n: number) {
     return String(n).padStart(2, "0");
 }
@@ -113,6 +126,7 @@ function periodLabelVi(mode: DashboardPeriodMode, value: string) {
 
 type PeriodListTab =
     | "ordersCreated"
+    | "ordersRevenue"
     | "ordersByStatus"
     | "ordersDebt"
     | "ordersReturned"
@@ -198,7 +212,7 @@ export default function DashboardPage() {
                             {" · "}
                             Doanh thu theo{" "}
                             <span className="text-foreground/80">
-                                ngày thanh toán
+                                đơn đã thu đủ trong kỳ
                             </span>
                             {" · "}
                             Công nợ là{" "}
@@ -347,8 +361,8 @@ export default function DashboardPage() {
                                     đ
                                 </p>
                                 <p className="text-[10px] text-muted-foreground mt-1">
-                                    Tổng các khoản thu (payment) có ngày giao
-                                    dịch trong kỳ
+                                    Tổng tiền các đơn đã thu đủ (Đã thanh toán,
+                                    Đã trả đồ, Hoàn thành) và được lập trong kỳ
                                 </p>
                             </div>
                             <div className="rounded-xl border border-border bg-warning/5 p-3 md:p-4">
@@ -388,6 +402,11 @@ export default function DashboardPage() {
                                         "ordersCreated",
                                         "Đơn tạo (chi tiết)",
                                         periodData.ordersCreated.length,
+                                    ],
+                                    [
+                                        "ordersRevenue",
+                                        "Đơn tạo doanh thu",
+                                        periodData.ordersRevenue.length,
                                     ],
                                     [
                                         "ordersByStatus",
@@ -1015,6 +1034,127 @@ export default function DashboardPage() {
                                             trong kỳ, lọc theo chip.
                                         </p>
                                     </>
+                                )}
+
+                                {listTab === "ordersRevenue" && (
+                                    <table className="w-full text-left text-sm">
+                                        <thead className="sticky top-0 z-1 bg-muted/40 text-[11px] font-bold text-muted-foreground uppercase">
+                                            <tr>
+                                                <th className="px-4 py-3">
+                                                    Mã đơn
+                                                </th>
+                                                <th className="px-4 py-3">
+                                                    Khách
+                                                </th>
+                                                <th className="px-4 py-3">
+                                                    Trạng thái
+                                                </th>
+                                                <th className="px-4 py-3 text-right">
+                                                    Tổng tiền
+                                                </th>
+                                                <th className="px-4 py-3 text-right">
+                                                    Đã thu
+                                                </th>
+                                                <th className="px-4 py-3">
+                                                    PTTT
+                                                </th>
+                                                <th className="px-4 py-3 whitespace-nowrap">
+                                                    Tạo lúc
+                                                </th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-border">
+                                            {periodData.ordersRevenue.length ===
+                                            0 ? (
+                                                <tr>
+                                                    <td
+                                                        colSpan={7}
+                                                        className="px-4 py-8 text-center text-muted-foreground italic"
+                                                    >
+                                                        Không có đơn tạo doanh
+                                                        thu trong kỳ này.
+                                                    </td>
+                                                </tr>
+                                            ) : (
+                                                periodData.ordersRevenue.map(
+                                                    (o) => (
+                                                        <tr
+                                                            key={o.id}
+                                                            className="hover:bg-muted/20"
+                                                        >
+                                                            <td className="px-4 py-2.5">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() =>
+                                                                        setDetailModalOrderId(
+                                                                            o.id,
+                                                                        )
+                                                                    }
+                                                                    className="font-bold text-primary hover:underline"
+                                                                >
+                                                                    #
+                                                                    {String(
+                                                                        o.id,
+                                                                    ).padStart(
+                                                                        5,
+                                                                        "0",
+                                                                    )}
+                                                                </button>
+                                                            </td>
+                                                            <td className="px-4 py-2.5 text-muted-foreground">
+                                                                {o.customer_name}
+                                                            </td>
+                                                            <td className="px-4 py-2.5">
+                                                                <span
+                                                                    className={`px-2 py-0.5 rounded text-[10px] font-bold ${statusColor(o.status)}`}
+                                                                >
+                                                                    {statusLabel(
+                                                                        o.status,
+                                                                    )}
+                                                                </span>
+                                                            </td>
+                                                            <td className="px-4 py-2.5 text-right font-medium tabular-nums">
+                                                                {new Intl.NumberFormat(
+                                                                    "vi-VN",
+                                                                    {
+                                                                        style: "currency",
+                                                                        currency:
+                                                                            "VND",
+                                                                    },
+                                                                ).format(
+                                                                    o.total_amount,
+                                                                )}
+                                                            </td>
+                                                            <td className="px-4 py-2.5 text-right tabular-nums text-success font-semibold">
+                                                                {new Intl.NumberFormat(
+                                                                    "vi-VN",
+                                                                    {
+                                                                        style: "currency",
+                                                                        currency:
+                                                                            "VND",
+                                                                    },
+                                                                ).format(
+                                                                    o.paid_amount,
+                                                                )}
+                                                            </td>
+                                                            <td className="px-4 py-2.5 text-muted-foreground">
+                                                                {paymentMethodLabel(
+                                                                    o.payment_method,
+                                                                )}
+                                                            </td>
+                                                            <td className="px-4 py-2.5 text-xs text-muted-foreground whitespace-nowrap">
+                                                                {new Date(
+                                                                    o.created_at,
+                                                                ).toLocaleString(
+                                                                    "vi-VN",
+                                                                )}
+                                                            </td>
+                                                        </tr>
+                                                    ),
+                                                )
+                                            )}
+                                        </tbody>
+                                    </table>
                                 )}
 
                                 {listTab === "ordersReturned" && (

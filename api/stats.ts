@@ -186,7 +186,7 @@ function getPeriodIsoBounds(sel: DashboardPeriodSelection): {
     return { startIso: start.toISOString(), endIso: end.toISOString() };
 }
 
-async function sumPaymentsAmountInRange(
+async function sumSettledOrdersRevenueInRange(
     startIso: string,
     endIso: string,
 ): Promise<number> {
@@ -194,15 +194,20 @@ async function sumPaymentsAmountInRange(
     const page = 1000;
     for (let from = 0; ; from += page) {
         const { data, error } = await supabase
-            .from("payments")
-            .select("amount")
-            .gte("payment_time", startIso)
-            .lte("payment_time", endIso)
+            .from("orders")
+            .select("total_amount, paid_amount, status")
+            .in("status", ["Paid", "Delivered", "Completed"])
+            .gte("created_at", startIso)
+            .lte("created_at", endIso)
             .order("id", { ascending: true })
             .range(from, from + page - 1);
         if (error) throw error;
         if (!data?.length) break;
-        for (const p of data) sum += Number(p.amount);
+        for (const o of data) {
+            const total = Number(o.total_amount);
+            const paid = Number(o.paid_amount ?? 0);
+            if (paid >= total) sum += total;
+        }
         if (data.length < page) break;
     }
     return sum;
@@ -306,7 +311,7 @@ async function fetchPeriodAnalytics(
                 .select("*", { count: "exact", head: true })
                 .gte("created_at", startIso)
                 .lte("created_at", endIso),
-            sumPaymentsAmountInRange(startIso, endIso),
+            sumSettledOrdersRevenueInRange(startIso, endIso),
             sumUnpaidOnOrdersCreatedInRange(startIso, endIso),
             ...ORDER_STATUS_FILTER_SEQUENCE.map((st) =>
                 supabase
@@ -382,6 +387,34 @@ async function fetchPeriodAnalytics(
     const ordersCreatedRaw = ordersCreatedDataRes.data || [];
     const ordersReturnedRaw = ordersReturnedDataRes.data || [];
     const detailsCreatedRaw = detailsCreatedRes.data || [];
+    const allOrderIdsForPayment = [
+        ...new Set([
+            ...ordersCreatedRaw.map((o) => o.id),
+            ...ordersReturnedRaw.map((o) => o.id),
+        ]),
+    ];
+    const { data: paymentsForOrders, error: paymentsForOrdersErr } =
+        allOrderIdsForPayment.length > 0
+            ? await supabase
+                  .from("payments")
+                  .select("order_id, payment_method, payment_time")
+                  .in("order_id", allOrderIdsForPayment)
+            : { data: [], error: null };
+    if (paymentsForOrdersErr) throw paymentsForOrdersErr;
+    const latestPaymentByOrder = new Map<
+        number,
+        { method: "Cash" | "Card" | "Transfer"; time: number }
+    >();
+    for (const p of paymentsForOrders || []) {
+        const ts = new Date(p.payment_time).getTime();
+        const prev = latestPaymentByOrder.get(p.order_id);
+        if (!prev || ts > prev.time) {
+            latestPaymentByOrder.set(p.order_id, {
+                method: p.payment_method as "Cash" | "Card" | "Transfer",
+                time: ts,
+            });
+        }
+    }
 
     const custIds = [
         ...ordersCreatedRaw.map((o) => o.customer_id),
@@ -415,6 +448,8 @@ async function fetchPeriodAnalytics(
                 total_amount: total,
                 paid_amount: paid,
                 unpaid_amount: Math.max(0, total - paid),
+                payment_method:
+                    latestPaymentByOrder.get(o.id)?.method ?? null,
             };
         },
     );
@@ -434,10 +469,38 @@ async function fetchPeriodAnalytics(
                 total_amount: total,
                 paid_amount: paid,
                 unpaid_amount: unpaid,
+                payment_method:
+                    latestPaymentByOrder.get(o.id)?.method ?? null,
             };
         })
         .filter((o) => o.unpaid_amount > 0)
         .sort((a, b) => b.unpaid_amount - a.unpaid_amount);
+
+    const ordersRevenue: DashboardPeriodOrderRow[] = ordersCreatedRaw
+        .map((o) => {
+            const total = Number(o.total_amount);
+            const paid = Number(o.paid_amount ?? 0);
+            return {
+                id: o.id,
+                created_at: o.created_at,
+                return_time: o.return_time,
+                status: o.status,
+                customer_name:
+                    customerMap[o.customer_id as number] || "Vãng lai",
+                total_amount: total,
+                paid_amount: paid,
+                unpaid_amount: Math.max(0, total - paid),
+                payment_method:
+                    latestPaymentByOrder.get(o.id)?.method ?? null,
+            };
+        })
+        .filter(
+            (o) =>
+                (o.status === "Paid" ||
+                    o.status === "Delivered" ||
+                    o.status === "Completed") &&
+                o.unpaid_amount <= 0,
+        );
 
     const ordersReturned: DashboardPeriodOrderRow[] = ordersReturnedRaw.map(
         (o) => {
@@ -453,6 +516,8 @@ async function fetchPeriodAnalytics(
                 total_amount: total,
                 paid_amount: paid,
                 unpaid_amount: Math.max(0, total - paid),
+                payment_method:
+                    latestPaymentByOrder.get(o.id)?.method ?? null,
             };
         },
     );
@@ -526,6 +591,7 @@ async function fetchPeriodAnalytics(
         periodUnpaidOnOrdersCreated,
         ordersCreatedStatusCounts,
         ordersCreated,
+        ordersRevenue,
         ordersDebt,
         ordersReturned,
         itemsCreated,
