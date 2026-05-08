@@ -10,7 +10,9 @@ export async function getCustomers({ page = 0, pageSize = 10, searchTerm = '' } 
     .select('*', { count: 'exact' });
 
   if (searchTerm) {
-    query = query.or(`name.ilike.%${searchTerm}%,phone.ilike.%${searchTerm}%`);
+    query = query.or(
+      `name.ilike.%${searchTerm}%,phone.ilike.%${searchTerm}%,address.ilike.%${searchTerm}%`,
+    );
   }
 
   const { data, error, count } = await query

@@ -547,7 +547,7 @@ export default function POSPage() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
                 <input
                   type="text"
-                  placeholder="Tìm theo tên hoặc SĐT khách hàng..."
+                  placeholder="Tìm theo tên, SĐT hoặc địa chỉ khách hàng..."
                   className="w-full bg-muted/10 border border-border rounded-md pl-10 pr-4 py-2.5 text-sm outline-none focus:ring-1 focus:ring-primary"
                   value={searchTerm}
                   onChange={(e) => { setSearchTerm(e.target.value); setShowCustomerList(true); }}
@@ -570,7 +570,7 @@ export default function POSPage() {
                     </button>
                   )) : (
                     <div className="px-4 py-6 text-center text-sm text-muted-foreground italic">
-                      {searchTerm ? 'Không tìm thấy khách hàng' : 'Nhập tên hoặc SĐT để tìm'}
+                      {searchTerm ? 'Không tìm thấy khách hàng' : 'Nhập tên, SĐT hoặc địa chỉ để tìm'}
                     </div>
                   )}
                 </div>
