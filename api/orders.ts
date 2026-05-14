@@ -657,6 +657,7 @@ export function useCreateOrder() {
             items,
             updated_by,
             initial_payment,
+            initial_payments,
         }: {
             order: Partial<Order>;
             items: {
@@ -671,6 +672,11 @@ export function useCreateOrder() {
                 amount: number;
                 payment_method: "Cash" | "Card" | "Transfer";
             } | null;
+            /** Nhiều phương thức khi lập đơn; nếu mảng khác rỗng thì dùng thay cho `initial_payment`. */
+            initial_payments?: {
+                amount: number;
+                payment_method: "Cash" | "Card" | "Transfer";
+            }[] | null;
         }) => {
             const { data: orderData, error: orderError } = await supabase
                 .from("orders")
@@ -702,51 +708,68 @@ export function useCreateOrder() {
             });
 
             const total = Number(orderData.total_amount ?? 0);
-            const payRaw = initial_payment?.amount;
-            if (
-                payRaw != null &&
-                Number.isFinite(Number(payRaw)) &&
-                Number(payRaw) > 0 &&
-                initial_payment?.payment_method
-            ) {
-                const amount = Math.min(Number(payRaw), total);
-                if (amount > 0) {
-                    const { data: payRow, error: payErr } = await supabase
-                        .from("payments")
-                        .insert({
-                            order_id: orderData.id,
-                            amount,
-                            payment_method: initial_payment.payment_method,
-                        })
-                        .select()
-                        .single();
-                    if (payErr) throw payErr;
-                    const { error: rpcErr } = await supabase.rpc(
-                        "increment_order_payment",
-                        {
-                            order_id: orderData.id,
-                            amount,
-                        },
-                    );
-                    if (rpcErr) {
-                        throw new Error(
-                            rpcErr.message ||
-                                "Cập nhật paid_amount sau thanh toán ban đầu thất bại",
-                        );
-                    }
-                    await insertOrderLog({
+            type PayLine = {
+                amount: number;
+                payment_method: "Cash" | "Card" | "Transfer";
+            };
+            const payLines: PayLine[] =
+                initial_payments != null && initial_payments.length > 0
+                    ? initial_payments.filter(
+                          (p) =>
+                              p &&
+                              Number.isFinite(Number(p.amount)) &&
+                              Number(p.amount) > 0 &&
+                              p.payment_method,
+                      )
+                    : initial_payment &&
+                        Number.isFinite(Number(initial_payment.amount)) &&
+                        Number(initial_payment.amount) > 0 &&
+                        initial_payment.payment_method
+                      ? [initial_payment]
+                      : [];
+
+            let remainingCap = total;
+            for (const line of payLines) {
+                const requested = Number(line.amount);
+                if (!Number.isFinite(requested) || requested <= 0) continue;
+                const amount = Math.min(requested, remainingCap);
+                if (amount <= 0) break;
+                remainingCap -= amount;
+                const { data: payRow, error: payErr } = await supabase
+                    .from("payments")
+                    .insert({
                         order_id: orderData.id,
-                        action: "payment",
-                        entity_type: "payment",
-                        entity_id: payRow.id,
-                        new_value: {
-                            amount,
-                            payment_method: initial_payment.payment_method,
-                            initial_on_create: true,
-                        } as Record<string, unknown>,
-                        updated_by,
-                    });
+                        amount,
+                        payment_method: line.payment_method,
+                    })
+                    .select()
+                    .single();
+                if (payErr) throw payErr;
+                const { error: rpcErr } = await supabase.rpc(
+                    "increment_order_payment",
+                    {
+                        order_id: orderData.id,
+                        amount,
+                    },
+                );
+                if (rpcErr) {
+                    throw new Error(
+                        rpcErr.message ||
+                            "Cập nhật paid_amount sau thanh toán ban đầu thất bại",
+                    );
                 }
+                await insertOrderLog({
+                    order_id: orderData.id,
+                    action: "payment",
+                    entity_type: "payment",
+                    entity_id: payRow.id,
+                    new_value: {
+                        amount,
+                        payment_method: line.payment_method,
+                        initial_on_create: true,
+                    } as Record<string, unknown>,
+                    updated_by,
+                });
             }
 
             const customerId =

@@ -50,7 +50,7 @@ import { ItemLabelsPrint } from "@/components/ui/ItemLabelsPrint";
 import { OrderDetailModal } from "@/components/ui/OrderDetailModal";
 import { decodeBarcode } from "@/lib/barcode";
 import { useDebounce } from "@/hooks/useDebounce";
-import { Order, OrderDetail, User, Role } from "@/lib/types";
+import { Order, OrderDetail, Payment, User, Role } from "@/lib/types";
 import { validateRequired, validateNumber } from "@/lib/validation";
 import { printElementSmart } from "@/lib/printSmart";
 import { PRINT_TARGET_INVOICE_XP80C } from "@/lib/printTargets";
@@ -252,17 +252,32 @@ export default function OrdersPage() {
     const [batchPrinting, setBatchPrinting] = useState(false);
     const [payForm, setPayForm] = useState<{
         amount: string;
-        method: "Cash" | "Card" | "Transfer";
-    }>({ amount: "", method: "Cash" });
+        method: Payment["payment_method"];
+        splitPay: boolean;
+        amount2: string;
+        method2: Payment["payment_method"];
+    }>({
+        amount: "",
+        method: "Cash",
+        splitPay: false,
+        amount2: "",
+        method2: "Transfer",
+    });
+    const [payFlowBusy, setPayFlowBusy] = useState(false);
 
     const paymentModalPreview = useMemo(() => {
         if (!payingOrder) return null;
         const total = payingOrder.total_amount;
         const paid = payingOrder.paid_amount ?? 0;
-        const raw = payForm.amount.trim();
-        const parsed = raw === "" ? 0 : Number(raw);
-        const thisPayment =
-            Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+        const parsePositive = (s: string) => {
+            const t = s.trim();
+            if (t === "") return 0;
+            const n = Number(t);
+            return Number.isFinite(n) && n > 0 ? n : 0;
+        };
+        const a1 = parsePositive(payForm.amount);
+        const a2 = payForm.splitPay ? parsePositive(payForm.amount2) : 0;
+        const thisPayment = payForm.splitPay ? a1 + a2 : a1;
         const currentDebt = Math.max(0, total - paid);
         const paidAfter = paid + thisPayment;
         const remainingAfter = Math.max(0, total - paidAfter);
@@ -274,7 +289,7 @@ export default function OrdersPage() {
             paidAfter,
             remainingAfter,
         };
-    }, [payingOrder, payForm.amount]);
+    }, [payingOrder, payForm.amount, payForm.amount2, payForm.splitPay]);
     const completingDebt =
         completingOrder === null
             ? 0
@@ -609,27 +624,79 @@ export default function OrdersPage() {
 
     const handlePayment = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!payingOrder) return;
-        const amountErr = validateNumber(payForm.amount, {
-            min: 1,
-            fieldName: "Số tiền thanh toán",
-        });
-        if (amountErr) {
-            showToast(amountErr, "error");
-            return;
-        }
-        try {
+        if (!payingOrder || payFlowBusy) return;
+        const debt = Math.max(
+            0,
+            payingOrder.total_amount - (payingOrder.paid_amount ?? 0),
+        );
+
+        const runOne = async (
+            amt: number,
+            method: Payment["payment_method"],
+        ) => {
             await mutateAsyncProcessPayment({
                 order_id: payingOrder.id,
-                amount: Number(payForm.amount),
-                payment_method: payForm.method as any,
+                amount: amt,
+                payment_method: method,
                 updated_by: currentUserId ?? undefined,
             });
+        };
+
+        try {
+            setPayFlowBusy(true);
+            if (payForm.splitPay) {
+                const err1 = validateNumber(payForm.amount, {
+                    min: 1,
+                    fieldName: "Số tiền khoản 1",
+                });
+                const err2 = validateNumber(payForm.amount2, {
+                    min: 1,
+                    fieldName: "Số tiền khoản 2",
+                });
+                if (err1) {
+                    showToast(err1, "error");
+                    return;
+                }
+                if (err2) {
+                    showToast(err2, "error");
+                    return;
+                }
+                const amt1 = Number(payForm.amount);
+                const amt2 = Number(payForm.amount2);
+                const sum = amt1 + amt2;
+                if (sum > debt + 0.01) {
+                    showToast(
+                        `Tổng hai khoản không được vượt còn lại (${new Intl.NumberFormat("vi-VN").format(debt)}đ).`,
+                        "error",
+                    );
+                    return;
+                }
+                await runOne(amt1, payForm.method);
+                await runOne(amt2, payForm.method2);
+            } else {
+                const amountErr = validateNumber(payForm.amount, {
+                    min: 1,
+                    fieldName: "Số tiền thanh toán",
+                });
+                if (amountErr) {
+                    showToast(amountErr, "error");
+                    return;
+                }
+                await runOne(Number(payForm.amount), payForm.method);
+            }
             setPayingOrder(null);
-            setPayForm({ amount: "", method: "Cash" });
+            setPayForm({
+                amount: "",
+                method: "Cash",
+                splitPay: false,
+                amount2: "",
+                method2: "Transfer",
+            });
             showToast("Đã ghi nhận thanh toán.", "success");
         } catch (err: any) {
             showToast("Lỗi: " + err.message, "error");
+        } finally {
+            setPayFlowBusy(false);
         }
     };
 
@@ -1100,6 +1167,9 @@ export default function OrdersPage() {
                                                                     debt,
                                                                 ),
                                                                 method: "Cash",
+                                                                splitPay: false,
+                                                                amount2: "",
+                                                                method2: "Transfer",
                                                             });
                                                         }}
                                                         disabled={
@@ -1819,9 +1889,36 @@ export default function OrdersPage() {
                             </span>
                         </div>
                     </div>
+                    <div className="flex items-start gap-2 rounded-md border border-border bg-muted/5 p-3">
+                        <input
+                            id="orders-list-split-pay"
+                            type="checkbox"
+                            checked={payForm.splitPay}
+                            onChange={(e) =>
+                                setPayForm((p) => ({
+                                    ...p,
+                                    splitPay: e.target.checked,
+                                }))
+                            }
+                            className="mt-0.5 shrink-0"
+                        />
+                        <label
+                            htmlFor="orders-list-split-pay"
+                            className="cursor-pointer text-[11px] leading-snug text-muted-foreground"
+                        >
+                            <span className="font-bold text-foreground">
+                                Chia nhiều phương thức
+                            </span>
+                            {" — "}
+                            ghi hai khoản trong một lần (vd. tiền mặt + chuyển
+                            khoản).
+                        </label>
+                    </div>
                     <div className="space-y-1.5">
                         <label className="text-[11px] font-bold text-muted-foreground uppercase">
-                            Số tiền thu
+                            {payForm.splitPay
+                                ? "Khoản 1 — số tiền"
+                                : "Số tiền thu"}
                         </label>
                         <input
                             required
@@ -1839,7 +1936,9 @@ export default function OrdersPage() {
                     </div>
                     <div className="space-y-1.5">
                         <label className="text-[11px] font-bold text-muted-foreground uppercase">
-                            Phương thức
+                            {payForm.splitPay
+                                ? "Khoản 1 — phương thức"
+                                : "Phương thức"}
                         </label>
                         <select
                             className="w-full bg-muted/20 border border-border rounded-md px-4 py-2.5 text-sm appearance-none outline-none focus:ring-1 focus:ring-primary"
@@ -1847,10 +1946,7 @@ export default function OrdersPage() {
                             onChange={(e) =>
                                 setPayForm({
                                     ...payForm,
-                                    method: e.target.value as
-                                        | "Cash"
-                                        | "Card"
-                                        | "Transfer",
+                                    method: e.target.value as Payment["payment_method"],
                                 })
                             }
                         >
@@ -1859,6 +1955,47 @@ export default function OrdersPage() {
                             <option value="Transfer">Chuyển khoản</option>
                         </select>
                     </div>
+                    {payForm.splitPay ? (
+                        <>
+                            <div className="space-y-1.5">
+                                <label className="text-[11px] font-bold text-muted-foreground uppercase">
+                                    Khoản 2 — số tiền
+                                </label>
+                                <input
+                                    required
+                                    type="number"
+                                    min="1"
+                                    className="w-full bg-muted/20 border border-border rounded-md px-4 py-2.5 text-sm outline-none focus:ring-1 focus:ring-primary"
+                                    value={payForm.amount2}
+                                    onChange={(e) =>
+                                        setPayForm({
+                                            ...payForm,
+                                            amount2: e.target.value,
+                                        })
+                                    }
+                                />
+                            </div>
+                            <div className="space-y-1.5">
+                                <label className="text-[11px] font-bold text-muted-foreground uppercase">
+                                    Khoản 2 — phương thức
+                                </label>
+                                <select
+                                    className="w-full bg-muted/20 border border-border rounded-md px-4 py-2.5 text-sm appearance-none outline-none focus:ring-1 focus:ring-primary"
+                                    value={payForm.method2}
+                                    onChange={(e) =>
+                                        setPayForm({
+                                            ...payForm,
+                                            method2: e.target.value as Payment["payment_method"],
+                                        })
+                                    }
+                                >
+                                    <option value="Cash">Tiền mặt</option>
+                                    <option value="Card">Thẻ</option>
+                                    <option value="Transfer">Chuyển khoản</option>
+                                </select>
+                            </div>
+                        </>
+                    ) : null}
                     <div className="flex gap-4 mt-8">
                         <button
                             type="button"
@@ -1869,10 +2006,12 @@ export default function OrdersPage() {
                         </button>
                         <button
                             type="submit"
-                            disabled={isPendingProcessPayment}
+                            disabled={
+                                isPendingProcessPayment || payFlowBusy
+                            }
                             className="flex-1 btn-primary py-2.5 rounded-md font-bold text-sm disabled:opacity-50"
                         >
-                            {isPendingProcessPayment
+                            {isPendingProcessPayment || payFlowBusy
                                 ? "Đang xử lý..."
                                 : "Ghi nhận thanh toán"}
                         </button>

@@ -123,6 +123,9 @@ export default function POSPage() {
   /** Thu ngay khi lập đơn (tùy chọn) */
   const [initialPaidInput, setInitialPaidInput] = useState('');
   const [initialPayMethod, setInitialPayMethod] = useState<Payment['payment_method']>('Cash');
+  const [initialSplitPay, setInitialSplitPay] = useState(false);
+  const [initialPaidInput2, setInitialPaidInput2] = useState('');
+  const [initialPayMethod2, setInitialPayMethod2] = useState<Payment['payment_method']>('Transfer');
 
   /** Hàng đợi in sau tạo đơn: 1) hóa đơn XP-80C → 2) tem XP-235B */
   const [printQueue, setPrintQueue] = useState<PosPrintQueue | null>(null);
@@ -288,19 +291,31 @@ export default function POSPage() {
 
   const totalAmount = items.reduce((sum, item) => sum + (Number(item.price) || 0), 0);
 
-  const parsedInitialPaidPreview = useMemo(() => {
-    const s = initialPaidInput.trim().replace(/\s/g, '').replace(/,/g, '');
+  const parsePosMoneyInput = (input: string) => {
+    const s = input.trim().replace(/\s/g, '').replace(/,/g, '');
     if (s === '') return null;
     const n = Number(s);
     if (!Number.isFinite(n) || n < 0) return null;
     return n;
-  }, [initialPaidInput]);
+  };
+
+  const initialPaidLine1 = useMemo(
+    () => parsePosMoneyInput(initialPaidInput),
+    [initialPaidInput],
+  );
+  const initialPaidLine2 = useMemo(
+    () => parsePosMoneyInput(initialPaidInput2),
+    [initialPaidInput2],
+  );
+
+  const initialPaidCombined = useMemo(() => {
+    if (!initialSplitPay) return initialPaidLine1 ?? 0;
+    return (initialPaidLine1 ?? 0) + (initialPaidLine2 ?? 0);
+  }, [initialSplitPay, initialPaidLine1, initialPaidLine2]);
 
   const initialPayRemainderPreview =
-    parsedInitialPaidPreview != null &&
-    parsedInitialPaidPreview > 0 &&
-    parsedInitialPaidPreview < totalAmount
-      ? totalAmount - parsedInitialPaidPreview
+    initialPaidCombined > 0 && initialPaidCombined < totalAmount
+      ? totalAmount - initialPaidCombined
       : null;
 
   const handleSelectCustomer = (customer: Customer) => {
@@ -354,15 +369,56 @@ export default function POSPage() {
         return;
       }
     }
-    const paidStr = initialPaidInput.trim().replace(/\s/g, '').replace(/,/g, '');
-    const paidNum = paidStr === '' ? 0 : Number(paidStr);
-    if (paidStr !== '' && (!Number.isFinite(paidNum) || paidNum < 0)) {
-      showToast('Số tiền đã thu không hợp lệ.', 'error');
-      return;
-    }
-    if (paidNum > totalAmount) {
-      showToast('Số tiền đã thu không được lớn hơn tổng đơn.', 'error');
-      return;
+    let initial_payment:
+      | { amount: number; payment_method: Payment['payment_method'] }
+      | undefined;
+    let initial_payments:
+      | { amount: number; payment_method: Payment['payment_method'] }[]
+      | undefined;
+
+    if (initialSplitPay) {
+      const s1 = initialPaidInput.trim().replace(/\s/g, '').replace(/,/g, '');
+      const s2 = initialPaidInput2.trim().replace(/\s/g, '').replace(/,/g, '');
+      const n1 = s1 === '' ? 0 : Number(s1);
+      const n2 = s2 === '' ? 0 : Number(s2);
+      if (s1 !== '' && (!Number.isFinite(n1) || n1 < 0)) {
+        showToast('Số tiền khoản 1 không hợp lệ.', 'error');
+        return;
+      }
+      if (s2 !== '' && (!Number.isFinite(n2) || n2 < 0)) {
+        showToast('Số tiền khoản 2 không hợp lệ.', 'error');
+        return;
+      }
+      if (n1 <= 0 || n2 <= 0) {
+        showToast(
+          'Chia nhiều phương thức: nhập số tiền lớn hơn 0 cho cả hai khoản.',
+          'error',
+        );
+        return;
+      }
+      if (n1 + n2 > totalAmount + 0.01) {
+        showToast('Tổng hai khoản không được lớn hơn tổng đơn.', 'error');
+        return;
+      }
+      initial_payments = [
+        { amount: n1, payment_method: initialPayMethod },
+        { amount: n2, payment_method: initialPayMethod2 },
+      ];
+    } else {
+      const paidStr = initialPaidInput.trim().replace(/\s/g, '').replace(/,/g, '');
+      const paidNum = paidStr === '' ? 0 : Number(paidStr);
+      if (paidStr !== '' && (!Number.isFinite(paidNum) || paidNum < 0)) {
+        showToast('Số tiền đã thu không hợp lệ.', 'error');
+        return;
+      }
+      if (paidNum > totalAmount) {
+        showToast('Số tiền đã thu không được lớn hơn tổng đơn.', 'error');
+        return;
+      }
+      initial_payment =
+        paidNum > 0
+          ? { amount: paidNum, payment_method: initialPayMethod }
+          : undefined;
     }
     try {
       let return_time: string | null = null;
@@ -387,10 +443,8 @@ export default function POSPage() {
           assigned_tailor_id: i.assigned_tailor_id || null,
         })),
         updated_by: selectedCreatorId || undefined,
-        initial_payment:
-          paidNum > 0
-            ? { amount: paidNum, payment_method: initialPayMethod }
-            : undefined,
+        initial_payment,
+        initial_payments,
       });
       const unpaidAfter = Math.max(
         0,
@@ -443,7 +497,10 @@ export default function POSPage() {
       setSelectedCustomer(null);
       setReturnDate('');
       setInitialPaidInput('');
+      setInitialPaidInput2('');
+      setInitialSplitPay(false);
       setInitialPayMethod('Cash');
+      setInitialPayMethod2('Transfer');
     } catch (error: any) {
       showToast('Lỗi: ' + error.message, 'error');
     }
@@ -680,10 +737,28 @@ export default function POSPage() {
                 {new Intl.NumberFormat('vi-VN').format(initialPayRemainderPreview)}đ
               </p>
             ) : null}
+            <div className="mb-3 flex items-start gap-2 rounded-md border border-border bg-card/50 p-2.5">
+              <input
+                id="pos-initial-split-pay"
+                type="checkbox"
+                checked={initialSplitPay}
+                onChange={(e) => setInitialSplitPay(e.target.checked)}
+                disabled={totalAmount <= 0}
+                className="mt-0.5 shrink-0"
+              />
+              <label
+                htmlFor="pos-initial-split-pay"
+                className="cursor-pointer text-[10px] leading-snug text-muted-foreground"
+              >
+                <span className="font-bold text-foreground">Chia nhiều phương thức</span>
+                {' — '}
+                hai khoản khi lập đơn (vd. tiền mặt + chuyển khoản).
+              </label>
+            </div>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <div className="space-y-1">
                 <label htmlFor="pos-initial-paid" className="text-[11px] font-semibold text-muted-foreground">
-                  Số tiền (đ)
+                  {initialSplitPay ? 'Khoản 1 — số tiền (đ)' : 'Số tiền (đ)'}
                 </label>
                 <input
                   id="pos-initial-paid"
@@ -698,7 +773,7 @@ export default function POSPage() {
               </div>
               <div className="space-y-1">
                 <label htmlFor="pos-initial-pay-method" className="text-[11px] font-semibold text-muted-foreground">
-                  Hình thức
+                  {initialSplitPay ? 'Khoản 1 — hình thức' : 'Hình thức'}
                 </label>
                 <select
                   id="pos-initial-pay-method"
@@ -715,6 +790,43 @@ export default function POSPage() {
                 </select>
               </div>
             </div>
+            {initialSplitPay ? (
+              <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <label htmlFor="pos-initial-paid-2" className="text-[11px] font-semibold text-muted-foreground">
+                    Khoản 2 — số tiền (đ)
+                  </label>
+                  <input
+                    id="pos-initial-paid-2"
+                    type="text"
+                    inputMode="decimal"
+                    className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm"
+                    placeholder="0"
+                    value={initialPaidInput2}
+                    onChange={(e) => setInitialPaidInput2(e.target.value)}
+                    disabled={totalAmount <= 0}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label htmlFor="pos-initial-pay-method-2" className="text-[11px] font-semibold text-muted-foreground">
+                    Khoản 2 — hình thức
+                  </label>
+                  <select
+                    id="pos-initial-pay-method-2"
+                    className="w-full appearance-none rounded-md border border-border bg-card px-3 py-2 text-sm outline-none"
+                    value={initialPayMethod2}
+                    onChange={(e) =>
+                      setInitialPayMethod2(e.target.value as Payment['payment_method'])
+                    }
+                    disabled={totalAmount <= 0}
+                  >
+                    <option value="Cash">Tiền mặt</option>
+                    <option value="Card">Thẻ</option>
+                    <option value="Transfer">Chuyển khoản</option>
+                  </select>
+                </div>
+              </div>
+            ) : null}
           </div>
 
           <button onClick={handleSubmit} disabled={isPendingCreateOrder} className="w-full btn-primary py-3 rounded-md font-bold mb-3 disabled:opacity-50">
