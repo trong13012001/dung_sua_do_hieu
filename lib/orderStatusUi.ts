@@ -11,6 +11,20 @@ export const ORDER_STATUS_FILTER_SEQUENCE = [
     "Completed",
 ] as const;
 
+/** Đơn chưa giao cho khách ở quầy — cho phép nút "Trả đồ" dù chưa thu / chưa xong hết món (giống phần mềm cũ). */
+export const ORDER_STATUSES_ALLOW_COUNTER_DELIVERY = [
+    "New",
+    "In Progress",
+    "Ready",
+    "Paid",
+] as const;
+
+export function canMarkOrderDeliveredAtCounter(status: string): boolean {
+    return (ORDER_STATUSES_ALLOW_COUNTER_DELIVERY as readonly string[]).includes(
+        status,
+    );
+}
+
 /**
  * Khi ghi nhận "đã trả đồ": đã có thu một phần nhưng chưa đủ → Trả thiếu tiền;
  * còn lại → Đã trả đồ (đủ hoặc chưa thu đồng nào).

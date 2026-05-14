@@ -9,7 +9,10 @@ import { useProcessPayment } from '@/api/payments';
 import { Modal } from '@/components/ui/Modal';
 import { Toast, useToast } from '@/components/ui/Toast';
 import { validateNumber } from '@/lib/validation';
-import { resolveStatusWhenMarkingDelivered } from '@/lib/orderStatusUi';
+import {
+  canMarkOrderDeliveredAtCounter,
+  resolveStatusWhenMarkingDelivered,
+} from '@/lib/orderStatusUi';
 import {
   ShoppingBag,
   Calendar,
@@ -244,7 +247,7 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
     order != null ? order.total_amount - (order.paid_amount ?? 0) : 0;
   const showDeliverInDetail =
     order != null &&
-    (order.status === 'Ready' || order.status === 'Paid') &&
+    canMarkOrderDeliveredAtCounter(order.status) &&
     canMarkDelivered;
   const showPayInDetail =
     order != null && detailDebt > 0 && canProcessPayment;

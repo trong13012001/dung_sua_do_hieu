@@ -15,8 +15,12 @@ import { useOrders, useUpdateOrder } from '@/api/orders';
 import { Modal } from '@/components/ui/Modal';
 import { Toast, useToast } from '@/components/ui/Toast';
 import { useDebounce } from '@/hooks/useDebounce';
-import { Order, OrderDetail } from '@/lib/types';
-import { resolveStatusWhenMarkingDelivered } from '@/lib/orderStatusUi';
+import { Order } from '@/lib/types';
+import {
+  canMarkOrderDeliveredAtCounter,
+  orderStatusLabelVi,
+  resolveStatusWhenMarkingDelivered,
+} from '@/lib/orderStatusUi';
 
 export default function ReturnsPage() {
   const { data: orders, isLoading } = useOrders();
@@ -32,7 +36,7 @@ export default function ReturnsPage() {
   const [returningOrder, setReturningOrder] = useState<Order | null>(null);
 
   const readyOrders = orders?.filter(o => {
-    if (o.status !== 'Ready') return false;
+    if (!canMarkOrderDeliveredAtCounter(o.status)) return false;
     const matchSearch = !debouncedSearch ||
       o.id.toString().includes(debouncedSearch) ||
       o.customer?.name?.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
@@ -80,7 +84,7 @@ export default function ReturnsPage() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
         <h4 className="text-lg md:text-xl font-bold text-foreground">Trả đồ cho khách</h4>
         <div className="flex items-center gap-3 text-xs font-bold">
-          <span className="px-2.5 py-1 rounded-md bg-success/10 text-success">Chờ trả: {orders?.filter(o => o.status === 'Ready').length || 0}</span>
+          <span className="px-2.5 py-1 rounded-md bg-success/10 text-success">Chờ trả: {orders?.filter(o => canMarkOrderDeliveredAtCounter(o.status)).length || 0}</span>
           <span className="px-2.5 py-1 rounded-md bg-primary/10 text-primary">Đã trả: {orders?.filter(o => o.status === 'Delivered' || o.status === 'DeliveredOwing').length || 0}</span>
         </div>
       </div>
@@ -126,7 +130,11 @@ export default function ReturnsPage() {
                         <h6 className="font-bold text-foreground">#{order.id.toString().padStart(5, '0')}</h6>
                         {order.status === 'Delivered' && <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-primary/10 text-primary">Đã trả</span>}
                         {order.status === 'DeliveredOwing' && <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-orange-500/15 text-orange-800 dark:text-orange-300">Trả thiếu tiền</span>}
-                        {order.status === 'Ready' && <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-success/10 text-success">Chờ trả</span>}
+                        {canMarkOrderDeliveredAtCounter(order.status) && (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-success/10 text-success">
+                            {order.status === 'Ready' ? 'Chờ trả' : orderStatusLabelVi(order.status)}
+                          </span>
+                        )}
                       </div>
 
                       {/* Customer info */}

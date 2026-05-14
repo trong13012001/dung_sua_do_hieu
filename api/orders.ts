@@ -1216,6 +1216,10 @@ export function useUpdateOrderDetail() {
                     q.queryKey[1] != null &&
                     String(q.queryKey[1]) === String(detail.order_id),
             });
+            qc.invalidateQueries({
+                queryKey: ["orders", "customer"],
+                exact: false,
+            });
         },
         onError: (_err, _vars, ctx) => {
             if (ctx?.prev) qc.setQueryData(["orders"], ctx.prev);
@@ -1472,9 +1476,14 @@ export async function getCustomerOrders(
     if (!orders || orders.length === 0) return [];
 
     const orderIds = orders.map((o) => o.id);
-    const [detailsRes, paymentsRes] = await Promise.all([
+    const [detailsRes, paymentsRes, customerRes] = await Promise.all([
         supabase.from("order_details").select("*").in("order_id", orderIds),
         supabase.from("payments").select("*").in("order_id", orderIds),
+        supabase
+            .from("customers")
+            .select("id, name, phone, address")
+            .eq("id", customerId)
+            .maybeSingle(),
     ]);
 
     const detailsByOrder: Record<number, any[]> = {};
@@ -1490,8 +1499,11 @@ export async function getCustomerOrders(
             paymentsByOrder[p.order_id].push(p);
         }
 
+    const customer = customerRes.data ?? null;
+
     return orders.map((o) => ({
         ...o,
+        customer,
         details: detailsByOrder[o.id] || [],
         payments: paymentsByOrder[o.id] || [],
     })) as Order[];

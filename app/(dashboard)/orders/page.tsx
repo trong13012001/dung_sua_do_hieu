@@ -55,7 +55,10 @@ import { validateRequired, validateNumber } from "@/lib/validation";
 import { printElementSmart } from "@/lib/printSmart";
 import { PRINT_TARGET_INVOICE_XP80C } from "@/lib/printTargets";
 import { isSilentThermalConfigured } from "@/lib/print/thermalPrint";
-import { resolveStatusWhenMarkingDelivered } from "@/lib/orderStatusUi";
+import {
+    canMarkOrderDeliveredAtCounter,
+    resolveStatusWhenMarkingDelivered,
+} from "@/lib/orderStatusUi";
 import {
     orderDetailStatusBadgeClass,
     orderDetailStatusLabelVi,
@@ -1108,9 +1111,9 @@ export default function OrdersPage() {
                                                         <DollarSign size={16} />
                                                     </button>
                                                 )}
-                                                {(order.status === "Ready" ||
-                                                    order.status ===
-                                                        "Paid") && (
+                                                {canMarkOrderDeliveredAtCounter(
+                                                    order.status,
+                                                ) && (
                                                     <button
                                                         type="button"
                                                         onClick={(e) => {
