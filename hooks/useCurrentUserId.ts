@@ -12,7 +12,8 @@ export function useCurrentUserId(): string | null {
 
   useEffect(() => {
     async function resolve() {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
       if (user?.email && employees) {
         const match = employees.find((e: User & { role: Role | null }) => e.email === user.email);
         setUserId(match?.id != null ? String(match.id) : null);

@@ -5,11 +5,32 @@ import {
     useQueryClient,
     useInfiniteQuery,
     type InfiniteData,
+    type QueryClient,
 } from "@tanstack/react-query";
 import { Order, OrderDetail } from "@/lib/types";
 import { insertOrderLog } from "@/api/orderLogs";
 
 const PAGE_SIZE = 25;
+
+/** Làm mới mọi query danh sách/chi tiết đơn (POS, lịch sử khách, /orders, …). */
+export function invalidateOrderRelatedQueries(
+    qc: QueryClient,
+    options?: { orderId?: number | string | null },
+) {
+    qc.invalidateQueries({ queryKey: ["orders"] });
+    qc.invalidateQueries({ queryKey: ["orders-infinite"] });
+    qc.invalidateQueries({ queryKey: ["orders-page"], exact: false });
+    qc.invalidateQueries({ queryKey: ["orders", "customer"], exact: false });
+    qc.invalidateQueries({ queryKey: ["customers"] });
+    qc.invalidateQueries({ queryKey: ["stats"] });
+    qc.invalidateQueries({ queryKey: ["all-order-items"] });
+    qc.invalidateQueries({ queryKey: ["order-items"], exact: false });
+    qc.invalidateQueries({ queryKey: ["payments"] });
+    const orderId = options?.orderId;
+    if (orderId != null) {
+        qc.invalidateQueries({ queryKey: ["orders", orderId] });
+    }
+}
 
 /** Dòng cache của useAllOrderItems / useOrderItems (bảng Công việc) */
 type CachedOrderTaskRow = {
@@ -793,13 +814,7 @@ export function useCreateOrder() {
             return finalOrder as Order;
         },
         onSuccess: () => {
-            qc.invalidateQueries({ queryKey: ["orders"] });
-            qc.invalidateQueries({ queryKey: ["orders-infinite"] });
-            qc.invalidateQueries({ queryKey: ["customers"] });
-            qc.invalidateQueries({ queryKey: ["stats"] });
-            qc.invalidateQueries({ queryKey: ["all-order-items"] });
-            qc.invalidateQueries({ queryKey: ["order-items"] });
-            qc.invalidateQueries({ queryKey: ["payments"] });
+            invalidateOrderRelatedQueries(qc);
         },
     });
 }
@@ -883,12 +898,7 @@ export function useUpdateOrder() {
             }
         },
         onSettled: (_data, _error, variables) => {
-            qc.invalidateQueries({ queryKey: ["orders"] });
-            qc.invalidateQueries({ queryKey: ["orders-infinite"] });
-            qc.invalidateQueries({ queryKey: ["stats"] });
-            if (variables?.id != null) {
-                qc.invalidateQueries({ queryKey: ["orders", variables.id] });
-            }
+            invalidateOrderRelatedQueries(qc, { orderId: variables?.id });
         },
     });
 }
@@ -966,10 +976,8 @@ export function useUpdateOrderStatus() {
                 }
             }
         },
-        onSettled: () => {
-            qc.invalidateQueries({ queryKey: ["orders"] });
-            qc.invalidateQueries({ queryKey: ["orders-infinite"] });
-            qc.invalidateQueries({ queryKey: ["stats"] });
+        onSettled: (_data, _error, variables) => {
+            invalidateOrderRelatedQueries(qc, { orderId: variables?.orderId });
         },
     });
 }
@@ -1243,6 +1251,7 @@ export function useUpdateOrderDetail() {
                 queryKey: ["orders", "customer"],
                 exact: false,
             });
+            qc.invalidateQueries({ queryKey: ["orders-page"], exact: false });
         },
         onError: (_err, _vars, ctx) => {
             if (ctx?.prev) qc.setQueryData(["orders"], ctx.prev);
@@ -1374,13 +1383,7 @@ export function useAddOrderDetails() {
             return inserted as OrderDetail[];
         },
         onSuccess: (_data, variables) => {
-            qc.invalidateQueries({ queryKey: ["orders"] });
-            qc.invalidateQueries({ queryKey: ["orders", variables.orderId] });
-            qc.invalidateQueries({ queryKey: ["orders-infinite"] });
-            qc.invalidateQueries({ queryKey: ["customers"] });
-            qc.invalidateQueries({ queryKey: ["all-order-items"] });
-            qc.invalidateQueries({ queryKey: ["order-items"] });
-            qc.invalidateQueries({ queryKey: ["stats"] });
+            invalidateOrderRelatedQueries(qc, { orderId: variables.orderId });
         },
     });
 }
@@ -1446,13 +1449,8 @@ export function useDeleteOrderDetail() {
             });
             return { id, orderId };
         },
-        onSuccess: (_data) => {
-            qc.invalidateQueries({ queryKey: ["orders"] });
-            qc.invalidateQueries({ queryKey: ["orders-infinite"] });
-            qc.invalidateQueries({ queryKey: ["all-order-items"] });
-            qc.invalidateQueries({ queryKey: ["order-items"] });
-            qc.invalidateQueries({ queryKey: ["customers"] });
-            qc.invalidateQueries({ queryKey: ["stats"] });
+        onSuccess: (data) => {
+            invalidateOrderRelatedQueries(qc, { orderId: data?.orderId });
         },
     });
 }
@@ -1476,13 +1474,9 @@ export function useDeleteOrder() {
                 .eq("id", id);
             if (error) throw error;
         },
-        onSuccess: () => {
-            qc.invalidateQueries({ queryKey: ["orders"] });
-            qc.invalidateQueries({ queryKey: ["orders-infinite"] });
-            qc.invalidateQueries({ queryKey: ["all-order-items"] });
-            qc.invalidateQueries({ queryKey: ["order-items"] });
-            qc.invalidateQueries({ queryKey: ["stats"] });
-            qc.invalidateQueries({ queryKey: ["customers"] });
+        onSuccess: (_data, variables) => {
+            const id = typeof variables === "number" ? variables : variables.id;
+            invalidateOrderRelatedQueries(qc, { orderId: id });
         },
     });
 }

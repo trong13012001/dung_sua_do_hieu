@@ -38,6 +38,7 @@ import { isSilentThermalConfigured } from '@/lib/print/thermalPrint';
 import { printTargetElementSmart } from '@/lib/printSmart';
 import { PRINT_TARGET_LABEL_XP235B, PRINT_TARGET_INVOICE_XP80C } from '@/lib/printTargets';
 import { orderStatusBadgeClass, orderStatusLabelVi } from '@/lib/orderStatusUi';
+import { dateInputToReturnTime } from '@/lib/canPrintInvoice';
 
 interface PosItem {
   name: string;
@@ -355,6 +356,15 @@ export default function POSPage() {
       showToast('Vui lòng chọn khách hàng.', 'error');
       return;
     }
+    if (!returnDate.trim()) {
+      showToast('Vui lòng chọn ngày hẹn trả đồ.', 'error');
+      return;
+    }
+    const return_time = dateInputToReturnTime(returnDate);
+    if (!return_time) {
+      showToast('Ngày hẹn trả đồ không hợp lệ.', 'error');
+      return;
+    }
     const filled = items.filter(i => i.name.trim() !== '' || Number(i.price) > 0);
     if (filled.length === 0) {
       showToast('Vui lòng thêm ít nhất một sản phẩm (tên và đơn giá).', 'error');
@@ -421,14 +431,6 @@ export default function POSPage() {
           : undefined;
     }
     try {
-      let return_time: string | null = null;
-      if (returnDate) {
-        const combined = new Date(`${returnDate}T16:00:00`);
-        if (!Number.isNaN(combined.getTime())) {
-          return_time = combined.toISOString();
-        }
-      }
-
       const created = await mutateAsyncCreateOrder({
         order: {
           customer_id: selectedCustomer.id,
@@ -565,10 +567,13 @@ export default function POSPage() {
               {/* Return appointment (optional) */}
               <div className="grid grid-cols-1 gap-3 md:gap-4">
                 <div className="space-y-1">
-                  <label htmlFor="pos-return-date" className="text-[11px] font-bold text-muted-foreground uppercase">Ngày hẹn trả (tùy chọn)</label>
+                  <label htmlFor="pos-return-date" className="text-[11px] font-bold text-muted-foreground uppercase">
+                    Ngày hẹn trả đồ <span className="text-danger">*</span>
+                  </label>
                   <input
                     id="pos-return-date"
                     type="date"
+                    required
                     className="w-full bg-muted/20 border border-border rounded-md px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-primary"
                     value={returnDate}
                     onChange={e => setReturnDate(e.target.value)}

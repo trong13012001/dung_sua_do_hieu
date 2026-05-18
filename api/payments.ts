@@ -2,6 +2,7 @@ import { supabase } from '@/lib/supabase';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Customer, Payment } from '@/lib/types';
 import { insertOrderLog } from '@/api/orderLogs';
+import { invalidateOrderRelatedQueries } from '@/api/orders';
 
 export function usePayments(orderId?: number) {
   return useQuery({
@@ -53,13 +54,9 @@ export function useProcessPayment() {
       queryClient.invalidateQueries({ queryKey: ['payments'] });
       if (orderId != null) {
         queryClient.invalidateQueries({ queryKey: ['payments', orderId] });
-        queryClient.invalidateQueries({ queryKey: ['orders', orderId] });
         queryClient.refetchQueries({ queryKey: ['orders', orderId] });
       }
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
-      queryClient.invalidateQueries({ queryKey: ['orders-infinite'] });
-      queryClient.invalidateQueries({ queryKey: ['customers'] });
-      queryClient.invalidateQueries({ queryKey: ['stats'] });
+      invalidateOrderRelatedQueries(queryClient, { orderId });
       queryClient.invalidateQueries({ queryKey: ['stats', 'monthly'] });
     },
   });

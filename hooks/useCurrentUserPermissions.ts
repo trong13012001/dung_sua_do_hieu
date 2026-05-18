@@ -17,7 +17,8 @@ export function useCurrentUserPermissions() {
   useEffect(() => {
     let mounted = true;
     async function resolve() {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
       if (!user?.email || !employees) {
         if (mounted) {
           setRoleId(null);

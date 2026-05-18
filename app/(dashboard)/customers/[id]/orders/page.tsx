@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import {
   ChevronLeft,
@@ -15,12 +15,16 @@ import {
   Printer,
   Edit2,
   Trash2,
+  Search,
+  Loader2,
 } from 'lucide-react';
 import { useGetCustomerOrders } from '@/hooks/customer/useGetCustomerOrders';
 import { useGetCustomerDetail } from '@/hooks/customer/useGetCustomerDetail';
 import { useOrderLogs } from '@/api/orderLogs';
 import {
+  getOrder,
   useAddOrderDetails,
+  useDeleteOrder,
   useDeleteOrderDetail,
   useUpdateOrder,
   useUpdateOrderDetail,
@@ -33,10 +37,16 @@ import { ItemLabelsPrint } from '@/components/ui/ItemLabelsPrint';
 import { InvoicePrint } from '@/components/ui/InvoicePrint';
 import { Toast, useToast } from '@/components/ui/Toast';
 import { useCurrentUserId } from '@/hooks/useCurrentUserId';
+import { useDebounce } from '@/hooks/useDebounce';
 import { Order, OrderDetail, Role, User } from '@/lib/types';
 import { orderDetailStatusSelectOptions } from '@/lib/orderDetailStatusUi';
 import { orderStatusBadgeClass, orderStatusLabelVi } from '@/lib/orderStatusUi';
 import { validateNumber } from '@/lib/validation';
+import {
+  canPrintInvoice,
+  dateInputToReturnTime,
+  returnTimeToDateInputValue,
+} from '@/lib/canPrintInvoice';
 
 const statusOptions = [
   { value: 'New', label: 'Mới' },
@@ -111,14 +121,19 @@ export default function CustomerOrdersPage() {
   const { mutateAsync: mutateAsyncUpdateDetail, isPending: isPendingUpdateDetail } = useUpdateOrderDetail();
   const { mutateAsync: mutateAsyncAddOrderDetails, isPending: isPendingAddOrderDetails } = useAddOrderDetails();
   const { mutateAsync: mutateAsyncDeleteDetail, isPending: isPendingDeleteDetail } = useDeleteOrderDetail();
+  const { mutateAsync: mutateAsyncDeleteOrder, isPending: isPendingDeleteOrder } = useDeleteOrder();
 
   const { data: customer, isLoading: isLoadingCustomer } = useGetCustomerDetail(customerId);
   const { data: orders, isLoading: isLoadingOrders } = useGetCustomerOrders(customerId);
 
   const selectedOrderId = searchParams.get('orderId');
 
+  const [searchTerm, setSearchTerm] = useState('');
+  const debouncedSearch = useDebounce(searchTerm, 400);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+  const [editReturnDate, setEditReturnDate] = useState('');
   const [deletingDetailId, setDeletingDetailId] = useState<number | null>(null);
+  const [deletingOrder, setDeletingOrder] = useState<Order | null>(null);
   const [detailEdits, setDetailEdits] = useState<Record<number, DetailEdit>>({});
   const [newItems, setNewItems] = useState<Array<{
     name: string;
@@ -127,8 +142,27 @@ export default function CustomerOrdersPage() {
     assigned_tailor_id: string;
   }>>([]);
   const [invoiceOrder, setInvoiceOrder] = useState<Order | null>(null);
+  const [printingOrderId, setPrintingOrderId] = useState<number | null>(null);
   const [labelOrder, setLabelOrder] = useState<Order | null>(null);
   const [labelLineIndices, setLabelLineIndices] = useState<number[] | null>(null);
+
+  const filteredOrders = useMemo(() => {
+    if (!orders) return [];
+    const kw = debouncedSearch.trim().toLowerCase();
+    if (!kw) return orders;
+    return orders.filter((order: Order) => {
+      if (String(order.id).includes(kw)) return true;
+      if (order.transaction_code?.toLowerCase().includes(kw)) return true;
+      if (orderStatusLabelVi(order.status).toLowerCase().includes(kw)) return true;
+      return (
+        order.details?.some(
+          (d) =>
+            d.item_name?.toLowerCase().includes(kw) ||
+            d.description?.toLowerCase().includes(kw),
+        ) ?? false
+      );
+    });
+  }, [orders, debouncedSearch]);
   const tailors =
     employees?.filter((e: User & { role: Role | null }) => e.role?.name === 'Thợ may') || [];
   const selectClass =
@@ -150,8 +184,50 @@ export default function CustomerOrdersPage() {
     router.push(`?${newParams.toString()}`);
   };
 
+  const handlePrintInvoice = async (
+    e: React.MouseEvent,
+    order: Order,
+  ) => {
+    e.stopPropagation();
+    setPrintingOrderId(order.id);
+    try {
+      const fresh = await getOrder(order.id);
+      const check = canPrintInvoice(fresh);
+      if (!check.ok) {
+        showToast(check.message, 'error');
+        return;
+      }
+      setInvoiceOrder(fresh);
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : 'Không tải được đơn hàng';
+      showToast(`Lỗi: ${message}`, 'error');
+    } finally {
+      setPrintingOrderId(null);
+    }
+  };
+
+  const handleDeleteOrder = async () => {
+    if (!deletingOrder) return;
+    try {
+      await mutateAsyncDeleteOrder({
+        id: deletingOrder.id,
+        updated_by: currentUserId ?? undefined,
+      });
+      if (invoiceOrder?.id === deletingOrder.id) {
+        setInvoiceOrder(null);
+      }
+      setDeletingOrder(null);
+      showToast('Xóa đơn hàng thành công', 'success');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Xóa thất bại';
+      showToast(`Lỗi: ${message}`, 'error');
+    }
+  };
+
   const openEditModal = (order: Order) => {
     setEditingOrder(order);
+    setEditReturnDate(returnTimeToDateInputValue(order.return_time));
     const edits: Record<number, DetailEdit> = {};
     order.details?.forEach((d) => {
       edits[d.id] = {
@@ -209,10 +285,20 @@ export default function CustomerOrdersPage() {
           return;
         }
       }
+      const returnDateInput = (fd.get('return-date') as string) ?? editReturnDate;
+      const newReturnTime = dateInputToReturnTime(returnDateInput);
+      const origReturnYmd = returnTimeToDateInputValue(editingOrder.return_time);
+      const orderPatch: Partial<Order> = {};
       if (orderStatusChoice && orderStatusChoice !== editingOrder.status) {
+        orderPatch.status = orderStatusChoice as Order['status'];
+      }
+      if (returnDateInput !== origReturnYmd) {
+        orderPatch.return_time = newReturnTime;
+      }
+      if (Object.keys(orderPatch).length > 0) {
         await mutateAsyncUpdateOrder({
           id: editingOrder.id,
-          order: { status: orderStatusChoice as Order['status'] },
+          order: orderPatch,
           updated_by: currentUserId ?? undefined,
         });
       }
@@ -290,9 +376,11 @@ export default function CustomerOrdersPage() {
         });
       }
       setEditingOrder(null);
+      setEditReturnDate('');
       showToast('Cập nhật đơn hàng thành công', 'success');
-    } catch (err: any) {
-      showToast('Lỗi: ' + err.message, 'error');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Cập nhật thất bại';
+      showToast(`Lỗi: ${message}`, 'error');
     }
   };
 
@@ -351,9 +439,28 @@ export default function CustomerOrdersPage() {
         <div className="flex gap-3">
           <div className="bg-success/10 text-success px-3 md:px-4 py-1.5 md:py-2 rounded-lg border border-success/20 flex items-center gap-2">
             <Receipt size={16} className="md:w-[18px] md:h-[18px]" />
-            <span className="text-[10px] md:text-sm font-bold uppercase tracking-wider">Tổng đơn: {orders?.length || 0}</span>
+            <span className="text-[10px] md:text-sm font-bold uppercase tracking-wider">
+              Tổng đơn:{' '}
+              {debouncedSearch.trim() && orders
+                ? `${filteredOrders.length}/${orders.length}`
+                : orders?.length || 0}
+            </span>
           </div>
         </div>
+      </div>
+
+      <div className="relative px-2 md:px-0">
+        <Search
+          className="absolute left-5 md:left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+          size={16}
+        />
+        <input
+          type="text"
+          placeholder="Tìm mã đơn, sản phẩm, trạng thái..."
+          className="w-full bg-card border border-border rounded-md pl-10 pr-4 py-2.5 text-sm outline-none focus:ring-1 focus:ring-primary"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+        />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 px-2 md:px-0">
@@ -402,7 +509,8 @@ export default function CustomerOrdersPage() {
               <div key={i} className="vuexy-card h-32 animate-pulse"></div>
             ))
           ) : orders && orders.length > 0 ? (
-            orders.map((order: Order) => (
+            filteredOrders.length > 0 ? (
+            filteredOrders.map((order: Order) => (
               <div
                 key={order.id}
                 className="vuexy-card p-4 md:p-5 border border-border hover:shadow-md transition-all cursor-pointer group"
@@ -467,14 +575,16 @@ export default function CustomerOrdersPage() {
                   <div className="flex items-center gap-1.5">
                     <button
                       type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setInvoiceOrder(order);
-                      }}
-                      className="p-2 rounded-md text-primary hover:bg-primary/10 transition-colors"
+                      onClick={(e) => void handlePrintInvoice(e, order)}
+                      disabled={printingOrderId === order.id}
+                      className="p-2 rounded-md text-primary hover:bg-primary/10 transition-colors disabled:opacity-50"
                       title="In hóa đơn"
                     >
-                      <Printer size={16} />
+                      {printingOrderId === order.id ? (
+                        <Loader2 size={16} className="animate-spin" />
+                      ) : (
+                        <Printer size={16} />
+                      )}
                     </button>
                     {order.details && order.details.length > 0 && (
                       <button
@@ -501,6 +611,17 @@ export default function CustomerOrdersPage() {
                     >
                       <Edit2 size={16} />
                     </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDeletingOrder(order);
+                      }}
+                      className="p-2 rounded-md text-muted-foreground hover:text-danger hover:bg-danger/10 transition-colors"
+                      title="Xóa đơn"
+                    >
+                      <Trash2 size={16} />
+                    </button>
                     <div className="text-xs font-bold text-primary flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-all uppercase tracking-widest">
                       Chi tiết <ChevronRight size={14} />
                     </div>
@@ -508,6 +629,14 @@ export default function CustomerOrdersPage() {
                 </div>
               </div>
             ))
+            ) : (
+              <div className="vuexy-card p-12 text-center flex flex-col items-center justify-center gap-3 bg-transparent border-2 border-dashed border-border shadow-none">
+                <Search size={40} className="text-muted-foreground opacity-20" />
+                <p className="text-muted-foreground font-medium italic">
+                  Không tìm thấy đơn phù hợp với từ khóa.
+                </p>
+              </div>
+            )
           ) : (
             <div className="vuexy-card p-20 text-center flex flex-col items-center justify-center gap-4 bg-transparent border-2 border-dashed border-border shadow-none">
               <ShoppingBag size={48} className="text-muted-foreground opacity-20" />
@@ -521,6 +650,7 @@ export default function CustomerOrdersPage() {
         isOpen={!!editingOrder}
         onClose={() => {
           setEditingOrder(null);
+          setEditReturnDate('');
           setDeletingDetailId(null);
         }}
         title={`Cập nhật đơn #${editingOrder?.id}`}
@@ -549,6 +679,19 @@ export default function CustomerOrdersPage() {
                 size={14}
               />
             </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-bold text-muted-foreground uppercase">
+              Ngày hẹn trả đồ
+            </label>
+            <input
+              type="date"
+              name="return-date"
+              value={editReturnDate}
+              onChange={(e) => setEditReturnDate(e.target.value)}
+              className={selectClass}
+            />
           </div>
 
           {editingOrder?.details && editingOrder.details.length > 0 && (
@@ -735,6 +878,7 @@ export default function CustomerOrdersPage() {
               type="button"
               onClick={() => {
                 setEditingOrder(null);
+                setEditReturnDate('');
                 setDeletingDetailId(null);
               }}
               className="flex-1 bg-muted/40 text-foreground py-2.5 rounded-md font-bold text-sm border border-border"
@@ -782,6 +926,37 @@ export default function CustomerOrdersPage() {
               className="flex-1 bg-danger text-white hover:bg-danger/90 py-2.5 rounded-md font-bold text-sm disabled:opacity-50"
             >
               {isPendingDeleteDetail ? 'Đang xóa...' : 'Xóa'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={!!deletingOrder}
+        onClose={() => setDeletingOrder(null)}
+        title="Xóa đơn hàng"
+      >
+        <div className="space-y-6">
+          <p className="text-muted-foreground text-sm">
+            Bạn có chắc chắn muốn xóa đơn hàng{' '}
+            <span className="font-bold text-foreground">#{deletingOrder?.id}</span>
+            ?
+          </p>
+          <div className="flex gap-4">
+            <button
+              type="button"
+              onClick={() => setDeletingOrder(null)}
+              className="flex-1 bg-muted/40 text-foreground py-2.5 rounded-md font-bold text-sm border border-border"
+            >
+              Giữ lại
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleDeleteOrder()}
+              disabled={isPendingDeleteOrder}
+              className="flex-1 bg-danger text-white hover:bg-danger/90 py-2.5 rounded-md font-bold text-sm disabled:opacity-50"
+            >
+              {isPendingDeleteOrder ? 'Đang xóa...' : 'Xóa vĩnh viễn'}
             </button>
           </div>
         </div>
