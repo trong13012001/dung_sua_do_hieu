@@ -38,6 +38,18 @@
   --shadow-md: 0 0.25rem 0.5rem rgba(165, 163, 174, 0.45);
 }
 
+/* Ẩn mũi tên lên/xuống trên input số (POS giá tiền, đơn giá, …) */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
