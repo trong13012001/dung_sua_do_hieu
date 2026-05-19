@@ -51,7 +51,7 @@ import { OrderDetailModal } from "@/components/ui/OrderDetailModal";
 import { decodeBarcode } from "@/lib/barcode";
 import { useDebounce } from "@/hooks/useDebounce";
 import { Order, OrderDetail, Payment, User, Role } from "@/lib/types";
-import { validateRequired, validateNumber } from "@/lib/validation";
+import { validateRequired, validateNumber, onlyDigits } from "@/lib/validation";
 import { printElementSmart } from "@/lib/printSmart";
 import { PRINT_TARGET_INVOICE_XP80C } from "@/lib/printTargets";
 import { isSilentThermalConfigured } from "@/lib/print/thermalPrint";
@@ -1443,7 +1443,7 @@ export default function OrdersPage() {
                                                                 <td className="p-1.5">
                                                                     <input
                                                                         type="text"
-                                                                        inputMode="decimal"
+                                                                        inputMode="numeric"
                                                                         value={
                                                                             edit.unit_price
                                                                         }
@@ -1453,9 +1453,11 @@ export default function OrdersPage() {
                                                                             setDetailEdit(
                                                                                 d.id,
                                                                                 "unit_price",
-                                                                                e
-                                                                                    .target
-                                                                                    .value,
+                                                                                onlyDigits(
+                                                                                    e
+                                                                                        .target
+                                                                                        .value,
+                                                                                ),
                                                                             )
                                                                         }
                                                                         placeholder="0"
@@ -1662,13 +1664,15 @@ export default function OrdersPage() {
                                             <div className="col-span-2">
                                                 <input
                                                     type="text"
-                                                    inputMode="decimal"
+                                                    inputMode="numeric"
                                                     value={row.price}
                                                     onChange={(e) =>
                                                         updateNewItem(
                                                             idx,
                                                             "price",
-                                                            e.target.value,
+                                                            onlyDigits(
+                                                                e.target.value,
+                                                            ),
                                                         )
                                                     }
                                                     placeholder="Đơn giá"
@@ -1923,13 +1927,13 @@ export default function OrdersPage() {
                         <input
                             required
                             type="text"
-                            inputMode="decimal"
+                            inputMode="numeric"
                             className="w-full bg-muted/20 border border-border rounded-md px-4 py-2.5 text-sm outline-none focus:ring-1 focus:ring-primary"
                             value={payForm.amount}
                             onChange={(e) =>
                                 setPayForm({
                                     ...payForm,
-                                    amount: e.target.value,
+                                    amount: onlyDigits(e.target.value),
                                 })
                             }
                         />
@@ -1964,13 +1968,13 @@ export default function OrdersPage() {
                                 <input
                                     required
                                     type="text"
-                                    inputMode="decimal"
+                                    inputMode="numeric"
                                     className="w-full bg-muted/20 border border-border rounded-md px-4 py-2.5 text-sm outline-none focus:ring-1 focus:ring-primary"
                                     value={payForm.amount2}
                                     onChange={(e) =>
                                         setPayForm({
                                             ...payForm,
-                                            amount2: e.target.value,
+                                            amount2: onlyDigits(e.target.value),
                                         })
                                     }
                                 />

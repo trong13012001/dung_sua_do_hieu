@@ -8,7 +8,7 @@ import { useUpdateOrder, useUpdateOrderDetail } from '@/api/orders';
 import { useProcessPayment } from '@/api/payments';
 import { Modal } from '@/components/ui/Modal';
 import { Toast, useToast } from '@/components/ui/Toast';
-import { validateNumber } from '@/lib/validation';
+import { validateNumber, onlyDigits } from '@/lib/validation';
 import {
   canMarkOrderDeliveredAtCounter,
   resolveStatusWhenMarkingDelivered,
@@ -522,11 +522,11 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
                         <input
                           required
                           type="text"
-                          inputMode="decimal"
+                          inputMode="numeric"
                           className="w-full bg-muted/20 border border-border rounded-md px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-primary"
                           value={payForm.amount}
                           onChange={(e) =>
-                            setPayForm((p) => ({ ...p, amount: e.target.value }))
+                            setPayForm((p) => ({ ...p, amount: onlyDigits(e.target.value) }))
                           }
                         />
                       </div>
@@ -560,13 +560,13 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
                             <input
                               required
                               type="text"
-                              inputMode="decimal"
+                              inputMode="numeric"
                               className="w-full bg-muted/20 border border-border rounded-md px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-primary"
                               value={payForm.amount2}
                               onChange={(e) =>
                                 setPayForm((p) => ({
                                   ...p,
-                                  amount2: e.target.value,
+                                  amount2: onlyDigits(e.target.value),
                                 }))
                               }
                             />

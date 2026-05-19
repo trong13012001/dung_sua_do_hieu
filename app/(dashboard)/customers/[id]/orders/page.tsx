@@ -41,7 +41,7 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { Order, OrderDetail, Role, User } from '@/lib/types';
 import { orderDetailStatusSelectOptions } from '@/lib/orderDetailStatusUi';
 import { orderStatusBadgeClass, orderStatusLabelVi } from '@/lib/orderStatusUi';
-import { validateNumber } from '@/lib/validation';
+import { validateNumber, onlyDigits } from '@/lib/validation';
 import {
   canPrintInvoice,
   dateInputToReturnTime,
@@ -732,9 +732,9 @@ export default function CustomerOrdersPage() {
                             <td className="p-1.5">
                               <input
                                 type="text"
-                                inputMode="decimal"
+                                inputMode="numeric"
                                 value={edit.unit_price}
-                                onChange={(e) => setDetailEdit(d.id, 'unit_price', e.target.value)}
+                                onChange={(e) => setDetailEdit(d.id, 'unit_price', onlyDigits(e.target.value))}
                                 className={selectClass}
                               />
                             </td>
@@ -826,9 +826,9 @@ export default function CustomerOrdersPage() {
                       <div className="col-span-2">
                         <input
                           type="text"
-                          inputMode="decimal"
+                          inputMode="numeric"
                           value={row.price}
-                          onChange={(e) => updateNewItem(idx, 'price', e.target.value)}
+                          onChange={(e) => updateNewItem(idx, 'price', onlyDigits(e.target.value))}
                           placeholder="Đơn giá"
                           className={selectClass}
                         />

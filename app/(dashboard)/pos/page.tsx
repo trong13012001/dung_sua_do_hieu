@@ -33,7 +33,7 @@ import { buildOrderForInvoicePrint } from '@/lib/buildOrderForInvoicePrint';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useCurrentUserId } from '@/hooks/useCurrentUserId';
 import { Customer, Order, User, Role, Payment } from '@/lib/types';
-import { validateRequired, validateNumber, validatePhone, validateMaxLength } from '@/lib/validation';
+import { validateRequired, validateNumber, validatePhone, validateMaxLength, onlyDigits } from '@/lib/validation';
 import { isSilentThermalConfigured } from '@/lib/print/thermalPrint';
 import { printTargetElementSmart } from '@/lib/printSmart';
 import { PRINT_TARGET_LABEL_XP235B, PRINT_TARGET_INVOICE_XP80C } from '@/lib/printTargets';
@@ -665,7 +665,7 @@ export default function POSPage() {
                     </div>
                     <div className="space-y-1">
                       <label className="text-[11px] font-bold text-muted-foreground uppercase">Giá tiền</label>
-                      <input type="text" inputMode="decimal" className="w-full bg-card border border-border rounded px-3 py-1.5 text-sm" placeholder="0" value={item.price || ''} onChange={e => updateItem(index, 'price', e.target.value)} />
+                      <input type="text" inputMode="numeric" className="w-full bg-card border border-border rounded px-3 py-1.5 text-sm" placeholder="0" value={item.price || ''} onChange={e => updateItem(index, 'price', onlyDigits(e.target.value))} />
                     </div>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4 mb-3">
@@ -768,11 +768,11 @@ export default function POSPage() {
                 <input
                   id="pos-initial-paid"
                   type="text"
-                  inputMode="decimal"
+                  inputMode="numeric"
                   className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm"
                   placeholder="0 — để trống nếu chưa thu"
                   value={initialPaidInput}
-                  onChange={(e) => setInitialPaidInput(e.target.value)}
+                  onChange={(e) => setInitialPaidInput(onlyDigits(e.target.value))}
                   disabled={totalAmount <= 0}
                 />
               </div>
@@ -804,11 +804,11 @@ export default function POSPage() {
                   <input
                     id="pos-initial-paid-2"
                     type="text"
-                    inputMode="decimal"
+                    inputMode="numeric"
                     className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm"
                     placeholder="0"
                     value={initialPaidInput2}
-                    onChange={(e) => setInitialPaidInput2(e.target.value)}
+                    onChange={(e) => setInitialPaidInput2(onlyDigits(e.target.value))}
                     disabled={totalAmount <= 0}
                   />
                 </div>

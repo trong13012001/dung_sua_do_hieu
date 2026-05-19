@@ -2,6 +2,11 @@
  * Text input validation helpers. Returns error message (Vietnamese) or null if valid.
  */
 
+/** Chỉ giữ chữ số 0–9 (dùng khi gõ giá / số tiền). */
+export function onlyDigits(raw: string): string {
+  return raw.replace(/\D/g, '');
+}
+
 export function validateRequired(value: string | undefined | null, fieldName = 'Trường này'): string | null {
   const v = typeof value === 'string' ? value.trim() : '';
   if (v.length === 0) return `${fieldName} không được để trống`;
