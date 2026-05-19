@@ -1442,8 +1442,8 @@ export default function OrdersPage() {
                                                                 </td>
                                                                 <td className="p-1.5">
                                                                     <input
-                                                                        type="number"
-                                                                        min="0"
+                                                                        type="text"
+                                                                        inputMode="decimal"
                                                                         value={
                                                                             edit.unit_price
                                                                         }
@@ -1661,8 +1661,8 @@ export default function OrdersPage() {
                                             </div>
                                             <div className="col-span-2">
                                                 <input
-                                                    type="number"
-                                                    min="0"
+                                                    type="text"
+                                                    inputMode="decimal"
                                                     value={row.price}
                                                     onChange={(e) =>
                                                         updateNewItem(
@@ -1922,8 +1922,8 @@ export default function OrdersPage() {
                         </label>
                         <input
                             required
-                            type="number"
-                            min="1"
+                            type="text"
+                            inputMode="decimal"
                             className="w-full bg-muted/20 border border-border rounded-md px-4 py-2.5 text-sm outline-none focus:ring-1 focus:ring-primary"
                             value={payForm.amount}
                             onChange={(e) =>
@@ -1963,8 +1963,8 @@ export default function OrdersPage() {
                                 </label>
                                 <input
                                     required
-                                    type="number"
-                                    min="1"
+                                    type="text"
+                                    inputMode="decimal"
                                     className="w-full bg-muted/20 border border-border rounded-md px-4 py-2.5 text-sm outline-none focus:ring-1 focus:ring-primary"
                                     value={payForm.amount2}
                                     onChange={(e) =>

@@ -521,8 +521,8 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
                         </label>
                         <input
                           required
-                          type="number"
-                          min={1}
+                          type="text"
+                          inputMode="decimal"
                           className="w-full bg-muted/20 border border-border rounded-md px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-primary"
                           value={payForm.amount}
                           onChange={(e) =>
@@ -559,8 +559,8 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
                             </label>
                             <input
                               required
-                              type="number"
-                              min={1}
+                              type="text"
+                              inputMode="decimal"
                               className="w-full bg-muted/20 border border-border rounded-md px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-primary"
                               value={payForm.amount2}
                               onChange={(e) =>

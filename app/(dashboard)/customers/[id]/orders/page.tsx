@@ -731,8 +731,8 @@ export default function CustomerOrdersPage() {
                             </td>
                             <td className="p-1.5">
                               <input
-                                type="number"
-                                min="0"
+                                type="text"
+                                inputMode="decimal"
                                 value={edit.unit_price}
                                 onChange={(e) => setDetailEdit(d.id, 'unit_price', e.target.value)}
                                 className={selectClass}
@@ -825,8 +825,8 @@ export default function CustomerOrdersPage() {
                       </div>
                       <div className="col-span-2">
                         <input
-                          type="number"
-                          min="0"
+                          type="text"
+                          inputMode="decimal"
                           value={row.price}
                           onChange={(e) => updateNewItem(idx, 'price', e.target.value)}
                           placeholder="Đơn giá"

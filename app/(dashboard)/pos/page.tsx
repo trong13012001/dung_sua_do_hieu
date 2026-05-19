@@ -665,7 +665,7 @@ export default function POSPage() {
                     </div>
                     <div className="space-y-1">
                       <label className="text-[11px] font-bold text-muted-foreground uppercase">Giá tiền</label>
-                      <input type="number" className="w-full bg-card border border-border rounded px-3 py-1.5 text-sm" placeholder="0" value={item.price || ''} onChange={e => updateItem(index, 'price', e.target.value)} />
+                      <input type="text" inputMode="decimal" className="w-full bg-card border border-border rounded px-3 py-1.5 text-sm" placeholder="0" value={item.price || ''} onChange={e => updateItem(index, 'price', e.target.value)} />
                     </div>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4 mb-3">
