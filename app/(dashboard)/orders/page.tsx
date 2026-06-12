@@ -1,6 +1,11 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
+import React, {
+    useState,
+    useRef,
+    useEffect,
+    useMemo,
+} from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
     Search,
@@ -47,14 +52,10 @@ import {
     EditOrderForm,
     type EditOrderSubmitData,
 } from "@/components/orders/EditOrderForm";
-import {
-    PaymentForm,
-    type PaymentFormData,
-} from "@/components/orders/PaymentForm";
 import { decodeBarcode } from "@/lib/barcode";
 import { useDebounce } from "@/hooks/useDebounce";
 import { Order, OrderDetail, Payment, User, Role } from "@/lib/types";
-import { validateRequired, validateNumber } from "@/lib/validation";
+import { validateRequired, validateNumber, onlyDigits } from "@/lib/validation";
 import { printElementSmart } from "@/lib/printSmart";
 import { PRINT_TARGET_INVOICE_XP80C } from "@/lib/printTargets";
 import { isSilentThermalConfigured } from "@/lib/print/thermalPrint";
@@ -252,10 +253,46 @@ export default function OrdersPage() {
     const [page, setPage] = useState(1);
     const [batchPrintOpen, setBatchPrintOpen] = useState(false);
     const [batchPrinting, setBatchPrinting] = useState(false);
-    /* State nhập liệu của modal thanh toán (payForm) nằm trong <PaymentForm>
-       để gõ số tiền không re-render cả trang. */
+    const [payForm, setPayForm] = useState<{
+        amount: string;
+        method: Payment["payment_method"];
+        splitPay: boolean;
+        amount2: string;
+        method2: Payment["payment_method"];
+    }>({
+        amount: "",
+        method: "Cash",
+        splitPay: false,
+        amount2: "",
+        method2: "Transfer",
+    });
     const [payFlowBusy, setPayFlowBusy] = useState(false);
 
+    const paymentModalPreview = useMemo(() => {
+        if (!payingOrder) return null;
+        const total = payingOrder.total_amount;
+        const paid = payingOrder.paid_amount ?? 0;
+        const parsePositive = (s: string) => {
+            const t = s.trim();
+            if (t === "") return 0;
+            const n = Number(t);
+            return Number.isFinite(n) && n > 0 ? n : 0;
+        };
+        const a1 = parsePositive(payForm.amount);
+        const a2 = payForm.splitPay ? parsePositive(payForm.amount2) : 0;
+        const thisPayment = payForm.splitPay ? a1 + a2 : a1;
+        const currentDebt = Math.max(0, total - paid);
+        const paidAfter = paid + thisPayment;
+        const remainingAfter = Math.max(0, total - paidAfter);
+        return {
+            total,
+            paid,
+            thisPayment,
+            currentDebt,
+            paidAfter,
+            remainingAfter,
+        };
+    }, [payingOrder, payForm.amount, payForm.amount2, payForm.splitPay]);
     const completingDebt =
         completingOrder === null
             ? 0
@@ -515,7 +552,8 @@ export default function OrdersPage() {
         }
     };
 
-    const handlePayment = async (data: PaymentFormData) => {
+    const handlePayment = async (e: React.FormEvent) => {
+        e.preventDefault();
         if (!payingOrder || payFlowBusy) return;
         const debt = Math.max(
             0,
@@ -536,12 +574,12 @@ export default function OrdersPage() {
 
         try {
             setPayFlowBusy(true);
-            if (data.splitPay) {
-                const err1 = validateNumber(data.amount, {
+            if (payForm.splitPay) {
+                const err1 = validateNumber(payForm.amount, {
                     min: 1,
                     fieldName: "Số tiền khoản 1",
                 });
-                const err2 = validateNumber(data.amount2, {
+                const err2 = validateNumber(payForm.amount2, {
                     min: 1,
                     fieldName: "Số tiền khoản 2",
                 });
@@ -553,8 +591,8 @@ export default function OrdersPage() {
                     showToast(err2, "error");
                     return;
                 }
-                const amt1 = Number(data.amount);
-                const amt2 = Number(data.amount2);
+                const amt1 = Number(payForm.amount);
+                const amt2 = Number(payForm.amount2);
                 const sum = amt1 + amt2;
                 if (sum > debt + 0.01) {
                     showToast(
@@ -563,10 +601,10 @@ export default function OrdersPage() {
                     );
                     return;
                 }
-                await runOne(amt1, data.method);
-                await runOne(amt2, data.method2);
+                await runOne(amt1, payForm.method);
+                await runOne(amt2, payForm.method2);
             } else {
-                const amountErr = validateNumber(data.amount, {
+                const amountErr = validateNumber(payForm.amount, {
                     min: 1,
                     fieldName: "Số tiền thanh toán",
                 });
@@ -574,9 +612,16 @@ export default function OrdersPage() {
                     showToast(amountErr, "error");
                     return;
                 }
-                await runOne(Number(data.amount), data.method);
+                await runOne(Number(payForm.amount), payForm.method);
             }
             setPayingOrder(null);
+            setPayForm({
+                amount: "",
+                method: "Cash",
+                splitPay: false,
+                amount2: "",
+                method2: "Transfer",
+            });
             showToast("Đã ghi nhận thanh toán.", "success");
         } catch (err: any) {
             showToast("Lỗi: " + err.message, "error");
@@ -1044,6 +1089,15 @@ export default function OrdersPage() {
                                                         onClick={(e) => {
                                                             e.stopPropagation();
                                                             setPayingOrder(order);
+                                                            setPayForm({
+                                                                amount: String(
+                                                                    debt,
+                                                                ),
+                                                                method: "Cash",
+                                                                splitPay: false,
+                                                                amount2: "",
+                                                                method2: "Transfer",
+                                                            });
                                                         }}
                                                         disabled={
                                                             isPendingUpdateOrder
@@ -1219,7 +1273,6 @@ export default function OrdersPage() {
             >
                 {editingOrder && (
                     <EditOrderForm
-                        key={editingOrder.id}
                         order={editingOrder}
                         tailors={tailors}
                         statusOptions={statusOptions}
@@ -1281,15 +1334,207 @@ export default function OrdersPage() {
                 onClose={() => setPayingOrder(null)}
                 title={`Ghi nhận thanh toán · Đơn #${payingOrder?.id}`}
             >
-                {payingOrder && (
-                    <PaymentForm
-                        key={payingOrder.id}
-                        order={payingOrder}
-                        isSubmitting={isPendingProcessPayment || payFlowBusy}
-                        onCancel={() => setPayingOrder(null)}
-                        onSubmit={handlePayment}
-                    />
-                )}
+                <form onSubmit={handlePayment} className="space-y-5">
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                        Chỉ cộng tiền đã thu. Khi đủ tiền, hệ thống tự đặt trạng thái{" "}
+                        <span className="font-semibold text-foreground">
+                            Đã thanh toán
+                        </span>{" "}
+                        (hoặc chuyển{" "}
+                        <span className="font-semibold text-foreground">
+                            Trả thiếu tiền
+                        </span>{" "}
+                        → Đã trả đồ nếu đơn đang nợ sau khi giao).
+                    </p>
+                    <div className="p-4 bg-muted/10 rounded-lg border border-border space-y-2">
+                        <div className="flex justify-between text-sm">
+                            <span className="text-muted-foreground">
+                                Tổng cộng
+                            </span>
+                            <span className="font-bold">
+                                {paymentModalPreview &&
+                                    new Intl.NumberFormat("vi-VN", {
+                                        style: "currency",
+                                        currency: "VND",
+                                    }).format(paymentModalPreview.total)}
+                            </span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                            <span className="text-muted-foreground">
+                                Đã thu đến nay
+                            </span>
+                            <span className="font-bold text-success">
+                                {paymentModalPreview &&
+                                    new Intl.NumberFormat("vi-VN", {
+                                        style: "currency",
+                                        currency: "VND",
+                                    }).format(paymentModalPreview.paid)}
+                            </span>
+                        </div>
+                        {paymentModalPreview &&
+                            paymentModalPreview.thisPayment > 0 && (
+                                <div className="flex justify-between text-sm">
+                                    <span className="text-muted-foreground">
+                                        Sau khi ghi nhận lần này
+                                    </span>
+                                    <span className="font-bold text-success">
+                                        {new Intl.NumberFormat("vi-VN", {
+                                            style: "currency",
+                                            currency: "VND",
+                                        }).format(
+                                            paymentModalPreview.paidAfter,
+                                        )}
+                                    </span>
+                                </div>
+                            )}
+                        <div className="flex justify-between text-sm font-bold border-t border-border pt-2">
+                            <span className="text-primary">
+                                {paymentModalPreview &&
+                                paymentModalPreview.thisPayment > 0
+                                    ? "Còn lại (dự kiến)"
+                                    : "Còn lại"}
+                            </span>
+                            <span className="text-primary">
+                                {paymentModalPreview &&
+                                    new Intl.NumberFormat("vi-VN", {
+                                        style: "currency",
+                                        currency: "VND",
+                                    }).format(
+                                        paymentModalPreview.thisPayment > 0
+                                            ? paymentModalPreview.remainingAfter
+                                            : paymentModalPreview.currentDebt,
+                                    )}
+                            </span>
+                        </div>
+                    </div>
+                    <div className="flex items-start gap-2 rounded-md border border-border bg-muted/5 p-3">
+                        <input
+                            id="orders-list-split-pay"
+                            type="checkbox"
+                            checked={payForm.splitPay}
+                            onChange={(e) =>
+                                setPayForm((p) => ({
+                                    ...p,
+                                    splitPay: e.target.checked,
+                                }))
+                            }
+                            className="mt-0.5 shrink-0"
+                        />
+                        <label
+                            htmlFor="orders-list-split-pay"
+                            className="cursor-pointer text-[11px] leading-snug text-muted-foreground"
+                        >
+                            <span className="font-bold text-foreground">
+                                Chia nhiều phương thức
+                            </span>
+                            {" — "}
+                            ghi hai khoản trong một lần (vd. tiền mặt + chuyển
+                            khoản).
+                        </label>
+                    </div>
+                    <div className="space-y-1.5">
+                        <label className="text-[11px] font-bold text-muted-foreground uppercase">
+                            {payForm.splitPay
+                                ? "Khoản 1 — số tiền"
+                                : "Số tiền thu"}
+                        </label>
+                        <input
+                            required
+                            type="text"
+                            inputMode="numeric"
+                            className="w-full bg-muted/20 border border-border rounded-md px-4 py-2.5 text-sm outline-none focus:ring-1 focus:ring-primary"
+                            value={payForm.amount}
+                            onChange={(e) =>
+                                setPayForm({
+                                    ...payForm,
+                                    amount: onlyDigits(e.target.value),
+                                })
+                            }
+                        />
+                    </div>
+                    <div className="space-y-1.5">
+                        <label className="text-[11px] font-bold text-muted-foreground uppercase">
+                            {payForm.splitPay
+                                ? "Khoản 1 — phương thức"
+                                : "Phương thức"}
+                        </label>
+                        <select
+                            className="w-full bg-muted/20 border border-border rounded-md px-4 py-2.5 text-sm appearance-none outline-none focus:ring-1 focus:ring-primary"
+                            value={payForm.method}
+                            onChange={(e) =>
+                                setPayForm({
+                                    ...payForm,
+                                    method: e.target.value as Payment["payment_method"],
+                                })
+                            }
+                        >
+                            <option value="Cash">Tiền mặt</option>
+                            <option value="Card">Thẻ</option>
+                            <option value="Transfer">Chuyển khoản</option>
+                        </select>
+                    </div>
+                    {payForm.splitPay ? (
+                        <>
+                            <div className="space-y-1.5">
+                                <label className="text-[11px] font-bold text-muted-foreground uppercase">
+                                    Khoản 2 — số tiền
+                                </label>
+                                <input
+                                    required
+                                    type="text"
+                                    inputMode="numeric"
+                                    className="w-full bg-muted/20 border border-border rounded-md px-4 py-2.5 text-sm outline-none focus:ring-1 focus:ring-primary"
+                                    value={payForm.amount2}
+                                    onChange={(e) =>
+                                        setPayForm({
+                                            ...payForm,
+                                            amount2: onlyDigits(e.target.value),
+                                        })
+                                    }
+                                />
+                            </div>
+                            <div className="space-y-1.5">
+                                <label className="text-[11px] font-bold text-muted-foreground uppercase">
+                                    Khoản 2 — phương thức
+                                </label>
+                                <select
+                                    className="w-full bg-muted/20 border border-border rounded-md px-4 py-2.5 text-sm appearance-none outline-none focus:ring-1 focus:ring-primary"
+                                    value={payForm.method2}
+                                    onChange={(e) =>
+                                        setPayForm({
+                                            ...payForm,
+                                            method2: e.target.value as Payment["payment_method"],
+                                        })
+                                    }
+                                >
+                                    <option value="Cash">Tiền mặt</option>
+                                    <option value="Card">Thẻ</option>
+                                    <option value="Transfer">Chuyển khoản</option>
+                                </select>
+                            </div>
+                        </>
+                    ) : null}
+                    <div className="flex gap-4 mt-8">
+                        <button
+                            type="button"
+                            onClick={() => setPayingOrder(null)}
+                            className="flex-1 bg-muted/40 text-foreground py-2.5 rounded-md font-bold text-sm border border-border"
+                        >
+                            Hủy
+                        </button>
+                        <button
+                            type="submit"
+                            disabled={
+                                isPendingProcessPayment || payFlowBusy
+                            }
+                            className="flex-1 btn-primary py-2.5 rounded-md font-bold text-sm disabled:opacity-50"
+                        >
+                            {isPendingProcessPayment || payFlowBusy
+                                ? "Đang xử lý..."
+                                : "Ghi nhận thanh toán"}
+                        </button>
+                    </div>
+                </form>
             </Modal>
 
             {/* Xác nhận trả đồ (danh sách đơn) */}
