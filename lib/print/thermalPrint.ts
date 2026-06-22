@@ -184,144 +184,6 @@ function createSingleLabelHost(row: HTMLElement): HTMLElement {
 }
 
 /**
- * Số dòng món tối đa cho một MẢNH hóa đơn khi chia nhiều lệnh in. Mỗi mảnh là một phiếu ngắn,
- * in 1:1 (như đơn thường) nên không vượt giới hạn cắt của máy/driver — đơn bao nhiêu món cũng
- * chia đủ mảnh, không phụ thuộc một độ dài cố định. Mặc định 14. Tinh chỉnh:
- * `NEXT_PUBLIC_THERMAL_INVOICE_ROWS_PER_PAGE`.
- */
-function invoiceRowsPerPage(): number {
-  const raw = process.env.NEXT_PUBLIC_THERMAL_INVOICE_ROWS_PER_PAGE?.trim();
-  const def = 14;
-  if (!raw) return def;
-  const n = Number(raw);
-  if (!Number.isFinite(n)) return def;
-  return Math.max(4, Math.min(60, Math.round(n)));
-}
-
-/** Các `<tr>` dòng món trong bảng chi tiết của một phiếu (rỗng nếu không phải hóa đơn 1 bảng). */
-function invoiceDetailRows(el: HTMLElement): HTMLElement[] {
-  const tables = el.querySelectorAll(".invoice-cs-table");
-  /* Chỉ chia khi đúng MỘT phiếu (một bảng). Host gộp nhiều đơn → không chia (hiếm). */
-  if (tables.length !== 1) return [];
-  const tbody = tables[0]!.querySelector("tbody");
-  if (!tbody) return [];
-  return [...tbody.children].filter(
-    (n): n is HTMLElement => n instanceof HTMLElement && n.tagName === "TR",
-  );
-}
-
-/**
- * Tách một phiếu dài thành nhiều mảnh (clone), mỗi mảnh giữ tối đa `maxRows` dòng món.
- * Mọi mảnh giữ lại đầu phiếu; mảnh KHÔNG phải cuối bị bỏ tổng tiền + QR + lời cảm ơn;
- * thêm dòng "Trang i/N" để xếp đúng thứ tự. STT từng dòng đã render sẵn nên giữ nguyên số.
- */
-function splitInvoiceIntoPageHosts(
-  el: HTMLElement,
-  maxRows: number,
-): HTMLElement[] {
-  const rows = invoiceDetailRows(el);
-  if (rows.length <= maxRows) return [el];
-
-  const pageCount = Math.ceil(rows.length / maxRows);
-  const hosts: HTMLElement[] = [];
-  for (let p = 0; p < pageCount; p += 1) {
-    const start = p * maxRows;
-    const end = Math.min(start + maxRows, rows.length);
-    const isLast = p === pageCount - 1;
-
-    const clone = el.cloneNode(true) as HTMLElement;
-    const table = clone.querySelector(".invoice-cs-table");
-    const tbody = table?.querySelector("tbody");
-    if (table && tbody) {
-      const cloneRows = [...tbody.children].filter(
-        (n): n is HTMLElement => n instanceof HTMLElement && n.tagName === "TR",
-      );
-      cloneRows.forEach((tr, i) => {
-        if (i < start || i >= end) tr.remove();
-      });
-
-      if (!isLast) {
-        /* Bỏ tổng tiền + khối QR (sau bảng, cùng cha) và lời cảm ơn (sau cha của bảng). */
-        const parent = table.parentElement;
-        let sib = table.nextElementSibling;
-        while (sib) {
-          const next = sib.nextElementSibling;
-          sib.remove();
-          sib = next;
-        }
-        let outer = parent?.nextElementSibling ?? null;
-        while (outer) {
-          const next = outer.nextElementSibling;
-          outer.remove();
-          outer = next;
-        }
-      }
-
-      const indicator = clone.ownerDocument.createElement("p");
-      indicator.textContent = `Trang ${p + 1}/${pageCount}`;
-      indicator.setAttribute(
-        "style",
-        "text-align:right;font-size:8px;font-weight:700;margin:2px 0 0 0;color:#000;",
-      );
-      table.parentElement?.insertBefore(indicator, table);
-    }
-    hosts.push(clone);
-  }
-  return hosts;
-}
-
-/**
- * In tuần tự nhiều mảnh thành nhiều lệnh in riêng (in tem, và hóa đơn dài đã chia trang):
- * giãn nhịp cho spooler/đầu in kịp xử lý, và thử lại 1 lần nếu một mảnh lỗi tạm thời thay vì bỏ dở cả lô.
- */
-async function dispatchHostsSequentially(
-  hosts: readonly HTMLElement[],
-  options: ThermalPrintOptions,
-  widthMm: number,
-  label: string,
-): Promise<ThermalPrintDispatchResult> {
-  let method: ThermalPrintMethod = "silent";
-  const channels = new Set<ThermalPrintChannel>();
-  const delayMs = labelJobDelayMs();
-
-  for (let i = 0; i < hosts.length; i += 1) {
-    const html = await buildPrintableHtmlFromElement(hosts[i]!, {
-      paperWidthMm: widthMm,
-    });
-    let one: ThermalPrintDispatchResult;
-    try {
-      one = await dispatchThermalHtml(html, options);
-    } catch {
-      /* Một số máy nghẽn sau nhiều job liên tiếp: nghỉ lâu hơn rồi thử lại 1 lần. */
-      await sleep(delayMs * 4);
-      try {
-        one = await dispatchThermalHtml(html, options);
-      } catch (err2) {
-        throw new Error(
-          `${label} ${i + 1}/${hosts.length}: ${err2 instanceof Error ? err2.message : String(err2)}`,
-        );
-      }
-    }
-    channels.add(one.channel);
-    if (one.method === "browser") {
-      method = "browser";
-    }
-    if (i < hosts.length - 1) {
-      await sleep(delayMs);
-    }
-  }
-
-  const channel =
-    channels.size === 1
-      ? [...channels][0]!
-      : channels.has("browser")
-        ? "browser"
-        : "mixed";
-
-  return { method, channel, dispatched: true };
-}
-
-/**
  * In nhiệt: **Electron silent** → agent localhost (tuỳ chọn) → hộp thoại Chrome (chỉ khi *chưa* cấu hình im lặng).
  * Khi `isSilentThermalConfigured()` (Electron hoặc `NEXT_PUBLIC_PRINT_AGENT_URL`): không mở dialog in trình duyệt — lỗi nếu cả hai kênh im lặng thất bại.
  */
@@ -330,17 +192,47 @@ export async function printThermalElementWithStatus(
   options: ThermalPrintOptions,
 ): Promise<ThermalPrintDispatchResult> {
   const widthMm = options.paperWidthMm ?? defaultPaperWidthMm(options.target);
-
   if (options.target === PRINT_TARGET_LABEL_XP235B) {
-    const hosts = collectItemLabelRows(sourceEl).map(createSingleLabelHost);
-    return dispatchHostsSequentially(hosts, options, widthMm, "Tem");
-  }
+    const rows = collectItemLabelRows(sourceEl);
+    let method: ThermalPrintMethod = "silent";
+    const channels = new Set<ThermalPrintChannel>();
+    const delayMs = labelJobDelayMs();
 
-  /* Hóa đơn dài: chia thành nhiều mảnh ngắn, mỗi mảnh in 1:1 (chữ rõ, dưới giới hạn cắt của máy),
-     mảnh cuối có tổng tiền. Đơn nhiều món cỡ nào cũng chia đủ — không phụ thuộc một độ dài cố định. */
-  const pages = splitInvoiceIntoPageHosts(sourceEl, invoiceRowsPerPage());
-  if (pages.length > 1) {
-    return dispatchHostsSequentially(pages, options, widthMm, "Trang");
+    for (let i = 0; i < rows.length; i += 1) {
+      const host = createSingleLabelHost(rows[i]);
+      const html = await buildPrintableHtmlFromElement(host, {
+        paperWidthMm: widthMm,
+      });
+      let one: ThermalPrintDispatchResult;
+      try {
+        one = await dispatchThermalHtml(html, options);
+      } catch {
+        /* Một số máy nghẽn sau nhiều job liên tiếp: nghỉ lâu hơn rồi thử lại 1 lần
+           trước khi bỏ cuộc — tránh mất hết các tem còn lại chỉ vì một lần lỗi tạm thời. */
+        await sleep(delayMs * 4);
+        try {
+          one = await dispatchThermalHtml(html, options);
+        } catch (err2) {
+          throw new Error(
+            `Tem ${i + 1}/${rows.length}: ${err2 instanceof Error ? err2.message : String(err2)}`,
+          );
+        }
+      }
+      channels.add(one.channel);
+      if (one.method === "browser") {
+        method = "browser";
+      }
+      if (i < rows.length - 1) {
+        await sleep(delayMs);
+      }
+    }
+
+    const channel =
+      channels.size === 1
+        ? [...channels][0]
+        : (channels.has("browser") ? "browser" : "mixed");
+
+    return { method, channel, dispatched: true };
   }
 
   const html = await buildPrintableHtmlFromElement(sourceEl, {
