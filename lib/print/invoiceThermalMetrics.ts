@@ -8,45 +8,15 @@ export const INVOICE_PAGE_MARGIN_MM = 2 as const;
 export const THERMAL_INVOICE_HTML_PAGE_MARGIN_MM = 1.25 as const;
 
 /**
- * Chiều cao một @page hóa đơn nhiệt (mm) — chỉ dùng làm **fallback** khi không đo được
- * chiều cao thật (SSR / không có DOM). Khi chạy trong trình duyệt, `buildPrintHtml` đo
- * đúng chiều cao nội dung rồi đặt @page bằng đúng số đó (xem `invoiceThermalMaxPageHeightMm`).
+ * Chiều cao một @page hóa đơn nhiệt (mm). Cố định cao: máy in cuộn render 1:1 (chữ rõ) rồi
+ * cắt theo nội dung. KHÔNG đặt @page ngắn vừa nội dung — driver XP-80C khi đó "co cho vừa
+ * trang" làm chữ li ti. Đơn quá dài (vượt giới hạn cắt của máy) được chia thành nhiều LỆNH
+ * IN ngắn ở `lib/print/thermalPrint.ts`, không phải bằng cách thu nhỏ trang.
  *
  * Lý do không để `auto`: Chromium/Electron khi map sang `pageSize` microns hay rơi về ~240mm
  * → bill dài bị cắt trang / nhảy STT. Đồng bộ `electron/main.cjs` (fallback khi parse `auto`).
  */
 export const THERMAL_INVOICE_HTML_PAGE_HEIGHT_MM = 2000 as const;
-
-/**
- * Đệm thêm vào chiều cao đo được trước khi đặt @page. Luôn **làm trang cao hơn nội dung một chút**:
- * trang cao dư → máy chỉ thừa vài mm giấy trắng (cắt là xong); trang thiếu → driver co nhỏ "cho vừa
- * trang" (lỗi dải li ti) hoặc lẹm dòng cuối. Vậy luôn nghiêng về dư để tuyệt đối không co nhỏ.
- */
-export const THERMAL_INVOICE_PAGE_HEIGHT_SLACK_MM = 12 as const;
-
-/** Chiều cao @page tối thiểu (mm) — đơn 1 món vẫn đủ chỗ header + footer. */
-export const THERMAL_INVOICE_MIN_PAGE_HEIGHT_MM = 80 as const;
-
-/**
- * Chặn trên **vệ sinh (sanity bound)** cho chiều cao @page hóa đơn (mm) — KHÔNG phải để ép co.
- *
- * Best practice máy in nhiệt cuộn: `@page` cao **đúng bằng nội dung thật** (xem đo trong
- * `buildPrintHtml`) → một phiếu liền mạch, máy cắt theo nội dung. Trang luôn ≥ nội dung nên
- * không bao giờ bị driver "co cho vừa trang" (lỗi dải li ti). Số này chỉ chặn trường hợp bất
- * thường (nội dung khổng lồ / đo sai) để không quay lại khổ ~2000mm vốn làm driver cắt/treo.
- *
- * Mặc định 1500mm (≈ trên 100 món — không đơn thực tế nào chạm tới, nên thực chất luôn vừa
- * khít nội dung). Tinh chỉnh hiếm khi cần: `NEXT_PUBLIC_THERMAL_INVOICE_MAX_PAGE_MM`.
- */
-export function invoiceThermalMaxPageHeightMm(): number {
-  const raw = process.env.NEXT_PUBLIC_THERMAL_INVOICE_MAX_PAGE_MM?.trim();
-  const def = 1500;
-  if (!raw) return def;
-  const n = Number(raw);
-  if (!Number.isFinite(n)) return def;
-  /* Giữ dưới ~2000mm (khổ làm driver cắt/treo); chặn trong [120, 1900]. */
-  return Math.max(120, Math.min(1900, Math.round(n)));
-}
 
 /** Rộng vùng nội dung sau @page (theo margin trình duyệt 2mm). */
 export function invoicePaperContentInnerMm(paperWidthMm: number): number {

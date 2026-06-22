@@ -4,9 +4,6 @@ import {
   invoiceThermalLayoutMaxWidthMm,
   invoiceThermalViewportWidthMm,
   THERMAL_INVOICE_HTML_PAGE_HEIGHT_MM,
-  THERMAL_INVOICE_PAGE_HEIGHT_SLACK_MM,
-  THERMAL_INVOICE_MIN_PAGE_HEIGHT_MM,
-  invoiceThermalMaxPageHeightMm,
 } from "@/lib/print/invoiceThermalMetrics";
 import {
   LABEL_THERMAL_PAGE_HEIGHT_MM,
@@ -237,70 +234,6 @@ export interface BuildPrintableHtmlOptions {
   readonly paperWidthMm?: number;
 }
 
-/**
- * Đo chiều cao thật của nội dung in (mm) bằng cách render HTML đã dựng vào iframe ẩn
- * đúng bề rộng layout nhiệt — `@page`/viewport bị bỏ qua trên màn hình nên chiều cao
- * iframe chính là chiều cao nội dung dòng chảy. Trả `null` nếu không có DOM (SSR) hoặc lỗi.
- */
-async function measureThermalContentHeightMm(
-  fullHtml: string,
-  layoutWpx: number,
-): Promise<number | null> {
-  if (typeof document === "undefined" || !document.body) return null;
-  const iframe = document.createElement("iframe");
-  iframe.setAttribute("aria-hidden", "true");
-  iframe.style.cssText = [
-    "position:fixed",
-    "left:-10000px",
-    "top:0",
-    `width:${Math.round(layoutWpx)}px`,
-    "height:10px",
-    "border:0",
-    "visibility:hidden",
-    "pointer-events:none",
-    "z-index:-1",
-  ].join(";");
-  document.body.appendChild(iframe);
-  try {
-    await new Promise<void>((resolve) => {
-      let settled = false;
-      const done = () => {
-        if (settled) return;
-        settled = true;
-        resolve();
-      };
-      const t = globalThis.setTimeout(done, 4_000);
-      iframe.onload = () => {
-        globalThis.clearTimeout(t);
-        done();
-      };
-      iframe.srcdoc = fullHtml;
-    });
-    const doc = iframe.contentDocument;
-    if (!doc) return null;
-    try {
-      const f = (doc as Document & { fonts?: { ready?: Promise<unknown> } })
-        .fonts;
-      if (f?.ready) await f.ready;
-    } catch {
-      /* ignore */
-    }
-    const root = doc.getElementById("print-root") ?? doc.body;
-    if (!root) return null;
-    const px = Math.max(
-      root.scrollHeight,
-      Math.ceil(root.getBoundingClientRect().height),
-      doc.body?.scrollHeight ?? 0,
-    );
-    if (!Number.isFinite(px) || px <= 0) return null;
-    return (px / 96) * 25.4;
-  } catch {
-    return null;
-  } finally {
-    iframe.remove();
-  }
-}
-
 export async function buildPrintableHtmlFromElement(
   el: HTMLElement,
   opts?: BuildPrintableHtmlOptions,
@@ -429,11 +362,17 @@ export async function buildPrintableHtmlFromElement(
 }
 </style>`;
 
-  const buildDoc = (pageHeightMm: number): string => {
-    const pageCss = isInvoice
-      ? `@page { size: ${paperMm}mm ${pageHeightMm}mm; margin: ${THERMAL_INVOICE_HTML_PAGE_MARGIN_MM}mm; }`
-      : `@page { size: ${paperMm}mm ${LABEL_THERMAL_PAGE_HEIGHT_MM}mm; margin: 0; }`;
-    return `<!DOCTYPE html><html class="thermal-print" lang="vi"><head><meta charset="utf-8"/>
+  /**
+   * Khổ @page cố định cao (2000mm) cho hóa đơn: máy in cuộn render 1:1 đọc rõ và cắt theo nội dung.
+   * KHÔNG đặt @page ngắn vừa nội dung — driver XP-80C khi đó "co cho vừa trang" → chữ li ti.
+   * Đơn quá dài (vượt giới hạn cắt của máy) được xử lý bằng cách CHIA NHIỀU LỆNH IN ở
+   * `lib/print/thermalPrint.ts` (mỗi mảnh ngắn, in 1:1), không phải bằng cách thu nhỏ trang.
+   */
+  const pageCss = isInvoice
+    ? `@page { size: ${paperMm}mm ${THERMAL_INVOICE_HTML_PAGE_HEIGHT_MM}mm; margin: ${THERMAL_INVOICE_HTML_PAGE_MARGIN_MM}mm; }`
+    : `@page { size: ${paperMm}mm ${LABEL_THERMAL_PAGE_HEIGHT_MM}mm; margin: 0; }`;
+
+  return `<!DOCTYPE html><html class="thermal-print" lang="vi"><head><meta charset="utf-8"/>
 ${viewportTag}<base href="${origin}/"/>
 <style>
   ${pageCss}
@@ -445,34 +384,4 @@ ${viewportTag}<base href="${origin}/"/>
 <style type="text/css" data-thermal-inlined="1">
 ${inlinedCss}
 </style>${tailStyle}</head><body><div id="print-root">${wrapper.outerHTML}</div></body></html>`;
-  };
-
-  /**
-   * Hóa đơn: đo chiều cao thật rồi đặt @page bằng đúng nội dung — đơn thường in 1 phiếu liền.
-   * Nếu vượt ngưỡng an toàn (`invoiceThermalMaxPageHeightMm`), giữ @page = ngưỡng để Chromium
-   * tự chia trang (CSS `break-inside: avoid` giữ nguyên từng dòng món) → không mất tổng tiền.
-   * Khi không đo được (SSR / lỗi), quay về số cố định cũ.
-   */
-  if (isInvoice && layoutWpx != null) {
-    const measuredMm = await measureThermalContentHeightMm(
-      buildDoc(THERMAL_INVOICE_HTML_PAGE_HEIGHT_MM),
-      layoutWpx,
-    );
-    if (measuredMm != null) {
-      const wantedMm = Math.ceil(
-        measuredMm +
-          2 * THERMAL_INVOICE_HTML_PAGE_MARGIN_MM +
-          THERMAL_INVOICE_PAGE_HEIGHT_SLACK_MM,
-      );
-      const pageHeightMm = Math.max(
-        THERMAL_INVOICE_MIN_PAGE_HEIGHT_MM,
-        Math.min(invoiceThermalMaxPageHeightMm(), wantedMm),
-      );
-      return buildDoc(pageHeightMm);
-    }
-  }
-
-  return buildDoc(
-    isInvoice ? THERMAL_INVOICE_HTML_PAGE_HEIGHT_MM : LABEL_THERMAL_PAGE_HEIGHT_MM,
-  );
 }
