@@ -184,95 +184,7 @@ function createSingleLabelHost(row: HTMLElement): HTMLElement {
 }
 
 /**
- * Số dòng món tối đa cho một MẢNH hóa đơn khi phải chia nhiều lệnh in.
- * Driver XP-80C co một trang dài cho vừa khổ giấy → đơn dài bị thu nhỏ li ti. Cách chắc ăn:
- * mỗi mảnh là một phiếu ngắn (in 1:1 như đơn thường), lặp đầu phiếu, mảnh cuối có tổng tiền.
- * Mặc định 14 dòng/mảnh (nằm trong vùng đơn ngắn vốn in chuẩn). Tinh chỉnh:
- * `NEXT_PUBLIC_THERMAL_INVOICE_ROWS_PER_PAGE`.
- */
-function invoiceRowsPerPage(): number {
-  const raw = process.env.NEXT_PUBLIC_THERMAL_INVOICE_ROWS_PER_PAGE?.trim();
-  const def = 14;
-  if (!raw) return def;
-  const n = Number(raw);
-  if (!Number.isFinite(n)) return def;
-  return Math.max(4, Math.min(60, Math.round(n)));
-}
-
-/** Các `<tr>` dòng món trong bảng chi tiết của một phiếu (rỗng nếu không phải hóa đơn 1 bảng). */
-function invoiceDetailRows(el: HTMLElement): HTMLElement[] {
-  const tables = el.querySelectorAll(".invoice-cs-table");
-  /* Chỉ chia khi đúng MỘT phiếu (một bảng). Host gộp nhiều đơn → không chia (hiếm). */
-  if (tables.length !== 1) return [];
-  const tbody = tables[0]!.querySelector("tbody");
-  if (!tbody) return [];
-  return [...tbody.children].filter(
-    (n): n is HTMLElement => n instanceof HTMLElement && n.tagName === "TR",
-  );
-}
-
-/**
- * Tách một phiếu dài thành nhiều mảnh (clone), mỗi mảnh giữ tối đa `maxRows` dòng món.
- * Mọi mảnh giữ lại đầu phiếu; mảnh KHÔNG phải cuối bị bỏ tổng tiền + QR + lời cảm ơn;
- * thêm dòng "Trang i/N" để xếp đúng thứ tự. STT từng dòng đã render sẵn nên giữ nguyên số.
- */
-function splitInvoiceIntoPageHosts(
-  el: HTMLElement,
-  maxRows: number,
-): HTMLElement[] {
-  const rows = invoiceDetailRows(el);
-  if (rows.length <= maxRows) return [el];
-
-  const pageCount = Math.ceil(rows.length / maxRows);
-  const hosts: HTMLElement[] = [];
-  for (let p = 0; p < pageCount; p += 1) {
-    const start = p * maxRows;
-    const end = Math.min(start + maxRows, rows.length);
-    const isLast = p === pageCount - 1;
-
-    const clone = el.cloneNode(true) as HTMLElement;
-    const table = clone.querySelector(".invoice-cs-table");
-    const tbody = table?.querySelector("tbody");
-    if (table && tbody) {
-      const cloneRows = [...tbody.children].filter(
-        (n): n is HTMLElement => n instanceof HTMLElement && n.tagName === "TR",
-      );
-      cloneRows.forEach((tr, i) => {
-        if (i < start || i >= end) tr.remove();
-      });
-
-      if (!isLast) {
-        /* Bỏ tổng tiền + khối QR (sau bảng, cùng cha) và lời cảm ơn (sau cha của bảng). */
-        const parent = table.parentElement;
-        let sib = table.nextElementSibling;
-        while (sib) {
-          const next = sib.nextElementSibling;
-          sib.remove();
-          sib = next;
-        }
-        let outer = parent?.nextElementSibling ?? null;
-        while (outer) {
-          const next = outer.nextElementSibling;
-          outer.remove();
-          outer = next;
-        }
-      }
-
-      const indicator = clone.ownerDocument.createElement("p");
-      indicator.textContent = `Trang ${p + 1}/${pageCount}`;
-      indicator.setAttribute(
-        "style",
-        "text-align:right;font-size:8px;font-weight:700;margin:2px 0 0 0;color:#000;",
-      );
-      table.parentElement?.insertBefore(indicator, table);
-    }
-    hosts.push(clone);
-  }
-  return hosts;
-}
-
-/**
- * In tuần tự nhiều mảnh thành nhiều lệnh in riêng (như in tem): giãn nhịp cho spooler/đầu in
+ * In tuần tự nhiều mảnh thành nhiều lệnh in riêng (dùng cho in tem): giãn nhịp cho spooler/đầu in
  * kịp xử lý, và thử lại 1 lần nếu một mảnh lỗi tạm thời thay vì bỏ dở cả lô.
  */
 async function dispatchHostsSequentially(
@@ -337,12 +249,8 @@ export async function printThermalElementWithStatus(
     return dispatchHostsSequentially(hosts, options, widthMm, "Tem");
   }
 
-  /* Hóa đơn dài: chia nhiều lệnh in nhỏ (mỗi mảnh in 1:1, không bị driver co). */
-  const pages = splitInvoiceIntoPageHosts(sourceEl, invoiceRowsPerPage());
-  if (pages.length > 1) {
-    return dispatchHostsSequentially(pages, options, widthMm, "Trang");
-  }
-
+  /* Hóa đơn: một lệnh in / một trang. Đơn dài được thu nhỏ vừa-một-trang bằng zoom CSS
+     (chữ vẫn nét) trong `buildPrintableHtmlFromElement`, không tách trang. */
   const html = await buildPrintableHtmlFromElement(sourceEl, {
     paperWidthMm: widthMm,
   });

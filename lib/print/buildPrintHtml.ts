@@ -207,14 +207,6 @@ html.thermal-print #print-root .invoice-xp80c .invoice-xp80c-meta p.shrink-0 {
   text-overflow: clip !important;
   white-space: nowrap !important;
 }
-/* Hóa đơn dài chia trang: không tách một dòng món / dòng tổng tiền ngang qua mép trang. */
-html.thermal-print #print-root .invoice-xp80c .invoice-cs-table thead { display: table-header-group !important; }
-html.thermal-print #print-root .invoice-xp80c .invoice-cs-table tr,
-html.thermal-print #print-root .invoice-xp80c .invoice-cs-table td,
-html.thermal-print #print-root .invoice-xp80c .invoice-cs-table th {
-  break-inside: avoid !important;
-  page-break-inside: avoid !important;
-}
 }
 `.trim();
 }
@@ -363,10 +355,12 @@ export async function buildPrintableHtmlFromElement(
 </style>`;
 
   /**
-   * Khổ @page cố định cao (2000mm) cho hóa đơn: máy in cuộn render 1:1 đọc rõ và cắt theo nội dung.
-   * KHÔNG đặt @page ngắn vừa nội dung — driver XP-80C khi đó "co cho vừa trang" → chữ li ti.
-   * Đơn quá dài (vượt giới hạn cắt của máy) được xử lý bằng cách CHIA NHIỀU LỆNH IN ở
-   * `lib/print/thermalPrint.ts` (mỗi mảnh ngắn, in 1:1), không phải bằng cách thu nhỏ trang.
+   * Khổ @page cố định cao (2000mm) cho hóa đơn: in nguyên cỡ 1:1, để dài liền theo nội dung,
+   * máy in cuộn cắt theo nội dung. KHÔNG thu nhỏ (zoom) và KHÔNG đặt @page ngắn vừa nội dung
+   * (driver XP-80C khi đó "co cho vừa trang" → chữ li ti).
+   *
+   * Lưu ý: nếu hóa đơn rất dài bị cụt phần cuối, đó là **giới hạn độ dài trang của DRIVER máy in
+   * trên Windows** (Printing Preferences → khổ giấy/độ dài) — cần nới ở driver, không phải ở code.
    */
   const pageCss = isInvoice
     ? `@page { size: ${paperMm}mm ${THERMAL_INVOICE_HTML_PAGE_HEIGHT_MM}mm; margin: ${THERMAL_INVOICE_HTML_PAGE_MARGIN_MM}mm; }`
