@@ -140,6 +140,24 @@ async function dispatchThermalHtml(
   return { method: "browser", channel: "browser", dispatched: true };
 }
 
+/**
+ * Khoảng nghỉ giữa hai lệnh in tem (ms). Mỗi tem là một job in im lặng riêng (Electron tạo một
+ * cửa sổ in ẩn / spooler nhận một job). Gửi quá dồn dập → sau ~16 món spooler/đầu in nghẽn rồi
+ * lỗi. Nghỉ đủ lâu để job trước được nhả. Tinh chỉnh: `NEXT_PUBLIC_THERMAL_LABEL_JOB_DELAY_MS`.
+ */
+function labelJobDelayMs(): number {
+  const raw = process.env.NEXT_PUBLIC_THERMAL_LABEL_JOB_DELAY_MS?.trim();
+  const def = 350;
+  if (!raw) return def;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return def;
+  return Math.max(60, Math.min(3_000, Math.round(n)));
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => globalThis.setTimeout(resolve, ms));
+}
+
 function collectItemLabelRows(sourceEl: HTMLElement): HTMLElement[] {
   if (sourceEl.classList.contains("item-label-row")) {
     return [sourceEl];
@@ -178,6 +196,7 @@ export async function printThermalElementWithStatus(
     const rows = collectItemLabelRows(sourceEl);
     let method: ThermalPrintMethod = "silent";
     const channels = new Set<ThermalPrintChannel>();
+    const delayMs = labelJobDelayMs();
 
     for (let i = 0; i < rows.length; i += 1) {
       const host = createSingleLabelHost(rows[i]);
@@ -187,17 +206,24 @@ export async function printThermalElementWithStatus(
       let one: ThermalPrintDispatchResult;
       try {
         one = await dispatchThermalHtml(html, options);
-      } catch (err) {
-        throw new Error(
-          `Tem ${i + 1}/${rows.length}: ${err instanceof Error ? err.message : String(err)}`,
-        );
+      } catch {
+        /* Một số máy nghẽn sau nhiều job liên tiếp: nghỉ lâu hơn rồi thử lại 1 lần
+           trước khi bỏ cuộc — tránh mất hết các tem còn lại chỉ vì một lần lỗi tạm thời. */
+        await sleep(delayMs * 4);
+        try {
+          one = await dispatchThermalHtml(html, options);
+        } catch (err2) {
+          throw new Error(
+            `Tem ${i + 1}/${rows.length}: ${err2 instanceof Error ? err2.message : String(err2)}`,
+          );
+        }
       }
       channels.add(one.channel);
       if (one.method === "browser") {
         method = "browser";
       }
       if (i < rows.length - 1) {
-        await new Promise((resolve) => globalThis.setTimeout(resolve, 120));
+        await sleep(delayMs);
       }
     }
 

@@ -25,6 +25,8 @@ export type EditOrderSubmitData = {
     orderStatusChoice: string;
     detailEdits: Record<number, DetailEdit>;
     newItems: NewItemRow[];
+    /** Giá trị input ngày hẹn trả (yyyy-MM-dd); chỉ có khi `returnDate` prop được bật. */
+    returnDate?: string;
 };
 
 type TailorOption = User & { role: Role | null };
@@ -36,6 +38,8 @@ interface EditOrderFormProps {
     isPending: boolean;
     /** Khối "Lịch sử thay đổi" (OrderLogSection) — render phía trên form. */
     logSlot?: React.ReactNode;
+    /** Bật ô "Ngày hẹn trả đồ"; `initial` là giá trị yyyy-MM-dd ban đầu. Bỏ qua nếu không cần. */
+    returnDate?: { initial: string };
     onCancel: () => void;
     onRequestDeleteDetail: (detailId: number) => void;
     onSubmit: (data: EditOrderSubmitData) => void;
@@ -75,6 +79,7 @@ export function EditOrderForm({
     statusOptions,
     isPending,
     logSlot,
+    returnDate,
     onCancel,
     onRequestDeleteDetail,
     onSubmit,
@@ -83,6 +88,9 @@ export function EditOrderForm({
         () => buildDetailEdits(order),
     );
     const [newItems, setNewItems] = useState<NewItemRow[]>([]);
+    const [returnDateValue, setReturnDateValue] = useState(
+        returnDate?.initial ?? "",
+    );
 
     const setDetailEdit = (
         detailId: number,
@@ -126,7 +134,12 @@ export function EditOrderForm({
         const fd = new FormData(e.currentTarget);
         const orderStatusChoice =
             (fd.get("order-status") as string) || order.status;
-        onSubmit({ orderStatusChoice, detailEdits, newItems });
+        onSubmit({
+            orderStatusChoice,
+            detailEdits,
+            newItems,
+            ...(returnDate ? { returnDate: returnDateValue } : {}),
+        });
     };
 
     return (
@@ -155,6 +168,20 @@ export function EditOrderForm({
                         />
                     </div>
                 </div>
+
+                {returnDate && (
+                    <div className="space-y-1.5">
+                        <label className="text-[11px] font-bold text-muted-foreground uppercase">
+                            Ngày hẹn trả đồ
+                        </label>
+                        <input
+                            type="date"
+                            value={returnDateValue}
+                            onChange={(e) => setReturnDateValue(e.target.value)}
+                            className={selectClass}
+                        />
+                    </div>
+                )}
 
                 {order.details && order.details.length > 0 && (
                     <div className="space-y-2">

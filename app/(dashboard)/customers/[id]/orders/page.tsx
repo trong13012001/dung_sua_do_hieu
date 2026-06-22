@@ -33,15 +33,18 @@ import {
 import { useEmployees } from '@/api/users';
 import { Modal } from '@/components/ui/Modal';
 import { OrderDetailModal } from '@/components/ui/OrderDetailModal';
+import {
+  EditOrderForm,
+  type EditOrderSubmitData,
+} from '@/components/orders/EditOrderForm';
 import { ItemLabelsPrint } from '@/components/ui/ItemLabelsPrint';
 import { InvoicePrint } from '@/components/ui/InvoicePrint';
 import { Toast, useToast } from '@/components/ui/Toast';
 import { useCurrentUserId } from '@/hooks/useCurrentUserId';
 import { useDebounce } from '@/hooks/useDebounce';
 import { Order, OrderDetail, Role, User } from '@/lib/types';
-import { orderDetailStatusSelectOptions } from '@/lib/orderDetailStatusUi';
 import { orderStatusBadgeClass, orderStatusLabelVi } from '@/lib/orderStatusUi';
-import { validateNumber, onlyDigits } from '@/lib/validation';
+import { validateNumber } from '@/lib/validation';
 import {
   canPrintInvoice,
   dateInputToReturnTime,
@@ -57,14 +60,6 @@ const statusOptions = [
   { value: 'DeliveredOwing', label: 'Trả thiếu tiền' },
   { value: 'Completed', label: 'Hoàn thành' },
 ];
-
-type DetailEdit = {
-  item_name: string;
-  unit_price: string;
-  description: string;
-  status: string;
-  assigned_tailor_id: string;
-};
 
 function OrderLogSection({ orderId }: { orderId: number | null }) {
   const { data: logs, isLoading } = useOrderLogs(orderId);
@@ -131,16 +126,8 @@ export default function CustomerOrdersPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const debouncedSearch = useDebounce(searchTerm, 400);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
-  const [editReturnDate, setEditReturnDate] = useState('');
   const [deletingDetailId, setDeletingDetailId] = useState<number | null>(null);
   const [deletingOrder, setDeletingOrder] = useState<Order | null>(null);
-  const [detailEdits, setDetailEdits] = useState<Record<number, DetailEdit>>({});
-  const [newItems, setNewItems] = useState<Array<{
-    name: string;
-    price: string;
-    description: string;
-    assigned_tailor_id: string;
-  }>>([]);
   const [invoiceOrder, setInvoiceOrder] = useState<Order | null>(null);
   const [printingOrderId, setPrintingOrderId] = useState<number | null>(null);
   const [labelOrder, setLabelOrder] = useState<Order | null>(null);
@@ -165,8 +152,6 @@ export default function CustomerOrdersPage() {
   }, [orders, debouncedSearch]);
   const tailors =
     employees?.filter((e: User & { role: Role | null }) => e.role?.name === 'Thợ may') || [];
-  const selectClass =
-    'w-full bg-muted/20 border border-border rounded-md px-2 py-1.5 text-xs outline-none focus:ring-1 focus:ring-primary';
 
   const handleBack = () => {
     router.push('/customers');
@@ -225,52 +210,16 @@ export default function CustomerOrdersPage() {
     }
   };
 
+  // State nhập liệu (detailEdits, newItems, ngày hẹn trả) nằm trong <EditOrderForm>.
   const openEditModal = (order: Order) => {
     setEditingOrder(order);
-    setEditReturnDate(returnTimeToDateInputValue(order.return_time));
-    const edits: Record<number, DetailEdit> = {};
-    order.details?.forEach((d) => {
-      edits[d.id] = {
-        item_name: d.item_name ?? '',
-        unit_price: String(d.unit_price ?? ''),
-        description: d.description ?? '',
-        status: d.status,
-        assigned_tailor_id: d.assigned_tailor_id ? String(d.assigned_tailor_id) : '',
-      };
-    });
-    setDetailEdits(edits);
-    setNewItems([]);
   };
 
-  const setDetailEdit = (detailId: number, field: keyof DetailEdit, value: string) => {
-    setDetailEdits((prev) => ({
-      ...prev,
-      [detailId]: {
-        ...(prev[detailId] ?? ({} as DetailEdit)),
-        [field]: value,
-      },
-    }));
-  };
-
-  const updateNewItem = (
-    index: number,
-    field: 'name' | 'price' | 'description' | 'assigned_tailor_id',
-    value: string,
-  ) => {
-    setNewItems((prev) => {
-      const next = [...prev];
-      next[index] = { ...next[index], [field]: value };
-      return next;
-    });
-  };
-
-  const handleUpdate = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  const handleUpdate = async (data: EditOrderSubmitData) => {
     if (!editingOrder) return;
-    const fd = new FormData(e.currentTarget);
+    const { detailEdits, newItems } = data;
     try {
-      const orderStatusChoice =
-        (fd.get('order-status') as string) || editingOrder.status;
+      const orderStatusChoice = data.orderStatusChoice || editingOrder.status;
       if (
         orderStatusChoice === 'Completed' &&
         editingOrder.status !== 'Completed'
@@ -285,7 +234,8 @@ export default function CustomerOrdersPage() {
           return;
         }
       }
-      const returnDateInput = (fd.get('return-date') as string) ?? editReturnDate;
+      const returnDateInput =
+        data.returnDate ?? returnTimeToDateInputValue(editingOrder.return_time);
       const newReturnTime = dateInputToReturnTime(returnDateInput);
       const origReturnYmd = returnTimeToDateInputValue(editingOrder.return_time);
       const orderPatch: Partial<Order> = {};
@@ -376,7 +326,6 @@ export default function CustomerOrdersPage() {
         });
       }
       setEditingOrder(null);
-      setEditReturnDate('');
       showToast('Cập nhật đơn hàng thành công', 'success');
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Cập nhật thất bại';
@@ -398,11 +347,6 @@ export default function CustomerOrdersPage() {
         ...editingOrder,
         details: newDetails,
         total_amount: Math.max(0, editingOrder.total_amount - subtract),
-      });
-      setDetailEdits((prev) => {
-        const next = { ...prev };
-        delete next[detailId];
-        return next;
       });
       setDeletingDetailId(null);
       showToast('Đã xóa dòng sản phẩm', 'success');
@@ -650,252 +594,34 @@ export default function CustomerOrdersPage() {
         isOpen={!!editingOrder}
         onClose={() => {
           setEditingOrder(null);
-          setEditReturnDate('');
           setDeletingDetailId(null);
         }}
         title={`Cập nhật đơn #${editingOrder?.id}`}
         maxWidth="max-w-4xl"
       >
-        <OrderLogSection orderId={editingOrder?.id ?? null} />
-        <form onSubmit={handleUpdate} className="space-y-4">
-          <div className="space-y-1.5">
-            <label className="text-[11px] font-bold text-muted-foreground uppercase">
-              Trạng thái đơn hàng
-            </label>
-            <div className="relative">
-              <select
-                name="order-status"
-                className={selectClass}
-                defaultValue={editingOrder?.status || 'New'}
-              >
-                {statusOptions.map((s) => (
-                  <option key={s.value} value={s.value}>
-                    {s.label}
-                  </option>
-                ))}
-              </select>
-              <ChevronRight
-                className="absolute right-3 top-1/2 -translate-y-1/2 rotate-90 text-muted-foreground pointer-events-none"
-                size={14}
-              />
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-[11px] font-bold text-muted-foreground uppercase">
-              Ngày hẹn trả đồ
-            </label>
-            <input
-              type="date"
-              name="return-date"
-              value={editReturnDate}
-              onChange={(e) => setEditReturnDate(e.target.value)}
-              className={selectClass}
-            />
-          </div>
-
-          {editingOrder?.details && editingOrder.details.length > 0 && (
-            <div className="space-y-2">
-              <p className="text-[11px] font-bold text-muted-foreground uppercase">
-                Chi tiết sản phẩm ({editingOrder.details.length})
-              </p>
-              <div className="border border-border rounded-lg overflow-hidden">
-                <div className="max-h-[min(50vh,400px)] overflow-y-auto">
-                  <table className="w-full text-sm border-collapse">
-                    <thead className="sticky top-0 bg-muted/30 border-b border-border z-10">
-                      <tr>
-                        <th className="text-left p-2 font-bold text-[10px] uppercase text-muted-foreground">Tên SP</th>
-                        <th className="text-left p-2 font-bold text-[10px] uppercase text-muted-foreground">Đơn giá</th>
-                        <th className="text-left p-2 font-bold text-[10px] uppercase text-muted-foreground">Mô tả</th>
-                        <th className="text-left p-2 font-bold text-[10px] uppercase text-muted-foreground">Trạng thái món</th>
-                        <th className="text-left p-2 font-bold text-[10px] uppercase text-muted-foreground">Thợ</th>
-                        <th className="w-10 p-2"></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {editingOrder.details.map((d) => {
-                        const edit = detailEdits[d.id];
-                        if (!edit) return null;
-                        return (
-                          <tr
-                            key={d.id}
-                            className="border-b border-border/50 last:border-0 hover:bg-muted/10"
-                          >
-                            <td className="p-1.5">
-                              <input
-                                type="text"
-                                value={edit.item_name}
-                                onChange={(e) => setDetailEdit(d.id, 'item_name', e.target.value)}
-                                className={selectClass}
-                              />
-                            </td>
-                            <td className="p-1.5">
-                              <input
-                                type="text"
-                                inputMode="numeric"
-                                value={edit.unit_price}
-                                onChange={(e) => setDetailEdit(d.id, 'unit_price', onlyDigits(e.target.value))}
-                                className={selectClass}
-                              />
-                            </td>
-                            <td className="p-1.5">
-                              <input
-                                type="text"
-                                value={edit.description}
-                                onChange={(e) => setDetailEdit(d.id, 'description', e.target.value)}
-                                className={selectClass}
-                              />
-                            </td>
-                            <td className="p-1.5">
-                              <select
-                                value={edit.status}
-                                onChange={(e) => setDetailEdit(d.id, 'status', e.target.value)}
-                                className={selectClass}
-                              >
-                                {orderDetailStatusSelectOptions.map((s) => (
-                                  <option key={s.value} value={s.value}>
-                                    {s.label}
-                                  </option>
-                                ))}
-                              </select>
-                            </td>
-                            <td className="p-1.5">
-                              <select
-                                value={edit.assigned_tailor_id}
-                                onChange={(e) => setDetailEdit(d.id, 'assigned_tailor_id', e.target.value)}
-                                className={selectClass}
-                              >
-                                <option value="">Chưa phân công</option>
-                                {tailors.map((t: User & { role: Role | null }) => (
-                                  <option key={String(t.id)} value={String(t.id)}>
-                                    {t.name}
-                                  </option>
-                                ))}
-                              </select>
-                            </td>
-                            <td className="p-1.5">
-                              <button
-                                type="button"
-                                onClick={() => setDeletingDetailId(d.id)}
-                                className="p-1.5 rounded text-muted-foreground hover:text-danger hover:bg-danger/10 transition-colors"
-                                title="Xóa dòng"
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <p className="text-[11px] font-bold text-muted-foreground uppercase">Thêm sản phẩm</p>
-              <button
-                type="button"
-                onClick={() =>
-                  setNewItems((prev) => [
-                    ...prev,
-                    { name: '', price: '', description: '', assigned_tailor_id: '' },
-                  ])
-                }
-                className="text-xs font-bold text-primary hover:underline"
-              >
-                + Thêm dòng
-              </button>
-            </div>
-            {newItems.length > 0 && (
-              <div className="border border-border rounded-lg overflow-hidden">
-                <div className="max-h-[200px] overflow-y-auto p-2 space-y-2 bg-muted/5">
-                  {newItems.map((row, idx) => (
-                    <div key={`${idx}-${row.name}`} className="grid grid-cols-12 gap-2 items-center">
-                      <div className="col-span-3">
-                        <input
-                          type="text"
-                          value={row.name}
-                          onChange={(e) => updateNewItem(idx, 'name', e.target.value)}
-                          placeholder="Tên sản phẩm"
-                          className={selectClass}
-                        />
-                      </div>
-                      <div className="col-span-2">
-                        <input
-                          type="text"
-                          inputMode="numeric"
-                          value={row.price}
-                          onChange={(e) => updateNewItem(idx, 'price', onlyDigits(e.target.value))}
-                          placeholder="Đơn giá"
-                          className={selectClass}
-                        />
-                      </div>
-                      <div className="col-span-3">
-                        <input
-                          type="text"
-                          value={row.description}
-                          onChange={(e) => updateNewItem(idx, 'description', e.target.value)}
-                          placeholder="Mô tả"
-                          className={selectClass}
-                        />
-                      </div>
-                      <div className="col-span-3">
-                        <select
-                          value={row.assigned_tailor_id}
-                          onChange={(e) => updateNewItem(idx, 'assigned_tailor_id', e.target.value)}
-                          className={selectClass}
-                        >
-                          <option value="">Chưa phân công</option>
-                          {tailors.map((t: User & { role: Role | null }) => (
-                            <option key={String(t.id)} value={String(t.id)}>
-                              {t.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="col-span-1 flex justify-end">
-                        <button
-                          type="button"
-                          onClick={() => setNewItems((prev) => prev.filter((_, i) => i !== idx))}
-                          className="p-2 text-muted-foreground hover:text-danger"
-                          title="Xóa dòng"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="flex gap-4 pt-2">
-            <button
-              type="button"
-              onClick={() => {
-                setEditingOrder(null);
-                setEditReturnDate('');
-                setDeletingDetailId(null);
-              }}
-              className="flex-1 bg-muted/40 text-foreground py-2.5 rounded-md font-bold text-sm border border-border"
-            >
-              Hủy
-            </button>
-            <button
-              type="submit"
-              disabled={isPendingUpdateOrder || isPendingUpdateDetail || isPendingAddOrderDetails}
-              className="flex-1 btn-primary py-2.5 rounded-md font-bold text-sm disabled:opacity-50"
-            >
-              {isPendingUpdateOrder || isPendingUpdateDetail || isPendingAddOrderDetails
-                ? 'Đang lưu...'
-                : 'Cập nhật'}
-            </button>
-          </div>
-        </form>
+        {editingOrder && (
+          <EditOrderForm
+            key={editingOrder.id}
+            order={editingOrder}
+            tailors={tailors}
+            statusOptions={statusOptions}
+            isPending={
+              isPendingUpdateOrder ||
+              isPendingUpdateDetail ||
+              isPendingAddOrderDetails
+            }
+            logSlot={<OrderLogSection orderId={editingOrder.id} />}
+            returnDate={{
+              initial: returnTimeToDateInputValue(editingOrder.return_time),
+            }}
+            onCancel={() => {
+              setEditingOrder(null);
+              setDeletingDetailId(null);
+            }}
+            onRequestDeleteDetail={(id) => setDeletingDetailId(id)}
+            onSubmit={handleUpdate}
+          />
+        )}
       </Modal>
 
       <Modal
