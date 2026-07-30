@@ -259,7 +259,8 @@ async function enrichOrders(
             .select(
                 "id, order_id, item_name, unit_price, description, status, assigned_tailor_id, handed_over_at, created_at, updated_at",
             )
-            .in("order_id", orderIds),
+            .in("order_id", orderIds)
+            .order("id", { ascending: true }),
         supabase
             .from("payments")
             .select("id, order_id, amount, payment_time, payment_method")
@@ -1494,7 +1495,11 @@ export async function getCustomerOrders(
 
     const orderIds = orders.map((o) => o.id);
     const [detailsRes, paymentsRes, customerRes] = await Promise.all([
-        supabase.from("order_details").select("*").in("order_id", orderIds),
+        supabase
+            .from("order_details")
+            .select("*")
+            .in("order_id", orderIds)
+            .order("id", { ascending: true }),
         supabase.from("payments").select("*").in("order_id", orderIds),
         supabase
             .from("customers")
@@ -1542,7 +1547,11 @@ export async function getOrder(orderId: number | string): Promise<Order> {
                   .eq("id", order.customer_id)
                   .single()
             : Promise.resolve({ data: null }),
-        supabase.from("order_details").select("*").eq("order_id", order.id),
+        supabase
+            .from("order_details")
+            .select("*")
+            .eq("order_id", order.id)
+            .order("id", { ascending: true }),
         supabase.from("payments").select("*").eq("order_id", order.id),
         supabase
             .from("order_logs")
