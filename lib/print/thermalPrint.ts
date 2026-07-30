@@ -143,11 +143,13 @@ async function dispatchThermalHtml(
 /**
  * Khoảng nghỉ giữa hai lệnh in tem (ms). Mỗi tem là một job in im lặng riêng (Electron tạo một
  * cửa sổ in ẩn / spooler nhận một job). Gửi quá dồn dập → sau ~16 món spooler/đầu in nghẽn rồi
- * lỗi. Nghỉ đủ lâu để job trước được nhả. Tinh chỉnh: `NEXT_PUBLIC_THERMAL_LABEL_JOB_DELAY_MS`.
+ * lỗi (thường thấy là lỗi phông/chữ méo trên tem). Nghỉ đủ lâu để job trước được nhả, và nghỉ
+ * lâu hơn hẳn định kỳ (xem `isFlushPoint` bên dưới) cho đơn nhiều món. Tinh chỉnh qua biến môi
+ * trường `NEXT_PUBLIC_THERMAL_LABEL_JOB_DELAY_MS` nếu vẫn còn lỗi với đơn rất nhiều sản phẩm.
  */
 function labelJobDelayMs(): number {
   const raw = process.env.NEXT_PUBLIC_THERMAL_LABEL_JOB_DELAY_MS?.trim();
-  const def = 350;
+  const def = 600;
   if (!raw) return def;
   const n = Number(raw);
   if (!Number.isFinite(n)) return def;
@@ -223,7 +225,10 @@ export async function printThermalElementWithStatus(
         method = "browser";
       }
       if (i < rows.length - 1) {
-        await sleep(delayMs);
+        // Cứ mỗi 5 tem, nghỉ lâu hơn hẳn để đầu in/spooler kịp giải phóng buffer —
+        // đơn nhiều món (15-20+ tem) dễ làm buffer đầy dần và lỗi phông ở các tem sau.
+        const isFlushPoint = (i + 1) % 5 === 0;
+        await sleep(isFlushPoint ? delayMs * 3 : delayMs);
       }
     }
 
