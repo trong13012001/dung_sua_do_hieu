@@ -23,18 +23,17 @@ There is **no test suite** and no test runner configured. "Verify" means `npx ts
 
 ## Skills
 
-Bộ skill cộng đồng **[superpowers](https://github.com/obra/superpowers)** đã được cài (`/plugin install superpowers@claude-plugins-official`) — brainstorming, writing-plans, systematic-debugging, requesting-code-review, verification-before-completion… Không commit vào repo; mỗi máy tự cài.
+Project skills live in `.claude/skills/` and load automatically when relevant. They follow the `superpowers:writing-skills` conventions (description = trigger conditions only, never a workflow summary).
 
-**Lưu ý quan trọng:** `superpowers:test-driven-development` giả định có test runner. Repo này **không có**. Ở đây RED-GREEN nghĩa là: tái hiện lỗi bằng dữ liệu/thao tác thật trước → sửa → chứng minh lại bằng đúng cách đó. Xem skill `verifying-changes`.
-
-Skill riêng của repo nằm ở `.claude/skills/` (viết theo convention của `superpowers:writing-skills`):
-
-| Skill | Kích hoạt khi |
+| Skill | Triggers on |
 | --- | --- |
-| `karpathy-guidelines` | Viết / review / refactor code — nêu giả định, làm tối giản, sửa đúng chỗ. Bản gốc: [multica-ai/andrej-karpathy-skills](https://github.com/multica-ai/andrej-karpathy-skills), mirror của `.cursor/rules/karpathy-guidelines.mdc` (Cursor vẫn dùng file kia — sửa thì sửa cả hai) |
-| `verifying-changes` | Sắp báo "xong" — repo không có test, lint có baseline lỗi sẵn |
-| `changing-supabase-schema` | Cần SQL mới: bảng, cột, function, trigger, permission |
-| `changing-thermal-printing` | Động vào in hoá đơn / tem nhiệt |
+| `karpathy-guidelines` | Writing / reviewing / refactoring — surface assumptions, keep it minimal, edit surgically. Verbatim mirror of [multica-ai/andrej-karpathy-skills](https://github.com/multica-ai/andrej-karpathy-skills) and of `.cursor/rules/karpathy-guidelines.mdc`; edit both or they drift |
+| `verifying-changes` | About to claim something works — no test suite, lint has an error baseline |
+| `paginating-lists` | Any list, table, report, export or aggregate — see the PostgREST caps below |
+| `changing-supabase-schema` | New SQL: table, column, function, trigger, permission |
+| `changing-thermal-printing` | Invoice / label printing |
+
+[superpowers](https://github.com/obra/superpowers) (brainstorming, writing-plans, systematic-debugging, code review) is a **per-machine** plugin, not committed here — install it with `/plugin install superpowers@claude-plugins-official`. Note that `superpowers:test-driven-development` assumes a test runner, which this repo does not have; here RED-GREEN means reproducing the bug against real data first, fixing, then re-proving it the same way.
 
 ### Running Electron locally
 
@@ -61,6 +60,7 @@ Skill riêng của repo nằm ở `.claude/skills/` (viết theo convention củ
 - **PostgREST trả tối đa 1000 dòng/request** (mặc định Supabase) và **cắt im lặng**. Dùng `lib/supabasePaging.ts` (`fetchAllPages`, `fetchByIdChunks`) cho mọi query có thể vượt 1000 dòng. Filter `in.(...)` cũng phải chia lô: ~1500 id là URL quá dài và Supabase trả HTTP 400.
 - **Offset pagination phải có khoá phụ duy nhất.** `created_at` và `customers.name` đều không unique trong dữ liệu thật (1613/3000 đơn trùng `created_at`; 19 khách cùng tên "A AN"), nên sort thiếu `.order("id")` sẽ làm dòng lặp ở trang này và biến mất ở trang khác.
 - **Tổng tiền phải cộng bằng SQL**, không kéo dòng về client: `get_dashboard_stats()` / `get_monthly_revenue()`.
+- **Một khuôn phân trang duy nhất.** `components/ui/Pagination.tsx` (nút số trang + ô "Hiển thị mỗi trang") dùng cho mọi màn danh sách; `fetchPage()` trong `lib/supabasePaging.ts` trả `{ data, count }`. Trang **đếm từ 1** ở mọi nơi. Đưa `page` về 1 ngay trong handler đổi từ khoá / tab / số dòng — ESLint của repo chặn `setState` đồng bộ trong `useEffect`.
 - **Query-key invalidation is centralized and broad.** `invalidateOrderRelatedQueries(qc)` in `api/orders.ts` is the canonical list of order-related keys (`orders`, `orders-infinite`, `orders-page`, `stats`, `payments`, `all-order-items`, `customers`, …). Reuse it after any order/payment mutation rather than invalidating ad hoc, or keys will drift.
 - **Realtime.** `hooks/useRealtimeSubscription.ts` (mounted once in the dashboard layout) subscribes to `orders` / `order_details` / `payments` postgres changes and invalidates queries, with a 25s polling fallback + visibility-refetch + auto-reconnect because Realtime drops on phones. Order-status changes also fire `notifyOrderStatusUpdate` (`lib/orderNotification.ts`).
 
@@ -79,7 +79,7 @@ App Router. Real screens live under `app/(dashboard)/` (orders, pos, customers, 
 
 ### Printing (the non-obvious subsystem)
 
-Browsers can't print silently, so printing fans out across methods. `lib/printSmart.ts` decides between: Electron IPC (`window.electronThermalPrint`, Windows only), a local print agent, or a browser print dialog fallback. `lib/print/` holds the HTML builders and thermal metrics (58mm/80mm `@page` sizing matters — see comments tying `invoiceThermalMetrics.ts` to `main.cjs`). Printer **names** are resolved from shop settings (DB) and synced into a cache (`ShopSettingsSync` provider → `lib/print/shopPrinterCache.ts`); on Windows the device name is fuzzy-matched against `getPrintersAsync()` in `main.cjs`. Two physical printers: invoice (XP-80C) and label (XP-235B). Before touching anything here, read `electron/README.md`.
+Browsers can't print silently, so printing fans out across methods. `lib/printSmart.ts` decides between: Electron IPC (`window.electronThermalPrint`, Windows only), a local print agent, or a browser print dialog fallback. `lib/print/` holds the HTML builders and thermal metrics (58mm/80mm `@page` sizing matters — see comments tying `invoiceThermalMetrics.ts` to `main.cjs`). Printer **names** are resolved from shop settings (DB) and synced into a cache (`ShopSettingsSync` provider → `lib/print/shopPrinterCache.ts`); on Windows the device name is fuzzy-matched against `getPrintersAsync()` in `main.cjs`. Two physical printers: invoice (XP-80C) and label (XP-235B). Creating an order at the POS screen immediately queues both prints: `buildOrderForInvoicePrint` builds a print-shaped order, then `printTargetElementSmart` renders `<InvoicePrint>` and `<ItemLabelsPrint>`. Before touching anything here, read `electron/README.md`.
 
 ## Domain model notes
 
@@ -92,4 +92,6 @@ Browsers can't print silently, so printing fans out across methods. `lib/printSm
 
 - Path alias `@/*` → repo root (`tsconfig.json`). TypeScript `strict` is on.
 - Comments and UI copy are in Vietnamese; match that when editing existing files.
+- **No silent caps.** Where a hard `.limit()` is unavoidable (`TASK_STATUS_LIMIT`, `EXPORT_MAX_ORDERS`), the UI must say so — a column badge, a toast, a note under the list. A cap the user cannot see reads as "that is all the data".
+- `README.md` is untouched `create-next-app` boilerplate; nothing project-specific lives there.
 - `.cursor/rules/karpathy-guidelines.mdc` (always-applied in Cursor; mirrored as the `karpathy-guidelines` skill for Claude Code) asks for: surface assumptions/tradeoffs before coding, minimal non-speculative changes, surgical edits that match existing style, and don't delete pre-existing dead code — mention it instead.
