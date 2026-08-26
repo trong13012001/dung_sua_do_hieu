@@ -4,10 +4,13 @@ import {
     useMutation,
     useQueryClient,
     useInfiniteQuery,
+    keepPreviousData,
     type InfiniteData,
     type QueryClient,
 } from "@tanstack/react-query";
-import { Order, OrderDetail } from "@/lib/types";
+import { Order, OrderDetail, Payment } from "@/lib/types";
+import { fetchAllPages, fetchByIdChunks } from "@/lib/supabasePaging";
+import { orderStatusLabelVi } from "@/lib/orderStatusUi";
 import { insertOrderLog } from "@/api/orderLogs";
 
 const PAGE_SIZE = 25;
@@ -21,11 +24,17 @@ export function invalidateOrderRelatedQueries(
     qc.invalidateQueries({ queryKey: ["orders-infinite"] });
     qc.invalidateQueries({ queryKey: ["orders-page"], exact: false });
     qc.invalidateQueries({ queryKey: ["orders", "customer"], exact: false });
+    qc.invalidateQueries({
+        queryKey: ["orders", "customer-page"],
+        exact: false,
+    });
     qc.invalidateQueries({ queryKey: ["customers"] });
     qc.invalidateQueries({ queryKey: ["stats"] });
     qc.invalidateQueries({ queryKey: ["all-order-items"] });
     qc.invalidateQueries({ queryKey: ["order-items"], exact: false });
     qc.invalidateQueries({ queryKey: ["payments"] });
+    qc.invalidateQueries({ queryKey: ["returns-orders"], exact: false });
+    qc.invalidateQueries({ queryKey: ["returns-counts"], exact: false });
     const orderId = options?.orderId;
     if (orderId != null) {
         qc.invalidateQueries({ queryKey: ["orders", orderId] });
@@ -220,6 +229,13 @@ export type EnrichOrdersOptions = {
     skipCreatedBy?: boolean;
 };
 
+type OrderCustomerLite = {
+    id: number;
+    name: string;
+    phone: string | null;
+    address: string | null;
+};
+
 async function enrichOrders(
     orders: any[],
     options?: EnrichOrdersOptions,
@@ -239,38 +255,54 @@ async function enrichOrders(
               }[],
               error: null,
           })
-        : supabase
-              .from("order_logs")
-              .select("order_id, updated_by, created_at")
-              .eq("action", "order_created")
-              .in("order_id", orderIds)
-              .order("created_at", { ascending: true });
+        : fetchByIdChunks<
+              { order_id: number; updated_by: string | number | null; created_at: string },
+              number
+          >(orderIds, (ids, from, to) =>
+              supabase
+                  .from("order_logs")
+                  .select("order_id, updated_by, created_at")
+                  .eq("action", "order_created")
+                  .in("order_id", ids)
+                  .order("created_at", { ascending: true })
+                  .order("id", { ascending: true })
+                  .range(from, to),
+          ).then((data) => ({ data, error: null }));
 
-    const [customersRes, detailsRes, paymentsRes, createdLogsRes] =
+    const [customersData, detailsData, paymentsData, createdLogsRes] =
         await Promise.all([
-        customerIds.length > 0
-            ? supabase
-                  .from("customers")
-                  .select("id, name, phone, address")
-                  .in("id", customerIds)
-            : Promise.resolve({ data: [], error: null }),
-        supabase
-            .from("order_details")
-            .select(
-                "id, order_id, item_name, unit_price, description, status, assigned_tailor_id, handed_over_at, created_at, updated_at",
-            )
-            .in("order_id", orderIds)
-            .order("id", { ascending: true }),
-        supabase
-            .from("payments")
-            .select("id, order_id, amount, payment_time, payment_method")
-            .in("order_id", orderIds),
+        fetchByIdChunks<OrderCustomerLite, number>(customerIds, (ids, from, to) =>
+            supabase
+                .from("customers")
+                .select("id, name, phone, address")
+                .in("id", ids)
+                .order("id", { ascending: true })
+                .range(from, to),
+        ),
+        fetchByIdChunks<OrderDetail, number>(orderIds, (ids, from, to) =>
+            supabase
+                .from("order_details")
+                .select(
+                    "id, order_id, item_name, unit_price, description, status, assigned_tailor_id, handed_over_at, created_at, updated_at",
+                )
+                .in("order_id", ids)
+                .order("id", { ascending: true })
+                .range(from, to),
+        ),
+        fetchByIdChunks<Payment, number>(orderIds, (ids, from, to) =>
+            supabase
+                .from("payments")
+                .select("id, order_id, amount, payment_time, payment_method")
+                .in("order_id", ids)
+                .order("id", { ascending: true })
+                .range(from, to),
+        ),
         createdLogsPromise,
         ]);
-    if (customersRes.error) throw customersRes.error;
-    if (detailsRes.error) throw detailsRes.error;
-    if (paymentsRes.error) throw paymentsRes.error;
     if (createdLogsRes.error) throw createdLogsRes.error;
+    const customersRes = { data: customersData };
+    const detailsRes = { data: detailsData };
+    const paymentsRes = { data: paymentsData };
 
     const customerMap: Record<
         number,
@@ -322,12 +354,18 @@ async function enrichOrders(
     ]);
     const userNameById: Record<string, string> = {};
     if (allUserIds.size > 0) {
-        const { data: users, error: usersErr } = await supabase
-            .from("users")
-            .select("id, name")
-            .in("id", [...allUserIds]);
-        if (usersErr) throw usersErr;
-        for (const u of users || []) {
+        const users = await fetchByIdChunks<
+            { id: string | number; name: string },
+            string | number
+        >([...allUserIds], (ids, from, to) =>
+            supabase
+                .from("users")
+                .select("id, name")
+                .in("id", ids)
+                .order("id", { ascending: true })
+                .range(from, to),
+        );
+        for (const u of users) {
             userNameById[String(u.id)] = u.name;
         }
     }
@@ -381,6 +419,7 @@ export function useOrders() {
                     "id, customer_id, total_amount, paid_amount, status, receive_time, return_time, transaction_code, created_at, updated_at",
                 )
                 .order("created_at", { ascending: false })
+                .order("id", { ascending: false })
                 .limit(100);
             if (error) throw error;
             return enrichOrders(orders || [], { skipCreatedBy: true });
@@ -411,6 +450,7 @@ export function useOrdersInfinite(filters: OrdersFilters) {
                     "id, customer_id, total_amount, paid_amount, status, receive_time, return_time, transaction_code, created_at, updated_at",
                 )
                 .order("created_at", { ascending: false })
+                .order("id", { ascending: false })
                 .range(
                     pageParam as number,
                     (pageParam as number) + PAGE_SIZE - 1,
@@ -472,6 +512,7 @@ export function useOrdersPage(
                     { count: "exact" },
                 )
                 .order("created_at", { ascending: false })
+                .order("id", { ascending: false })
                 .range(from, to);
             if (filters.start_date)
                 q = q.gte("created_at", filters.start_date + "T00:00:00.000Z");
@@ -508,24 +549,267 @@ export function useOrdersPage(
     });
 }
 
+/** Trần an toàn cho một lần xuất file — trên mức này trình duyệt dựng Excel rất nặng. */
+export const EXPORT_MAX_ORDERS = 20000;
+
 export async function fetchOrdersForExport(
     filters: OrdersFilters,
 ): Promise<Order[]> {
-    let q = supabase
-        .from("orders")
-        .select(
-            "id, customer_id, total_amount, paid_amount, status, receive_time, return_time, transaction_code, created_at, updated_at",
-        )
-        .order("created_at", { ascending: false })
-        .limit(5000);
-    if (filters.start_date)
-        q = q.gte("created_at", filters.start_date + "T00:00:00.000Z");
-    if (filters.end_date)
-        q = q.lte("created_at", filters.end_date + "T23:59:59.999Z");
-    if (filters.status) q = q.eq("status", filters.status);
-    const { data: orders, error } = await q;
-    if (error) throw error;
-    return enrichOrders(orders || [], { skipCreatedBy: true });
+    // `.limit(5000)` cũ vô nghĩa: PostgREST vẫn cắt ở 1000 dòng nên file xuất ra
+    // thiếu dữ liệu mà không báo gì. Phải phân trang thật.
+    const orders = await fetchAllPages<Order>((from, to) => {
+        let q = supabase
+            .from("orders")
+            .select(
+                "id, customer_id, total_amount, paid_amount, status, receive_time, return_time, transaction_code, created_at, updated_at",
+            )
+            .order("created_at", { ascending: false })
+            .order("id", { ascending: false })
+            .range(from, to);
+        if (filters.start_date)
+            q = q.gte("created_at", filters.start_date + "T00:00:00.000Z");
+        if (filters.end_date)
+            q = q.lte("created_at", filters.end_date + "T23:59:59.999Z");
+        if (filters.status) q = q.eq("status", filters.status);
+        return q;
+    });
+    return enrichOrders(orders.slice(0, EXPORT_MAX_ORDERS), {
+        skipCreatedBy: true,
+    });
+}
+
+/** Các cột trên bảng Công việc, theo đúng thứ tự hiển thị. */
+const TASK_BOARD_STATUSES = [
+    "New",
+    "In Progress",
+    "Ready",
+    "Completed",
+] as const;
+
+/**
+ * Trần dòng cho MỖI cột của bảng Công việc.
+ *
+ * Không lấy hết được: riêng trạng thái "New" đang có ~69.000 dòng (dữ liệu cũ
+ * nhập vào đều ở trạng thái này), trình duyệt không dựng nổi.
+ * Nhưng cũng không được dùng một trần chung cho tất cả trạng thái: "New" sẽ
+ * chiếm sạch quota và các cột "Đang làm" / "Đã xong" / "Hoàn thành" gần như
+ * trống dù thực tế đang có việc. Vì vậy mỗi trạng thái có quota riêng.
+ */
+export const TASK_STATUS_LIMIT = 300;
+
+/**
+ * Làm sạch từ khoá trước khi ghép vào filter `or(...)` của PostgREST.
+ * Dấu phẩy và ngoặc là cú pháp của filter — để nguyên sẽ làm hỏng câu truy vấn.
+ */
+function sanitizeOrFilterValue(term: string): string {
+    return term.replaceAll(/[,()"']/g, " ").trim();
+}
+
+/** Số đơn tối đa lấy về khi tra theo tên/SĐT khách — đủ dùng cho ô tìm kiếm. */
+const CUSTOMER_SEARCH_ORDER_LIMIT = 500;
+
+async function findOrderIdsByCustomerSearch(search: string): Promise<number[]> {
+    const { data: customers, error: custErr } = await supabase
+        .from("customers")
+        .select("id")
+        .or(`name.ilike.%${search}%,phone.ilike.%${search}%`)
+        .order("id", { ascending: true })
+        .limit(200);
+    if (custErr) throw custErr;
+    const customerIds = (customers || []).map((c) => c.id);
+    if (customerIds.length === 0) return [];
+
+    const orders = await fetchByIdChunks<{ id: number }, number>(
+        customerIds,
+        (ids, from, to) =>
+            supabase
+                .from("orders")
+                .select("id")
+                .in("customer_id", ids)
+                .order("id", { ascending: false })
+                .range(from, to),
+    );
+    return orders.slice(0, CUSTOMER_SEARCH_ORDER_LIMIT).map((o) => o.id);
+}
+
+/** Dòng order_details mà bảng Công việc cần. */
+type TaskDetailRow = {
+    id: number;
+    order_id: number;
+    item_name: string;
+    description: string | null;
+    unit_price: number;
+    status: string;
+    assigned_tailor_id: string | null;
+    created_at: string;
+};
+
+/** Phần API của query builder mà hàm dưới dùng tới (tránh phụ thuộc kiểu nội bộ của supabase-js). */
+type TaskDetailQuery = {
+    eq(column: string, value: unknown): TaskDetailQuery;
+    or(filter: string): TaskDetailQuery;
+    order(
+        column: string,
+        options?: { ascending?: boolean },
+    ): TaskDetailQuery;
+    limit(
+        count: number,
+    ): PromiseLike<{ data: TaskDetailRow[] | null; error: unknown }>;
+};
+
+async function fetchTaskDetailsByStatus(options?: {
+    applyFilter?: (q: TaskDetailQuery) => TaskDetailQuery;
+    search?: string;
+}): Promise<TaskDetailRow[]> {
+    const search = sanitizeOrFilterValue(options?.search ?? "");
+
+    // Tên khách nằm ở bảng khác nên phải tra trước, rồi lọc theo order_id.
+    // Nếu bỏ bước này thì tìm theo tên khách sẽ không ra gì.
+    const orderIdsFromCustomer = search
+        ? await findOrderIdsByCustomerSearch(search)
+        : [];
+
+    const perStatus = await Promise.all(
+        TASK_BOARD_STATUSES.map(async (status) => {
+            let q = supabase
+                .from("order_details")
+                .select(
+                    "id, order_id, item_name, description, unit_price, status, assigned_tailor_id, created_at",
+                ) as unknown as TaskDetailQuery;
+            if (options?.applyFilter) q = options.applyFilter(q);
+            q = q.eq("status", status);
+            if (search) {
+                // Tìm ở phía DB để không bị giới hạn trong TASK_STATUS_LIMIT dòng
+                // mới nhất — nếu không, món cũ sẽ không bao giờ tìm thấy.
+                const clauses = [`item_name.ilike.%${search}%`];
+                const asId = Number(search);
+                if (Number.isInteger(asId) && asId > 0) {
+                    clauses.push(`order_id.eq.${asId}`);
+                }
+                if (orderIdsFromCustomer.length > 0) {
+                    clauses.push(
+                        `order_id.in.(${orderIdsFromCustomer.join(",")})`,
+                    );
+                }
+                q = q.or(clauses.join(","));
+            }
+            const { data, error } = await q
+                .order("created_at", { ascending: false })
+                .order("id", { ascending: false })
+                .limit(TASK_STATUS_LIMIT);
+            if (error) throw error;
+            return data || [];
+        }),
+    );
+    return perStatus.flat();
+}
+
+/** Số đơn mỗi trang ở màn Trả đồ. */
+export const RETURNS_PAGE_SIZE = 20;
+
+export type ReturnsOrdersPageResult = {
+    data: Order[];
+    count: number;
+};
+
+/**
+ * Đơn cho màn Trả đồ, lọc theo trạng thái **ở phía DB**.
+ *
+ * Trước đây màn này dùng `useOrders()` (100 đơn mới nhất toàn hệ thống) rồi lọc
+ * ở client, nên khách mang phiếu cũ tới lấy đồ là không tìm thấy đơn.
+ */
+export function useReturnsOrders(
+    statuses: readonly string[],
+    search?: string,
+    page = 1,
+    pageSize = RETURNS_PAGE_SIZE,
+) {
+    const term = (search ?? "").trim();
+    return useQuery({
+        queryKey: [
+            "returns-orders",
+            [...statuses].join(","),
+            term,
+            page,
+            pageSize,
+        ],
+        staleTime: 60_000,
+        placeholderData: keepPreviousData,
+        queryFn: async (): Promise<ReturnsOrdersPageResult> => {
+            const safePage = Number.isFinite(page) && page > 0 ? page : 1;
+            const from = (safePage - 1) * pageSize;
+            const to = from + pageSize - 1;
+            const safeTerm = sanitizeOrFilterValue(term);
+            const orderIdsFromCustomer = safeTerm
+                ? await findOrderIdsByCustomerSearch(safeTerm)
+                : [];
+
+            let q = supabase
+                .from("orders")
+                .select(
+                    "id, customer_id, total_amount, paid_amount, status, receive_time, return_time, transaction_code, created_at, updated_at",
+                    { count: "exact" },
+                )
+                .in("status", statuses as string[]);
+
+            if (safeTerm) {
+                const clauses: string[] = [
+                    `transaction_code.ilike.%${safeTerm}%`,
+                ];
+                const asId = Number(safeTerm);
+                if (Number.isInteger(asId) && asId > 0) {
+                    clauses.push(`id.eq.${asId}`);
+                }
+                if (orderIdsFromCustomer.length > 0) {
+                    clauses.push(`id.in.(${orderIdsFromCustomer.join(",")})`);
+                }
+                q = q.or(clauses.join(","));
+            }
+
+            const { data, error, count } = await q
+                .order("created_at", { ascending: false })
+                .order("id", { ascending: false })
+                .range(from, to);
+            if (error) throw error;
+            return {
+                data: await enrichOrders(data || [], { skipCreatedBy: true }),
+                count: count ?? 0,
+            };
+        },
+    });
+}
+
+/** Đếm đơn theo trạng thái cho tab màn Trả đồ — đếm ở DB nên luôn đúng tổng. */
+export function useReturnsCounts(
+    readyStatuses: readonly string[],
+    deliveredStatuses: readonly string[],
+) {
+    return useQuery({
+        queryKey: [
+            "returns-counts",
+            [...readyStatuses].join(","),
+            [...deliveredStatuses].join(","),
+        ],
+        staleTime: 60_000,
+        queryFn: async (): Promise<{ ready: number; delivered: number }> => {
+            const [readyRes, deliveredRes] = await Promise.all([
+                supabase
+                    .from("orders")
+                    .select("*", { count: "exact", head: true })
+                    .in("status", readyStatuses as string[]),
+                supabase
+                    .from("orders")
+                    .select("*", { count: "exact", head: true })
+                    .in("status", deliveredStatuses as string[]),
+            ]);
+            if (readyRes.error) throw readyRes.error;
+            if (deliveredRes.error) throw deliveredRes.error;
+            return {
+                ready: readyRes.count || 0,
+                delivered: deliveredRes.count || 0,
+            };
+        },
+    });
 }
 
 export function useOrderItems(tailorId?: string | number | null) {
@@ -534,17 +818,10 @@ export function useOrderItems(tailorId?: string | number | null) {
         enabled: tailorId != null && tailorId !== "",
         queryFn: async () => {
             // Step 1: fetch details for this tailor (assigned_tailor_id is UUID)
-            const { data: details, error } = await supabase
-                .from("order_details")
-                .select(
-                    "id, order_id, item_name, description, unit_price, status, assigned_tailor_id, created_at",
-                )
-                .eq("assigned_tailor_id", tailorId!)
-                .in("status", ["New", "In Progress", "Ready", "Completed"])
-                .order("created_at", { ascending: false })
-                .limit(100);
-            if (error) throw error;
-            if (!details || details.length === 0) return [];
+            const details = await fetchTaskDetailsByStatus({
+                applyFilter: (q) => q.eq("assigned_tailor_id", tailorId!),
+            });
+            if (details.length === 0) return [];
 
             // Step 2: fetch parent orders + customers
             const orderIds = [...new Set(details.map((d) => d.order_id))];
@@ -586,20 +863,12 @@ export function useOrderItems(tailorId?: string | number | null) {
     });
 }
 
-export function useAllOrderItems() {
+export function useAllOrderItems(search?: string) {
     return useQuery({
-        queryKey: ["all-order-items"],
+        queryKey: ["all-order-items", search ?? ""],
         queryFn: async () => {
-            const { data: details, error } = await supabase
-                .from("order_details")
-                .select(
-                    "id, order_id, item_name, description, unit_price, status, assigned_tailor_id, created_at",
-                )
-                .in("status", ["New", "In Progress", "Ready", "Completed"])
-                .order("created_at", { ascending: false })
-                .limit(500);
-            if (error) throw error;
-            if (!details || details.length === 0) return [];
+            const details = await fetchTaskDetailsByStatus({ search });
+            if (details.length === 0) return [];
 
             // Step 2: fetch related orders + customers + tailors in parallel
             const orderIds = [...new Set(details.map((d) => d.order_id))];
@@ -1482,25 +1751,30 @@ export function useDeleteOrder() {
     });
 }
 
-export async function getCustomerOrders(
+/** Gắn khách + chi tiết + thanh toán cho một trang đơn của khách. */
+async function attachCustomerOrderRelations(
     customerId: number | string,
+    orders: Order[],
 ): Promise<Order[]> {
-    const { data: orders, error } = await supabase
-        .from("orders")
-        .select("*")
-        .eq("customer_id", customerId)
-        .order("created_at", { ascending: false });
-    if (error) throw error;
-    if (!orders || orders.length === 0) return [];
-
+    if (orders.length === 0) return [];
     const orderIds = orders.map((o) => o.id);
-    const [detailsRes, paymentsRes, customerRes] = await Promise.all([
-        supabase
-            .from("order_details")
-            .select("*")
-            .in("order_id", orderIds)
-            .order("id", { ascending: true }),
-        supabase.from("payments").select("*").in("order_id", orderIds),
+    const [detailsRows, paymentsRows, customerRes] = await Promise.all([
+        fetchByIdChunks<OrderDetail, number>(orderIds, (ids, from, to) =>
+            supabase
+                .from("order_details")
+                .select("*")
+                .in("order_id", ids)
+                .order("id", { ascending: true })
+                .range(from, to),
+        ),
+        fetchByIdChunks<Payment, number>(orderIds, (ids, from, to) =>
+            supabase
+                .from("payments")
+                .select("*")
+                .in("order_id", ids)
+                .order("id", { ascending: true })
+                .range(from, to),
+        ),
         supabase
             .from("customers")
             .select("id, name, phone, address")
@@ -1508,18 +1782,16 @@ export async function getCustomerOrders(
             .maybeSingle(),
     ]);
 
-    const detailsByOrder: Record<number, any[]> = {};
-    if (detailsRes.data)
-        for (const d of detailsRes.data) {
-            if (!detailsByOrder[d.order_id]) detailsByOrder[d.order_id] = [];
-            detailsByOrder[d.order_id].push(d);
-        }
-    const paymentsByOrder: Record<number, any[]> = {};
-    if (paymentsRes.data)
-        for (const p of paymentsRes.data) {
-            if (!paymentsByOrder[p.order_id]) paymentsByOrder[p.order_id] = [];
-            paymentsByOrder[p.order_id].push(p);
-        }
+    const detailsByOrder: Record<number, OrderDetail[]> = {};
+    for (const d of detailsRows) {
+        if (!detailsByOrder[d.order_id]) detailsByOrder[d.order_id] = [];
+        detailsByOrder[d.order_id].push(d);
+    }
+    const paymentsByOrder: Record<number, Payment[]> = {};
+    for (const p of paymentsRows) {
+        if (!paymentsByOrder[p.order_id]) paymentsByOrder[p.order_id] = [];
+        paymentsByOrder[p.order_id].push(p);
+    }
 
     const customer = customerRes.data ?? null;
 
@@ -1529,6 +1801,122 @@ export async function getCustomerOrders(
         details: detailsByOrder[o.id] || [],
         payments: paymentsByOrder[o.id] || [],
     })) as Order[];
+}
+
+export async function getCustomerOrders(
+    customerId: number | string,
+): Promise<Order[]> {
+    const orders = await fetchAllPages<Order>((from, to) =>
+        supabase
+            .from("orders")
+            .select("*")
+            .eq("customer_id", customerId)
+            .order("created_at", { ascending: false })
+            .order("id", { ascending: false })
+            .range(from, to),
+    );
+    return attachCustomerOrderRelations(customerId, orders);
+}
+
+export const CUSTOMER_ORDERS_PAGE_SIZE = 10;
+
+/** Số đơn tối đa gom được khi tìm theo tên/mô tả sản phẩm. */
+const CUSTOMER_ORDERS_SEARCH_MATCH_LIMIT = 500;
+
+export type CustomerOrdersPageResult = {
+    data: Order[];
+    count: number;
+};
+
+const ORDER_STATUS_VALUES = [
+    "New",
+    "In Progress",
+    "Ready",
+    "Paid",
+    "Delivered",
+    "DeliveredOwing",
+    "Completed",
+] as const;
+
+/** Nhãn trạng thái tiếng Việt -> mã trạng thái, để tìm được bằng chữ hiển thị. */
+function statusesMatchingLabel(term: string): string[] {
+    const lower = term.toLowerCase();
+    return ORDER_STATUS_VALUES.filter((st) =>
+        orderStatusLabelVi(st).toLowerCase().includes(lower),
+    );
+}
+
+/**
+ * Tìm các đơn của khách có món khớp từ khoá. Lọc ngay ở DB qua quan hệ
+ * order_details -> orders, không phải kéo hết đơn của khách về rồi lọc.
+ */
+async function findCustomerOrderIdsByItem(
+    customerId: number | string,
+    search: string,
+): Promise<number[]> {
+    const { data, error } = await supabase
+        .from("order_details")
+        .select("order_id, orders!inner(customer_id)")
+        .eq("orders.customer_id", customerId)
+        .or(`item_name.ilike.%${search}%,description.ilike.%${search}%`)
+        .limit(CUSTOMER_ORDERS_SEARCH_MATCH_LIMIT);
+    if (error) throw error;
+    return [...new Set((data || []).map((d) => Number(d.order_id)))];
+}
+
+/**
+ * Một trang lịch sử đơn của khách. Phải phân trang ở DB: khách sỉ có vài nghìn
+ * đơn, tải hết về rồi lọc ở client vừa chậm vừa nặng bộ nhớ.
+ */
+export async function getCustomerOrdersPage(
+    customerId: number | string,
+    page: number,
+    pageSize: number = CUSTOMER_ORDERS_PAGE_SIZE,
+    search?: string,
+): Promise<CustomerOrdersPageResult> {
+    const safePage = Number.isFinite(page) && page > 0 ? page : 1;
+    const from = (safePage - 1) * pageSize;
+    const to = from + pageSize - 1;
+    const term = sanitizeOrFilterValue(search ?? "");
+
+    let q = supabase
+        .from("orders")
+        .select("*", { count: "exact" })
+        .eq("customer_id", customerId);
+
+    if (term) {
+        const orderIdsByItem = await findCustomerOrderIdsByItem(
+            customerId,
+            term,
+        );
+        const clauses = [`transaction_code.ilike.%${term}%`];
+        const asId = Number(term);
+        if (Number.isInteger(asId) && asId > 0) {
+            clauses.push(`id.eq.${asId}`);
+        }
+        const statuses = statusesMatchingLabel(term);
+        if (statuses.length > 0) {
+            clauses.push(`status.in.(${statuses.join(",")})`);
+        }
+        if (orderIdsByItem.length > 0) {
+            clauses.push(`id.in.(${orderIdsByItem.join(",")})`);
+        }
+        q = q.or(clauses.join(","));
+    }
+
+    const { data, error, count } = await q
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(from, to);
+    if (error) throw error;
+
+    return {
+        data: await attachCustomerOrderRelations(
+            customerId,
+            (data || []) as Order[],
+        ),
+        count: count ?? 0,
+    };
 }
 
 export async function getOrder(orderId: number | string): Promise<Order> {

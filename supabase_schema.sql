@@ -165,4 +165,53 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- ============================================================
+-- Tổng hợp số liệu dashboard (xem supabase_migration_dashboard_aggregates.sql)
+-- Cộng tổng phải làm ở đây: PostgREST chỉ trả 1000 dòng nên cộng ở client ra sai số.
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION public.get_dashboard_stats()
+RETURNS TABLE (
+    total_revenue numeric,
+    customer_count bigint,
+    pending_count bigint,
+    total_debt numeric,
+    order_count bigint,
+    completed_count bigint
+)
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path = public
+AS $$
+    SELECT
+        (SELECT COALESCE(SUM(amount), 0) FROM payments),
+        (SELECT COUNT(*) FROM customers),
+        (SELECT COUNT(*) FROM orders WHERE status IN ('New', 'In Progress')),
+        (SELECT COALESCE(SUM(total_debt), 0) FROM customers),
+        (SELECT COUNT(*) FROM orders),
+        (SELECT COUNT(*) FROM orders WHERE status IN ('Ready', 'Completed'));
+$$;
+
+CREATE OR REPLACE FUNCTION public.get_monthly_revenue()
+RETURNS TABLE (
+    month_key text,
+    revenue numeric
+)
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path = public
+AS $$
+    SELECT
+        to_char(payment_time AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM') AS month_key,
+        COALESCE(SUM(amount), 0) AS revenue
+    FROM payments
+    GROUP BY 1
+    ORDER BY 1;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.get_dashboard_stats() TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.get_monthly_revenue() TO anon, authenticated;
+
 -- Existing DB: add new permissions (skip if already present): view_orders, view_tasks, update_tasks, view_customers, manage_customers, manage_roles, manage_permissions, view_returns. Then assign to admin via role_permissions.

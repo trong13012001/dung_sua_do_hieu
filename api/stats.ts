@@ -9,6 +9,7 @@ import type {
     MonthlyRevenue,
 } from "@/lib/types";
 import { ORDER_STATUS_FILTER_SEQUENCE } from "@/lib/orderStatusUi";
+import { fetchAllPages, fetchByIdChunks } from "@/lib/supabasePaging";
 
 export interface DashboardStats {
     totalRevenue: number;
@@ -19,19 +20,58 @@ export interface DashboardStats {
     completedCount: number;
 }
 
+/**
+ * Cộng một cột số qua toàn bộ bảng bằng cách phân trang.
+ * Chỉ dùng làm phương án dự phòng khi hàm SQL tổng hợp chưa được áp lên Supabase.
+ */
+async function sumColumnPaginated(
+    table: "payments" | "customers",
+    column: "amount" | "total_debt",
+): Promise<number> {
+    const rows = await fetchAllPages<Record<string, unknown>>((from, to) =>
+        supabase
+            .from(table)
+            .select(column)
+            .order("id", { ascending: true })
+            .range(from, to),
+    );
+    return rows.reduce((sum, row) => sum + Number(row[column] ?? 0), 0);
+}
+
 export function useDashboardStats() {
     return useQuery({
         queryKey: ["stats"],
         queryFn: async (): Promise<DashboardStats> => {
+            // Tổng tiền phải tính bằng SQL: cộng ở client sẽ chỉ cộng được 1000
+            // dòng đầu (trần của PostgREST) và ra con số sai rất xa.
+            const { data: agg, error: aggErr } = await supabase.rpc(
+                "get_dashboard_stats",
+            );
+            const aggRow = Array.isArray(agg) ? agg[0] : agg;
+            if (!aggErr && aggRow) {
+                return {
+                    totalRevenue: Number(aggRow.total_revenue ?? 0),
+                    customerCount: Number(aggRow.customer_count ?? 0),
+                    pendingCount: Number(aggRow.pending_count ?? 0),
+                    totalDebt: Number(aggRow.total_debt ?? 0),
+                    orderCount: Number(aggRow.order_count ?? 0),
+                    completedCount: Number(aggRow.completed_count ?? 0),
+                };
+            }
+
+            // Dự phòng cho khoảng thời gian code đã deploy nhưng
+            // supabase_migration_dashboard_aggregates.sql chưa được chạy.
+            // Chậm hơn nhiều nhưng vẫn ra đúng số.
             const [
-                revenueRes,
+                totalRevenue,
+                totalDebt,
                 custRes,
                 pendRes,
-                debtRes,
                 orderRes,
                 completedRes,
             ] = await Promise.all([
-                supabase.from("payments").select("amount"),
+                sumColumnPaginated("payments", "amount"),
+                sumColumnPaginated("customers", "total_debt"),
                 supabase
                     .from("customers")
                     .select("*", { count: "exact", head: true }),
@@ -39,7 +79,6 @@ export function useDashboardStats() {
                     .from("orders")
                     .select("*", { count: "exact", head: true })
                     .in("status", ["New", "In Progress"]),
-                supabase.from("customers").select("total_debt"),
                 supabase
                     .from("orders")
                     .select("*", { count: "exact", head: true }),
@@ -49,19 +88,8 @@ export function useDashboardStats() {
                     .in("status", ["Ready", "Completed"]),
             ]);
 
-            if (revenueRes.error) throw revenueRes.error;
             if (custRes.error) throw custRes.error;
             if (pendRes.error) throw pendRes.error;
-            if (debtRes.error) throw debtRes.error;
-
-            const totalRevenue = (revenueRes.data || []).reduce(
-                (s, p) => s + Number(p.amount),
-                0,
-            );
-            const totalDebt = (debtRes.data || []).reduce(
-                (s, c) => s + Number(c.total_debt),
-                0,
-            );
 
             return {
                 totalRevenue,
@@ -95,12 +123,42 @@ export function useMonthlyRevenue() {
     return useQuery({
         queryKey: ["stats", "monthly"],
         queryFn: async (): Promise<MonthlyRevenue[]> => {
-            const { data, error } = await supabase
-                .from("payments")
-                .select("amount, payment_time")
-                .order("payment_time", { ascending: false });
+            const monthMap = new Map<string, number>();
 
-            if (error) throw error;
+            // Gộp theo tháng bằng SQL. Trước đây lấy thẳng bảng payments nên chỉ
+            // thấy 1000 lượt thanh toán mới nhất — biểu đồ mất sạch tháng cũ.
+            const { data: agg, error: aggErr } = await supabase.rpc(
+                "get_monthly_revenue",
+            );
+            if (!aggErr && Array.isArray(agg)) {
+                for (const row of agg) {
+                    monthMap.set(
+                        String(row.month_key),
+                        Number(row.revenue ?? 0),
+                    );
+                }
+            } else {
+                // Dự phòng khi hàm SQL chưa được áp lên Supabase.
+                const payments = await fetchAllPages<{
+                    amount: number;
+                    payment_time: string;
+                }>((from, to) =>
+                    supabase
+                        .from("payments")
+                        .select("amount, payment_time")
+                        .order("id", { ascending: true })
+                        .range(from, to),
+                );
+                for (const p of payments) {
+                    const d = parsePaymentTime(p.payment_time);
+                    if (d == null) continue;
+                    const key = monthKeyLocal(d);
+                    monthMap.set(
+                        key,
+                        (monthMap.get(key) || 0) + Number(p.amount),
+                    );
+                }
+            }
 
             const monthNames = [
                 "T1",
@@ -116,21 +174,12 @@ export function useMonthlyRevenue() {
                 "T11",
                 "T12",
             ];
-            const monthMap = new Map<string, number>();
-
-            for (const p of data || []) {
-                const d = parsePaymentTime(p.payment_time);
-                if (d == null) continue;
-                const key = monthKeyLocal(d);
-                monthMap.set(key, (monthMap.get(key) || 0) + Number(p.amount));
-            }
 
             const now = new Date();
             const last12Keys = new Set<string>();
             for (let i = 11; i >= 0; i--) {
                 const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-                const key = monthKeyLocal(d);
-                last12Keys.add(key);
+                last12Keys.add(monthKeyLocal(d));
             }
 
             const allKeys = new Set<string>([
@@ -501,19 +550,24 @@ async function fetchPeriodAnalytics(
             ...ordersReturnedRaw.map((o) => o.id),
         ]),
     ];
-    const { data: paymentsForOrders, error: paymentsForOrdersErr } =
-        allOrderIdsForPayment.length > 0
-            ? await supabase
-                  .from("payments")
-                  .select("order_id, payment_method, payment_time")
-                  .in("order_id", allOrderIdsForPayment)
-            : { data: [], error: null };
-    if (paymentsForOrdersErr) throw paymentsForOrdersErr;
+    // Chia lô bắt buộc: chọn kỳ "Năm" cho ra vài nghìn order id, nhét hết vào một
+    // filter in.(...) làm URL dài ~35KB và Supabase trả HTTP 400.
+    const paymentsForOrders = await fetchByIdChunks<
+        { order_id: number; payment_method: string; payment_time: string },
+        number
+    >(allOrderIdsForPayment, (ids, from, to) =>
+        supabase
+            .from("payments")
+            .select("order_id, payment_method, payment_time")
+            .in("order_id", ids)
+            .order("id", { ascending: true })
+            .range(from, to),
+    );
     const latestPaymentByOrder = new Map<
         number,
         { method: "Cash" | "Card" | "Transfer"; time: number }
     >();
-    for (const p of paymentsForOrders || []) {
+    for (const p of paymentsForOrders) {
         const ts = new Date(p.payment_time).getTime();
         const prev = latestPaymentByOrder.get(p.order_id);
         if (!prev || ts > prev.time) {
@@ -530,15 +584,18 @@ async function fetchPeriodAnalytics(
         ...ordersRevenueRaw.map((o) => o.customer_id),
     ];
     const detailOrderIdsForCreated = [...new Set(detailsCreatedRaw.map((d) => d.order_id))];
-    const { data: ordersForDetailRows, error: ordersForDetErr } =
-        detailOrderIdsForCreated.length > 0
-            ? await supabase
-                  .from("orders")
-                  .select("id, customer_id")
-                  .in("id", detailOrderIdsForCreated)
-            : { data: [], error: null };
-    if (ordersForDetErr) throw ordersForDetErr;
-    for (const o of ordersForDetailRows || [])
+    const ordersForDetailRows = await fetchByIdChunks<
+        { id: number; customer_id: number },
+        number
+    >(detailOrderIdsForCreated, (ids, from, to) =>
+        supabase
+            .from("orders")
+            .select("id, customer_id")
+            .in("id", ids)
+            .order("id", { ascending: true })
+            .range(from, to),
+    );
+    for (const o of ordersForDetailRows)
         custIds.push(o.customer_id);
 
     const customerMap = await fetchCustomerNames(custIds);
@@ -660,13 +717,29 @@ async function fetchPeriodAnalytics(
     const listRetIds = ordersReturnedRaw.map((o) => o.id);
     let itemsReturned: DashboardPeriodItemRow[] = [];
     if (listRetIds.length > 0) {
-        const { data: rd, error: rdErr } = await supabase
-            .from("order_details")
-            .select("id, order_id, item_name, status, created_at")
-            .in("order_id", listRetIds)
-            .order("created_at", { ascending: false })
-            .limit(400);
-        if (rdErr) throw rdErr;
+        // Chia lô để URL không phình theo số đơn trong kỳ; vẫn giữ trần 400 dòng
+        // hiển thị như cũ, nhưng lấy đúng 400 dòng mới nhất trên toàn bộ các lô.
+        const rdAll = await fetchByIdChunks<
+            {
+                id: number;
+                order_id: number;
+                item_name: string;
+                status: string;
+                created_at: string;
+            },
+            number
+        >(listRetIds, (ids, from, to) =>
+            supabase
+                .from("order_details")
+                .select("id, order_id, item_name, status, created_at")
+                .in("order_id", ids)
+                .order("created_at", { ascending: false })
+                .order("id", { ascending: false })
+                .range(from, to),
+        );
+        const rd = rdAll
+            .sort((a, b) => b.created_at.localeCompare(a.created_at))
+            .slice(0, 400);
         const retMeta = new Map<
             number,
             { return_time: string; customer_id: number | null }
