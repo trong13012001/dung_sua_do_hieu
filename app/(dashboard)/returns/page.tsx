@@ -11,19 +11,27 @@ import {
   Clock,
   Scissors
 } from 'lucide-react';
-import { useOrders, useUpdateOrder } from '@/api/orders';
+import {
+  RETURNS_PAGE_SIZE,
+  useReturnsCounts,
+  useReturnsOrders,
+  useUpdateOrder,
+} from '@/api/orders';
 import { Modal } from '@/components/ui/Modal';
+import { Pagination } from '@/components/ui/Pagination';
 import { Toast, useToast } from '@/components/ui/Toast';
 import { useDebounce } from '@/hooks/useDebounce';
 import { Order } from '@/lib/types';
 import {
+  ORDER_STATUSES_ALLOW_COUNTER_DELIVERY,
   canMarkOrderDeliveredAtCounter,
   orderStatusLabelVi,
   resolveStatusWhenMarkingDelivered,
 } from '@/lib/orderStatusUi';
 
+const DELIVERED_STATUSES = ['Delivered', 'DeliveredOwing'] as const;
+
 export default function ReturnsPage() {
-  const { data: orders, isLoading } = useOrders();
   const {
     mutateAsync: mutateAsyncUpdateOrder,
     isPending: isPendingUpdateOrder,
@@ -35,25 +43,29 @@ export default function ReturnsPage() {
   const [tab, setTab] = useState<'ready' | 'delivered'>('ready');
   const [returningOrder, setReturningOrder] = useState<Order | null>(null);
 
-  const readyOrders = orders?.filter(o => {
-    if (!canMarkOrderDeliveredAtCounter(o.status)) return false;
-    const matchSearch = !debouncedSearch ||
-      o.id.toString().includes(debouncedSearch) ||
-      o.customer?.name?.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
-      o.customer?.phone?.includes(debouncedSearch);
-    return matchSearch;
-  }) || [];
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(RETURNS_PAGE_SIZE);
 
-  const deliveredOrders = orders?.filter(o => {
-    if (o.status !== 'Delivered' && o.status !== 'DeliveredOwing') return false;
-    const matchSearch = !debouncedSearch ||
-      o.id.toString().includes(debouncedSearch) ||
-      o.customer?.name?.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
-      o.customer?.phone?.includes(debouncedSearch);
-    return matchSearch;
-  }) || [];
+  // Lọc theo trạng thái + tìm kiếm chạy ở phía DB. Lọc ở client như trước sẽ chỉ
+  // thấy 100 đơn mới nhất, khách mang phiếu cũ tới lấy đồ là không tra ra.
+  const { data: ordersPage, isLoading, isFetching } = useReturnsOrders(
+    tab === 'ready' ? ORDER_STATUSES_ALLOW_COUNTER_DELIVERY : DELIVERED_STATUSES,
+    debouncedSearch,
+    page,
+    pageSize,
+  );
+  const orders = ordersPage?.data;
+  const matchedCount = ordersPage?.count ?? 0;
 
-  const displayedOrders = tab === 'ready' ? readyOrders : deliveredOrders;
+
+  const { data: counts } = useReturnsCounts(
+    ORDER_STATUSES_ALLOW_COUNTER_DELIVERY,
+    DELIVERED_STATUSES,
+  );
+  const readyCount = counts?.ready ?? 0;
+  const deliveredCount = counts?.delivered ?? 0;
+
+  const displayedOrders = orders || [];
 
   const handleReturn = async () => {
     if (!returningOrder) return;
@@ -84,32 +96,38 @@ export default function ReturnsPage() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
         <h4 className="text-lg md:text-xl font-bold text-foreground">Trả đồ cho khách</h4>
         <div className="flex items-center gap-3 text-xs font-bold">
-          <span className="px-2.5 py-1 rounded-md bg-success/10 text-success">Chờ trả: {orders?.filter(o => canMarkOrderDeliveredAtCounter(o.status)).length || 0}</span>
-          <span className="px-2.5 py-1 rounded-md bg-primary/10 text-primary">Đã trả: {orders?.filter(o => o.status === 'Delivered' || o.status === 'DeliveredOwing').length || 0}</span>
+          <span className="px-2.5 py-1 rounded-md bg-success/10 text-success">Chờ trả: {readyCount}</span>
+          <span className="px-2.5 py-1 rounded-md bg-primary/10 text-primary">Đã trả: {deliveredCount}</span>
         </div>
       </div>
 
       {/* Tabs */}
       <div className="flex gap-1 p-1 bg-muted/30 rounded-lg w-fit">
         <button
-          onClick={() => setTab('ready')}
+          onClick={() => { setTab('ready'); setPage(1); }}
           className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${tab === 'ready' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
         >
-          <Clock size={14} className="inline mr-1.5" />Chờ trả ({readyOrders.length})
+          <Clock size={14} className="inline mr-1.5" />Chờ trả ({readyCount})
         </button>
         <button
-          onClick={() => setTab('delivered')}
+          onClick={() => { setTab('delivered'); setPage(1); }}
           className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${tab === 'delivered' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
         >
-          <CheckCircle2 size={14} className="inline mr-1.5" />Đã trả ({deliveredOrders.length})
+          <CheckCircle2 size={14} className="inline mr-1.5" />Đã trả ({deliveredCount})
         </button>
       </div>
 
       {/* Search */}
       <div className="relative max-w-md">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
-        <input type="text" placeholder="Tìm mã đơn, tên hoặc SĐT khách..." className="w-full bg-card border border-border rounded-md pl-10 pr-4 py-2.5 text-sm outline-none focus:ring-1 focus:ring-primary" value={search} onChange={e => setSearch(e.target.value)} />
+        <input type="text" placeholder="Tìm mã đơn, tên hoặc SĐT khách..." className="w-full bg-card border border-border rounded-md pl-10 pr-4 py-2.5 text-sm outline-none focus:ring-1 focus:ring-primary" value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
       </div>
+
+      {debouncedSearch.trim() !== '' && (
+        <p className="text-xs text-muted-foreground italic">
+          Tìm thấy {matchedCount} đơn khớp.
+        </p>
+      )}
 
       {/* Order list */}
       <div className="space-y-3">
@@ -193,6 +211,20 @@ export default function ReturnsPage() {
             </p>
           </div>
         )}
+
+        <Pagination
+          page={page}
+          totalCount={matchedCount}
+          pageSize={pageSize}
+          onPageChange={setPage}
+          onPageSizeChange={size => {
+            setPageSize(size);
+            setPage(1);
+          }}
+          isFetching={isFetching}
+          unitLabel="đơn"
+          className="pt-2"
+        />
       </div>
 
       {/* Return Confirmation Modal */}

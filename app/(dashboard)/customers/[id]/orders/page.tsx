@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import {
   ChevronLeft,
@@ -18,10 +18,11 @@ import {
   Search,
   Loader2,
 } from 'lucide-react';
-import { useGetCustomerOrders } from '@/hooks/customer/useGetCustomerOrders';
+import { useGetCustomerOrdersPage } from '@/hooks/customer/useGetCustomerOrdersPage';
 import { useGetCustomerDetail } from '@/hooks/customer/useGetCustomerDetail';
 import { useOrderLogs } from '@/api/orderLogs';
 import {
+  CUSTOMER_ORDERS_PAGE_SIZE,
   getOrder,
   useAddOrderDetails,
   useDeleteOrder,
@@ -32,6 +33,7 @@ import {
 } from '@/api/orders';
 import { useEmployees } from '@/api/users';
 import { Modal } from '@/components/ui/Modal';
+import { Pagination } from '@/components/ui/Pagination';
 import { OrderDetailModal } from '@/components/ui/OrderDetailModal';
 import {
   EditOrderForm,
@@ -119,12 +121,22 @@ export default function CustomerOrdersPage() {
   const { mutateAsync: mutateAsyncDeleteOrder, isPending: isPendingDeleteOrder } = useDeleteOrder();
 
   const { data: customer, isLoading: isLoadingCustomer } = useGetCustomerDetail(customerId);
-  const { data: orders, isLoading: isLoadingOrders } = useGetCustomerOrders(customerId);
 
   const selectedOrderId = searchParams.get('orderId');
 
   const [searchTerm, setSearchTerm] = useState('');
   const debouncedSearch = useDebounce(searchTerm, 400);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(CUSTOMER_ORDERS_PAGE_SIZE);
+
+  const {
+    data: ordersPage,
+    isLoading: isLoadingOrders,
+    isFetching: isFetchingOrders,
+  } = useGetCustomerOrdersPage(customerId, page, debouncedSearch, pageSize);
+
+  const orders = ordersPage?.data;
+  const totalOrders = ordersPage?.count ?? 0;
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [deletingDetailId, setDeletingDetailId] = useState<number | null>(null);
   const [deletingOrder, setDeletingOrder] = useState<Order | null>(null);
@@ -133,23 +145,8 @@ export default function CustomerOrdersPage() {
   const [labelOrder, setLabelOrder] = useState<Order | null>(null);
   const [labelLineIndices, setLabelLineIndices] = useState<number[] | null>(null);
 
-  const filteredOrders = useMemo(() => {
-    if (!orders) return [];
-    const kw = debouncedSearch.trim().toLowerCase();
-    if (!kw) return orders;
-    return orders.filter((order: Order) => {
-      if (String(order.id).includes(kw)) return true;
-      if (order.transaction_code?.toLowerCase().includes(kw)) return true;
-      if (orderStatusLabelVi(order.status).toLowerCase().includes(kw)) return true;
-      return (
-        order.details?.some(
-          (d) =>
-            d.item_name?.toLowerCase().includes(kw) ||
-            d.description?.toLowerCase().includes(kw),
-        ) ?? false
-      );
-    });
-  }, [orders, debouncedSearch]);
+  // Lọc (mã đơn, mã giao dịch, trạng thái, tên/mô tả sản phẩm) đã chạy ở phía DB.
+  const filteredOrders = orders ?? [];
   const tailors =
     employees?.filter((e: User & { role: Role | null }) => e.role?.name === 'Thợ may') || [];
 
@@ -384,10 +381,8 @@ export default function CustomerOrdersPage() {
           <div className="bg-success/10 text-success px-3 md:px-4 py-1.5 md:py-2 rounded-lg border border-success/20 flex items-center gap-2">
             <Receipt size={16} className="md:w-[18px] md:h-[18px]" />
             <span className="text-[10px] md:text-sm font-bold uppercase tracking-wider">
-              Tổng đơn:{' '}
-              {debouncedSearch.trim() && orders
-                ? `${filteredOrders.length}/${orders.length}`
-                : orders?.length || 0}
+              {debouncedSearch.trim() ? 'Kết quả: ' : 'Tổng đơn: '}
+              {totalOrders}
             </span>
           </div>
         </div>
@@ -403,7 +398,11 @@ export default function CustomerOrdersPage() {
           placeholder="Tìm mã đơn, sản phẩm, trạng thái..."
           className="w-full bg-card border border-border rounded-md pl-10 pr-4 py-2.5 text-sm outline-none focus:ring-1 focus:ring-primary"
           value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
+          onChange={(e) => {
+            // Tìm kiếm chạy ở phía DB nên phải quay về trang 1 mỗi khi đổi từ khoá.
+            setSearchTerm(e.target.value);
+            setPage(1);
+          }}
         />
       </div>
 
@@ -587,6 +586,20 @@ export default function CustomerOrdersPage() {
               <p className="text-muted-foreground font-medium italic">Không tìm thấy đơn hàng nào cho khách hàng này.</p>
             </div>
           )}
+
+          <Pagination
+            page={page}
+            totalCount={totalOrders}
+            pageSize={pageSize}
+            onPageChange={setPage}
+            onPageSizeChange={(size) => {
+              setPageSize(size);
+              setPage(1);
+            }}
+            isFetching={isFetchingOrders}
+            unitLabel="đơn"
+            className="pt-2"
+          />
         </div>
       </div>
 

@@ -15,8 +15,12 @@ export async function getCustomers({ page = 0, pageSize = 10, searchTerm = '' } 
     );
   }
 
+  // Khoá phụ `id` là bắt buộc: rất nhiều khách trùng tên (vd 19 khách "A AN").
+  // Chỉ sort theo `name` thì thứ tự giữa các dòng bằng nhau không xác định, nên
+  // phân trang offset sẽ trả lặp dòng ở trang này và bỏ sót khách ở trang khác.
   const { data, error, count } = await query
     .order('name')
+    .order('id', { ascending: true })
     .range(from, to);
 
   if (error) throw error;

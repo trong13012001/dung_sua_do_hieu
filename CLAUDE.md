@@ -19,7 +19,21 @@ npm run lint         # eslint (flat config, eslint.config.mjs)
 npm run electron     # run the Electron shell (needs the web app reachable — see below)
 ```
 
-There is **no test suite** and no test runner configured. "Verify" means `npm run lint` + `npm run build`.
+There is **no test suite** and no test runner configured. "Verify" means `npx tsc --noEmit` + `npm run lint` + `npm run build` — see the `verifying-changes` skill (lint has a large pre-existing error baseline; compare counts, don't chase zero).
+
+## Skills
+
+Project skills live in `.claude/skills/` and load automatically when relevant. They follow the `superpowers:writing-skills` conventions (description = trigger conditions only, never a workflow summary).
+
+| Skill | Triggers on |
+| --- | --- |
+| `karpathy-guidelines` | Writing / reviewing / refactoring — surface assumptions, keep it minimal, edit surgically. Verbatim mirror of [multica-ai/andrej-karpathy-skills](https://github.com/multica-ai/andrej-karpathy-skills) and of `.cursor/rules/karpathy-guidelines.mdc`; edit both or they drift |
+| `verifying-changes` | About to claim something works — no test suite, lint has an error baseline |
+| `paginating-lists` | Any list, table, report, export or aggregate — see the PostgREST caps below |
+| `changing-supabase-schema` | New SQL: table, column, function, trigger, permission |
+| `changing-thermal-printing` | Invoice / label printing |
+
+[superpowers](https://github.com/obra/superpowers) (brainstorming, writing-plans, systematic-debugging, code review) is a **per-machine** plugin, not committed here — install it with `/plugin install superpowers@claude-plugins-official`. Note that `superpowers:test-driven-development` assumes a test runner, which this repo does not have; here RED-GREEN means reproducing the bug against real data first, fixing, then re-proving it the same way.
 
 ### Running Electron locally
 
@@ -43,6 +57,10 @@ There is **no test suite** and no test runner configured. "Verify" means `npm ru
 - **Two Supabase clients.** `lib/supabase.ts` is the browser client (anon key, custom auth lock + realtime auto-reconnect). `lib/supabase-server.ts`'s `createSupabaseAdmin()` is service-role and **must stay server-side** (API routes / server components only).
 - **Schema is managed by hand-applied SQL**, not an ORM or migration tool. `supabase_schema.sql` is the canonical dump; each `supabase_migration_*.sql` is a one-off change applied through the Supabase dashboard. When you change the DB, add a new `supabase_migration_*.sql` file and update `supabase_schema.sql` to match. Business logic partly lives in Postgres functions/triggers (e.g. `increment_order_payment`, `recalculate_customer_debt`, the 11-digit `transaction_code` trigger) — check the SQL before reimplementing such logic in TS.
 - **`api/*.ts` are the React Query hook modules** (one per domain: `orders`, `customers`, `payments`, `users`, `roles`, `permissions`, `stats`, `shopSettings`, `orderLogs`). They wrap Supabase calls in `useQuery`/`useMutation`/`useInfiniteQuery`. Components consume these hooks, plus the thin per-domain hooks under `hooks/<domain>/`.
+- **PostgREST trả tối đa 1000 dòng/request** (mặc định Supabase) và **cắt im lặng**. Dùng `lib/supabasePaging.ts` (`fetchAllPages`, `fetchByIdChunks`) cho mọi query có thể vượt 1000 dòng. Filter `in.(...)` cũng phải chia lô: ~1500 id là URL quá dài và Supabase trả HTTP 400.
+- **Offset pagination phải có khoá phụ duy nhất.** `created_at` và `customers.name` đều không unique trong dữ liệu thật (1613/3000 đơn trùng `created_at`; 19 khách cùng tên "A AN"), nên sort thiếu `.order("id")` sẽ làm dòng lặp ở trang này và biến mất ở trang khác.
+- **Tổng tiền phải cộng bằng SQL**, không kéo dòng về client: `get_dashboard_stats()` / `get_monthly_revenue()`.
+- **Một khuôn phân trang duy nhất.** `components/ui/Pagination.tsx` (nút số trang + ô "Hiển thị mỗi trang") dùng cho mọi màn danh sách; `fetchPage()` trong `lib/supabasePaging.ts` trả `{ data, count }`. Trang **đếm từ 1** ở mọi nơi. Đưa `page` về 1 ngay trong handler đổi từ khoá / tab / số dòng — ESLint của repo chặn `setState` đồng bộ trong `useEffect`.
 - **Query-key invalidation is centralized and broad.** `invalidateOrderRelatedQueries(qc)` in `api/orders.ts` is the canonical list of order-related keys (`orders`, `orders-infinite`, `orders-page`, `stats`, `payments`, `all-order-items`, `customers`, …). Reuse it after any order/payment mutation rather than invalidating ad hoc, or keys will drift.
 - **Realtime.** `hooks/useRealtimeSubscription.ts` (mounted once in the dashboard layout) subscribes to `orders` / `order_details` / `payments` postgres changes and invalidates queries, with a 25s polling fallback + visibility-refetch + auto-reconnect because Realtime drops on phones. Order-status changes also fire `notifyOrderStatusUpdate` (`lib/orderNotification.ts`).
 
@@ -61,7 +79,7 @@ App Router. Real screens live under `app/(dashboard)/` (orders, pos, customers, 
 
 ### Printing (the non-obvious subsystem)
 
-Browsers can't print silently, so printing fans out across methods. `lib/printSmart.ts` decides between: Electron IPC (`window.electronThermalPrint`, Windows only), a local print agent, or a browser print dialog fallback. `lib/print/` holds the HTML builders and thermal metrics (58mm/80mm `@page` sizing matters — see comments tying `invoiceThermalMetrics.ts` to `main.cjs`). Printer **names** are resolved from shop settings (DB) and synced into a cache (`ShopSettingsSync` provider → `lib/print/shopPrinterCache.ts`); on Windows the device name is fuzzy-matched against `getPrintersAsync()` in `main.cjs`. Two physical printers: invoice (XP-80C) and label (XP-235B). Before touching anything here, read `electron/README.md`.
+Browsers can't print silently, so printing fans out across methods. `lib/printSmart.ts` decides between: Electron IPC (`window.electronThermalPrint`, Windows only), a local print agent, or a browser print dialog fallback. `lib/print/` holds the HTML builders and thermal metrics (58mm/80mm `@page` sizing matters — see comments tying `invoiceThermalMetrics.ts` to `main.cjs`). Printer **names** are resolved from shop settings (DB) and synced into a cache (`ShopSettingsSync` provider → `lib/print/shopPrinterCache.ts`); on Windows the device name is fuzzy-matched against `getPrintersAsync()` in `main.cjs`. Two physical printers: invoice (XP-80C) and label (XP-235B). Creating an order at the POS screen immediately queues both prints: `buildOrderForInvoicePrint` builds a print-shaped order, then `printTargetElementSmart` renders `<InvoicePrint>` and `<ItemLabelsPrint>`. Before touching anything here, read `electron/README.md`.
 
 ## Domain model notes
 
@@ -74,4 +92,6 @@ Browsers can't print silently, so printing fans out across methods. `lib/printSm
 
 - Path alias `@/*` → repo root (`tsconfig.json`). TypeScript `strict` is on.
 - Comments and UI copy are in Vietnamese; match that when editing existing files.
-- `.cursor/rules/karpathy-guidelines.mdc` (always-applied) asks for: surface assumptions/tradeoffs before coding, minimal non-speculative changes, surgical edits that match existing style, and don't delete pre-existing dead code — mention it instead.
+- **No silent caps.** Where a hard `.limit()` is unavoidable (`TASK_STATUS_LIMIT`, `EXPORT_MAX_ORDERS`), the UI must say so — a column badge, a toast, a note under the list. A cap the user cannot see reads as "that is all the data".
+- `README.md` is untouched `create-next-app` boilerplate; nothing project-specific lives there.
+- `.cursor/rules/karpathy-guidelines.mdc` (always-applied in Cursor; mirrored as the `karpathy-guidelines` skill for Claude Code) asks for: surface assumptions/tradeoffs before coding, minimal non-speculative changes, surgical edits that match existing style, and don't delete pre-existing dead code — mention it instead.
