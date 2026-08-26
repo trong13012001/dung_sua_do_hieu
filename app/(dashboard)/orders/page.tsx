@@ -26,6 +26,7 @@ import {
     useAddOrderDetails,
     useDeleteOrder,
     useDeleteOrderDetail,
+    EXPORT_MAX_ORDERS,
     fetchOrdersForExport,
     type OrdersFilters,
     type NewOrderDetailItem,
@@ -36,6 +37,7 @@ import { useEmployees } from "@/api/users";
 import { useCurrentUserId } from "@/hooks/useCurrentUserId";
 import { useGetOrder } from "@/hooks/order/useGetOrder";
 import { Modal } from "@/components/ui/Modal";
+import { Pagination } from "@/components/ui/Pagination";
 import { Toast, useToast } from "@/components/ui/Toast";
 import {
     InvoicePrint,
@@ -188,7 +190,7 @@ function OrderLogSection({ orderId }: { orderId: number | null }) {
 }
 
 export default function OrdersPage() {
-    const PAGE_SIZE = 25;
+    const [pageSize, setPageSize] = useState(25);
     const router = useRouter();
     const searchParams = useSearchParams();
     const currentUserId = useCurrentUserId();
@@ -294,11 +296,10 @@ export default function OrdersPage() {
     const { data, isLoading, isFetching } = useOrdersPage(
         filters,
         page,
-        PAGE_SIZE,
+        pageSize,
     );
     const orders = data?.items ?? [];
     const totalOrders = data?.total ?? 0;
-    const totalPages = Math.max(1, Math.ceil(totalOrders / PAGE_SIZE));
     const deepLinkEditIdRaw = searchParams.get("editOrderId");
     const deepLinkEditId = deepLinkEditIdRaw
         ? Number(deepLinkEditIdRaw)
@@ -687,7 +688,12 @@ export default function OrdersPage() {
                 wb,
                 `don-hang-${startDate || "start"}-${endDate || "end"}.xlsx`,
             );
-            showToast("Đã xuất Excel", "success");
+            showToast(
+                rows.length >= EXPORT_MAX_ORDERS
+                    ? `Đã xuất ${rows.length} đơn (chạm trần ${EXPORT_MAX_ORDERS} đơn/lần — lọc theo khoảng ngày để xuất phần còn lại)`
+                    : `Đã xuất Excel (${rows.length} đơn)`,
+                "success",
+            );
         } catch (err: any) {
             showToast("Lỗi: " + err.message, "error");
         } finally {
@@ -781,8 +787,7 @@ export default function OrdersPage() {
                     Quản lý đơn hàng
                 </h4>
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <ShoppingBag size={16} /> Tổng: {totalOrders} · Trang {page}/
-                    {totalPages}
+                    <ShoppingBag size={16} /> Tổng: {totalOrders} đơn
                 </div>
             </div>
 
@@ -1165,27 +1170,19 @@ export default function OrdersPage() {
                             );
                         })}
                         <div className="py-4 flex items-center justify-center gap-3">
-                            <button
-                                type="button"
-                                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                                disabled={page <= 1 || isFetching}
-                                className="px-3 py-1.5 rounded-md border border-border text-sm disabled:opacity-50"
-                            >
-                                Prev
-                            </button>
-                            <span className="text-xs text-muted-foreground tabular-nums">
-                                {page}/{totalPages}
-                            </span>
-                            <button
-                                type="button"
-                                onClick={() =>
-                                    setPage((p) => Math.min(totalPages, p + 1))
-                                }
-                                disabled={page >= totalPages || isFetching}
-                                className="px-3 py-1.5 rounded-md border border-border text-sm disabled:opacity-50"
-                            >
-                                Next
-                            </button>
+                            <Pagination
+                                page={page}
+                                totalCount={totalOrders}
+                                pageSize={pageSize}
+                                onPageChange={setPage}
+                                onPageSizeChange={(size) => {
+                                    setPageSize(size);
+                                    setPage(1);
+                                }}
+                                pageSizeOptions={[25, 50, 100]}
+                                isFetching={isFetching}
+                                unitLabel="đơn"
+                            />
                             {isFetching && (
                                 <Loader2
                                     className="animate-spin text-primary"

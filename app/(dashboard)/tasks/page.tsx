@@ -19,7 +19,7 @@ import {
     Draggable,
     DropResult,
 } from "@hello-pangea/dnd";
-import { useAllOrderItems, useUpdateOrderDetail } from "@/api/orders";
+import { TASK_STATUS_LIMIT, useAllOrderItems, useUpdateOrderDetail } from "@/api/orders";
 import { useEmployees } from "@/api/users";
 import { Modal } from "@/components/ui/Modal";
 import { Toast, useToast } from "@/components/ui/Toast";
@@ -68,13 +68,15 @@ interface TaskItem {
 }
 
 export default function TasksPage() {
-    const { data: allTasks, isLoading } = useAllOrderItems();
+    const [search, setSearch] = useState("");
+    const debouncedSearch = useDebounce(search, 400);
+
+    // Tìm kiếm chạy ở phía DB: bảng chỉ tải TASK_STATUS_LIMIT món mới nhất mỗi
+    // cột, nên lọc phía client sẽ không bao giờ thấy món cũ.
+    const { data: allTasks, isLoading } = useAllOrderItems(debouncedSearch);
     const { data: employees } = useEmployees();
     const { mutateAsync, isPending } = useUpdateOrderDetail();
     const { toast, showToast, hideToast } = useToast();
-
-    const [search, setSearch] = useState("");
-    const debouncedSearch = useDebounce(search, 400);
     const [tailorFilter, setTailorFilter] = useState("");
     const [editingTask, setEditingTask] = useState<TaskItem | null>(null);
     const [editTailorId, setEditTailorId] = useState("");
@@ -86,18 +88,11 @@ export default function TasksPage() {
 
     const tasks = allTasks || [];
 
-    const filteredTasks = tasks.filter((t: TaskItem) => {
-        const matchSearch =
-            !debouncedSearch ||
-            t.orderNumber.toString().includes(debouncedSearch) ||
-            t.item_name.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
-            t.customerName
-                .toLowerCase()
-                .includes(debouncedSearch.toLowerCase());
-        const matchTailor =
-            !tailorFilter || String(t.assigned_tailor_id) === tailorFilter;
-        return matchSearch && matchTailor;
-    });
+    // Tìm kiếm (tên món, mã đơn, tên/SĐT khách) đã chạy hết ở phía DB.
+    const filteredTasks = tasks.filter(
+        (t: TaskItem) =>
+            !tailorFilter || String(t.assigned_tailor_id) === tailorFilter,
+    );
 
     const tasksByColumn = COLUMNS.reduce(
         (acc, col) => {
@@ -255,6 +250,19 @@ export default function TasksPage() {
                                             {col.label} (
                                             {tasksByColumn[col.id]?.length ?? 0}
                                             )
+                                            {(tasks.filter(
+                                                (t: TaskItem) =>
+                                                    t.status === col.id,
+                                            ).length ?? 0) >=
+                                                TASK_STATUS_LIMIT && (
+                                                <span
+                                                    className="ml-1 normal-case font-medium text-muted-foreground"
+                                                    title={`Chỉ hiển thị ${TASK_STATUS_LIMIT} món mới nhất của cột này. Gõ tên sản phẩm hoặc mã đơn vào ô tìm kiếm để tìm cả món cũ hơn.`}
+                                                >
+                                                    · {TASK_STATUS_LIMIT} mới
+                                                    nhất
+                                                </span>
+                                            )}
                                         </p>
                                         <div className="space-y-2">
                                             {(tasksByColumn[col.id] || []).map(

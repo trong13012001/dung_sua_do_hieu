@@ -10,15 +10,14 @@ import {
   History,
   X,
   Edit2,
-  Trash2,
-  ChevronLeft,
-  ChevronRight
+  Trash2
 } from 'lucide-react';
 import { useGetCustomer } from '@/hooks/customer/useGetCustomer';
 import { useCreateCustomer } from '@/hooks/customer/useCreateCustomer';
 import { useUpdateCustomer } from '@/hooks/customer/useUpdateCustomer';
 import { useDeleteCustomer } from '@/hooks/customer/useDeleteCustomer';
 import { Modal } from '@/components/ui/Modal';
+import { Pagination } from '@/components/ui/Pagination';
 import { Toast, useToast } from '@/components/ui/Toast';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useRouter } from 'next/navigation';
@@ -29,15 +28,16 @@ export default function CustomersPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const debouncedSearchTerm = useDebounce(searchTerm, 500);
   const router = useRouter();
-  const [page, setPage] = useState(0);
-  const pageSize = 9;
-  const { data: customerData, isLoading } = useGetCustomer(page, pageSize, debouncedSearchTerm);
+  // Trang đếm từ 1 cho thống nhất với <Pagination> và các màn danh sách khác.
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(9);
+  const { data: customerData, isLoading, isFetching } = useGetCustomer(page - 1, pageSize, debouncedSearchTerm);
   const customers = customerData?.data || [];
   const totalCount = customerData?.count || 0;
 
   // Reset page when search term changes
   useEffect(() => {
-    setPage(0);
+    setPage(1);
   }, [debouncedSearchTerm]);
 
   const {
@@ -59,8 +59,6 @@ export default function CustomersPage() {
   const [deletingCustomer, setDeletingCustomer] = useState<Customer | null>(null);
   const [formData, setFormData] = useState({ name: '', phone: '', address: '' });
   const [formErrors, setFormErrors] = useState<{ name?: string; phone?: string; address?: string }>({});
-
-  const totalPages = Math.ceil(totalCount / pageSize);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -210,28 +208,20 @@ export default function CustomersPage() {
         )}
       </div>
 
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex justify-center items-center gap-4 mt-8">
-          <button
-            disabled={page === 0}
-            onClick={() => setPage(p => p - 1)}
-            className="p-2 rounded-md border border-border bg-card text-foreground disabled:opacity-50 hover:bg-muted transition-colors"
-          >
-            <ChevronLeft size={20} />
-          </button>
-          <span className="text-sm font-bold text-muted-foreground uppercase tracking-widest">
-            Trang {page + 1} trên {totalPages}
-          </span>
-          <button
-            disabled={page >= totalPages - 1}
-            onClick={() => setPage(p => p + 1)}
-            className="p-2 rounded-md border border-border bg-card text-foreground disabled:opacity-50 hover:bg-muted transition-colors"
-          >
-            <ChevronRight size={20} />
-          </button>
-        </div>
-      )}
+      <Pagination
+        page={page}
+        totalCount={totalCount}
+        pageSize={pageSize}
+        onPageChange={setPage}
+        onPageSizeChange={(size) => {
+          setPageSize(size);
+          setPage(1);
+        }}
+        pageSizeOptions={[9, 18, 36, 72]}
+        isFetching={isFetching}
+        unitLabel="khách hàng"
+        className="mt-8"
+      />
 
       {/* Add/Edit Modal */}
       <Modal
