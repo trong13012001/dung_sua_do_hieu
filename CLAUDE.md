@@ -19,7 +19,22 @@ npm run lint         # eslint (flat config, eslint.config.mjs)
 npm run electron     # run the Electron shell (needs the web app reachable — see below)
 ```
 
-There is **no test suite** and no test runner configured. "Verify" means `npm run lint` + `npm run build`.
+There is **no test suite** and no test runner configured. "Verify" means `npx tsc --noEmit` + `npm run lint` + `npm run build` — see the `verifying-changes` skill (lint has a large pre-existing error baseline; compare counts, don't chase zero).
+
+## Skills
+
+Bộ skill cộng đồng **[superpowers](https://github.com/obra/superpowers)** đã được cài (`/plugin install superpowers@claude-plugins-official`) — brainstorming, writing-plans, systematic-debugging, requesting-code-review, verification-before-completion… Không commit vào repo; mỗi máy tự cài.
+
+**Lưu ý quan trọng:** `superpowers:test-driven-development` giả định có test runner. Repo này **không có**. Ở đây RED-GREEN nghĩa là: tái hiện lỗi bằng dữ liệu/thao tác thật trước → sửa → chứng minh lại bằng đúng cách đó. Xem skill `verifying-changes`.
+
+Skill riêng của repo nằm ở `.claude/skills/` (viết theo convention của `superpowers:writing-skills`):
+
+| Skill | Kích hoạt khi |
+| --- | --- |
+| `karpathy-guidelines` | Viết / review / refactor code — nêu giả định, làm tối giản, sửa đúng chỗ. Bản gốc: [multica-ai/andrej-karpathy-skills](https://github.com/multica-ai/andrej-karpathy-skills), mirror của `.cursor/rules/karpathy-guidelines.mdc` (Cursor vẫn dùng file kia — sửa thì sửa cả hai) |
+| `verifying-changes` | Sắp báo "xong" — repo không có test, lint có baseline lỗi sẵn |
+| `changing-supabase-schema` | Cần SQL mới: bảng, cột, function, trigger, permission |
+| `changing-thermal-printing` | Động vào in hoá đơn / tem nhiệt |
 
 ### Running Electron locally
 
@@ -43,6 +58,9 @@ There is **no test suite** and no test runner configured. "Verify" means `npm ru
 - **Two Supabase clients.** `lib/supabase.ts` is the browser client (anon key, custom auth lock + realtime auto-reconnect). `lib/supabase-server.ts`'s `createSupabaseAdmin()` is service-role and **must stay server-side** (API routes / server components only).
 - **Schema is managed by hand-applied SQL**, not an ORM or migration tool. `supabase_schema.sql` is the canonical dump; each `supabase_migration_*.sql` is a one-off change applied through the Supabase dashboard. When you change the DB, add a new `supabase_migration_*.sql` file and update `supabase_schema.sql` to match. Business logic partly lives in Postgres functions/triggers (e.g. `increment_order_payment`, `recalculate_customer_debt`, the 11-digit `transaction_code` trigger) — check the SQL before reimplementing such logic in TS.
 - **`api/*.ts` are the React Query hook modules** (one per domain: `orders`, `customers`, `payments`, `users`, `roles`, `permissions`, `stats`, `shopSettings`, `orderLogs`). They wrap Supabase calls in `useQuery`/`useMutation`/`useInfiniteQuery`. Components consume these hooks, plus the thin per-domain hooks under `hooks/<domain>/`.
+- **PostgREST trả tối đa 1000 dòng/request** (mặc định Supabase) và **cắt im lặng**. Dùng `lib/supabasePaging.ts` (`fetchAllPages`, `fetchByIdChunks`) cho mọi query có thể vượt 1000 dòng. Filter `in.(...)` cũng phải chia lô: ~1500 id là URL quá dài và Supabase trả HTTP 400.
+- **Offset pagination phải có khoá phụ duy nhất.** `created_at` và `customers.name` đều không unique trong dữ liệu thật (1613/3000 đơn trùng `created_at`; 19 khách cùng tên "A AN"), nên sort thiếu `.order("id")` sẽ làm dòng lặp ở trang này và biến mất ở trang khác.
+- **Tổng tiền phải cộng bằng SQL**, không kéo dòng về client: `get_dashboard_stats()` / `get_monthly_revenue()`.
 - **Query-key invalidation is centralized and broad.** `invalidateOrderRelatedQueries(qc)` in `api/orders.ts` is the canonical list of order-related keys (`orders`, `orders-infinite`, `orders-page`, `stats`, `payments`, `all-order-items`, `customers`, …). Reuse it after any order/payment mutation rather than invalidating ad hoc, or keys will drift.
 - **Realtime.** `hooks/useRealtimeSubscription.ts` (mounted once in the dashboard layout) subscribes to `orders` / `order_details` / `payments` postgres changes and invalidates queries, with a 25s polling fallback + visibility-refetch + auto-reconnect because Realtime drops on phones. Order-status changes also fire `notifyOrderStatusUpdate` (`lib/orderNotification.ts`).
 
@@ -74,4 +92,4 @@ Browsers can't print silently, so printing fans out across methods. `lib/printSm
 
 - Path alias `@/*` → repo root (`tsconfig.json`). TypeScript `strict` is on.
 - Comments and UI copy are in Vietnamese; match that when editing existing files.
-- `.cursor/rules/karpathy-guidelines.mdc` (always-applied) asks for: surface assumptions/tradeoffs before coding, minimal non-speculative changes, surgical edits that match existing style, and don't delete pre-existing dead code — mention it instead.
+- `.cursor/rules/karpathy-guidelines.mdc` (always-applied in Cursor; mirrored as the `karpathy-guidelines` skill for Claude Code) asks for: surface assumptions/tradeoffs before coding, minimal non-speculative changes, surgical edits that match existing style, and don't delete pre-existing dead code — mention it instead.
