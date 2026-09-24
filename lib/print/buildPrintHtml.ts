@@ -222,6 +222,26 @@ const THERMAL_MERGED_INVOICES_SHIM = `
 }
 `.trim();
 
+/** CSS của một stylesheet đã nạp (CSSOM); `@import` lồng được gộp đệ quy. `""` nếu không đọc được. */
+function cssTextFromLoadedSheet(sheet: CSSStyleSheet | null, depth = 0): string {
+  if (!sheet || depth > 40) return "";
+  let rules: CSSRuleList;
+  try {
+    rules = sheet.cssRules;
+  } catch {
+    return "";
+  }
+  const parts: string[] = [];
+  for (const rule of rules) {
+    if (rule instanceof CSSImportRule) {
+      parts.push(cssTextFromLoadedSheet(rule.styleSheet, depth + 1));
+    } else {
+      parts.push(rule.cssText);
+    }
+  }
+  return parts.join("\n");
+}
+
 export interface BuildPrintableHtmlOptions {
   readonly paperWidthMm?: number;
 }
@@ -238,17 +258,29 @@ export async function buildPrintableHtmlFromElement(
     if (t) styleBlocks.push(t);
   }
 
-  const hrefs = [
-    ...new Set(
-      [...document.querySelectorAll('link[rel="stylesheet"]')]
-        .map((n) => (n as HTMLLinkElement).href)
-        .filter(Boolean),
-    ),
-  ];
+  const links = [
+    ...document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]'),
+  ].filter((n) => Boolean(n.href));
+  const seenHrefs = new Set<string>();
 
-  for (const href of hrefs) {
+  for (const link of links) {
+    const href = link.href;
+    if (seenHrefs.has(href)) continue;
+    seenHrefs.add(href);
+    /* Ưu tiên CSS trình duyệt đã nạp sẵn — không tải lại qua mạng. Tải lại mỗi job (đơn 30 món = 30 lần)
+       dễ lỗi mạng, và sau mỗi lần deploy Vercel file CSS hash cũ trả 404 → job in không có CSS. */
+    const fromDom = cssTextFromLoadedSheet(link.sheet);
+    if (fromDom) {
+      styleBlocks.push(fromDom);
+      continue;
+    }
     const raw = await fetchText(href);
-    if (!raw) continue;
+    if (!raw) {
+      /* Không có CSS thì tem/hóa đơn ra font có chân, chữ to, tràn sang tem sau — báo lỗi thay vì in hỏng. */
+      throw new Error(
+        "Không lấy được CSS để in — tải lại trang (F5) rồi in lại.",
+      );
+    }
     const flattened = await flattenCssImports(
       raw,
       href,
