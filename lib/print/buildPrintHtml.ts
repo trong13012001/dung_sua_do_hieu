@@ -242,6 +242,51 @@ function cssTextFromLoadedSheet(sheet: CSSStyleSheet | null, depth = 0): string 
   return parts.join("\n");
 }
 
+/** data: URL theo src tuyệt đối — logo giống nhau ở mọi job, chỉ tải một lần mỗi phiên. */
+const printImageDataUrlCache = new Map<string, string>();
+
+async function imageSrcToDataUrl(src: string): Promise<string | null> {
+  const cached = printImageDataUrlCache.get(src);
+  if (cached) return cached;
+  try {
+    const res = await fetch(src);
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(blob);
+    });
+    printImageDataUrlCache.set(src, dataUrl);
+    return dataUrl;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Nhúng ảnh (logo hóa đơn) thẳng vào HTML job dưới dạng data: URL.
+ * Job in mở từ file:// trong cửa sổ ẩn và chỉ chờ ~150ms sau `load`; `<img loading="lazy">` của
+ * next/image không giữ `load`, nên nếu tải `/brand-logo.png` qua mạng chậm hơn thì hóa đơn ra không có logo.
+ * Không nhúng được thì giữ src cũ (hành vi như trước).
+ */
+async function inlineImagesForPrintJob(root: HTMLElement): Promise<void> {
+  const imgs = [...root.querySelectorAll("img")];
+  await Promise.all(
+    imgs.map(async (img) => {
+      img.loading = "eager";
+      const src = img.src;
+      if (!src || src.startsWith("data:")) return;
+      const dataUrl = await imageSrcToDataUrl(src);
+      if (!dataUrl) return;
+      img.removeAttribute("srcset");
+      img.removeAttribute("sizes");
+      img.src = dataUrl;
+    }),
+  );
+}
+
 export interface BuildPrintableHtmlOptions {
   readonly paperWidthMm?: number;
 }
@@ -294,6 +339,7 @@ export async function buildPrintableHtmlFromElement(
 
   const wrapper = el.cloneNode(true) as HTMLElement;
   wrapper.querySelectorAll(".non-print").forEach((n) => n.remove());
+  await inlineImagesForPrintJob(wrapper);
 
   const isInvoice =
     wrapper.classList.contains("invoice-xp80c") ||
