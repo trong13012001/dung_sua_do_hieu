@@ -11,6 +11,7 @@ import {
 import { Order, OrderDetail, Payment } from "@/lib/types";
 import { fetchAllPages, fetchByIdChunks } from "@/lib/supabasePaging";
 import { orderStatusLabelVi } from "@/lib/orderStatusUi";
+import { vnDayStartIso, vnNextDayStartIso } from "@/lib/vnDate";
 import { insertOrderLog } from "@/api/orderLogs";
 
 const PAGE_SIZE = 25;
@@ -723,6 +724,8 @@ export function useReturnsOrders(
     search?: string,
     page = 1,
     pageSize = RETURNS_PAGE_SIZE,
+    /** Lọc theo ngày hẹn trả (`gte` ≤ return_time < `lt`); có thì sắp theo ngày hẹn, sớm nhất trước. */
+    returnTime?: ReturnTimeRange,
 ) {
     const term = (search ?? "").trim();
     return useQuery({
@@ -732,6 +735,8 @@ export function useReturnsOrders(
             term,
             page,
             pageSize,
+            returnTime?.gte ?? null,
+            returnTime?.lt ?? null,
         ],
         staleTime: 60_000,
         placeholderData: keepPreviousData,
@@ -766,14 +771,61 @@ export function useReturnsOrders(
                 q = q.or(clauses.join(","));
             }
 
-            const { data, error, count } = await q
-                .order("created_at", { ascending: false })
-                .order("id", { ascending: false })
-                .range(from, to);
+            if (returnTime?.gte) q = q.gte("return_time", returnTime.gte);
+            if (returnTime?.lt) q = q.lt("return_time", returnTime.lt);
+
+            q = returnTime
+                ? q
+                      .order("return_time", { ascending: true })
+                      .order("id", { ascending: true })
+                : q
+                      .order("created_at", { ascending: false })
+                      .order("id", { ascending: false });
+
+            const { data, error, count } = await q.range(from, to);
             if (error) throw error;
             return {
                 data: await enrichOrders(data || [], { skipCreatedBy: true }),
                 count: count ?? 0,
+            };
+        },
+    });
+}
+
+export type ReturnTimeRange = { gte?: string; lt?: string };
+
+/**
+ * Đếm đơn chưa giao hẹn trả hôm nay / đã quá hạn (theo ngày VN `todayYmd`).
+ * Key nằm dưới "returns-counts" nên `invalidateOrderRelatedQueries` làm mới sau khi trả đồ.
+ */
+export function useReturnsDueCounts(
+    pendingStatuses: readonly string[],
+    todayYmd: string,
+) {
+    return useQuery({
+        queryKey: ["returns-counts", "due", [...pendingStatuses].join(","), todayYmd],
+        staleTime: 60_000,
+        queryFn: async (): Promise<{ dueToday: number; overdue: number }> => {
+            const start = vnDayStartIso(todayYmd);
+            const end = vnNextDayStartIso(todayYmd);
+            const [todayRes, overdueRes] = await Promise.all([
+                supabase
+                    .from("orders")
+                    .select("*", { count: "exact", head: true })
+                    .in("status", pendingStatuses as string[])
+                    .gte("return_time", start)
+                    .lt("return_time", end),
+                supabase
+                    .from("orders")
+                    .select("*", { count: "exact", head: true })
+                    .in("status", pendingStatuses as string[])
+                    .lt("return_time", start),
+            ]);
+            if (todayRes.error) throw todayRes.error;
+            if (overdueRes.error) throw overdueRes.error;
+            return {
+                dueToday: todayRes.count || 0,
+                overdue: overdueRes.count || 0,
             };
         },
     });
