@@ -15,8 +15,10 @@ import {
     Loader2,
     DollarSign,
     Scale,
+    CalendarClock,
+    AlertTriangle,
 } from "lucide-react";
-import { useOrders } from "@/api/orders";
+import { useOrders, useReturnsDueCounts } from "@/api/orders";
 import {
     useDashboardStats,
     useDashboardPeriodAnalytics,
@@ -38,7 +40,64 @@ import {
     orderDetailStatusBadgeClass,
     orderDetailStatusLabelVi,
 } from "@/lib/orderDetailStatusUi";
-import { ORDER_STATUS_FILTER_SEQUENCE } from "@/lib/orderStatusUi";
+import {
+    ORDER_STATUS_FILTER_SEQUENCE,
+    ORDER_STATUSES_ALLOW_COUNTER_DELIVERY,
+} from "@/lib/orderStatusUi";
+import { Can } from "@/components/auth/Can";
+import { ROUTE_PERMISSIONS } from "@/lib/permissions";
+import { vnYmd } from "@/lib/vnDate";
+
+/** Số đơn chưa trả hẹn hôm nay / quá hạn — bấm mở tab tương ứng ở màn Trả đồ. */
+function ReturnsDueCard() {
+    const { data, isLoading } = useReturnsDueCounts(
+        ORDER_STATUSES_ALLOW_COUNTER_DELIVERY,
+        vnYmd(),
+    );
+    const dueToday = data?.dueToday ?? 0;
+    const overdue = data?.overdue ?? 0;
+    const value = (n: number) => (isLoading ? "…" : n);
+    return (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
+            <Link
+                href="/returns?tab=dueToday"
+                className="vuexy-card p-4 md:p-5 flex items-center gap-4 hover:shadow-md transition-all"
+            >
+                <div className="w-11 h-11 rounded-lg flex items-center justify-center shrink-0 bg-primary/10 text-primary">
+                    <CalendarClock size={22} />
+                </div>
+                <div className="min-w-0">
+                    <p className="text-xs md:text-sm text-muted-foreground">
+                        Hẹn trả hôm nay
+                    </p>
+                    <p className="text-xl md:text-2xl font-black text-foreground">
+                        {value(dueToday)} đơn
+                    </p>
+                </div>
+            </Link>
+            <Link
+                href="/returns?tab=overdue"
+                className="vuexy-card p-4 md:p-5 flex items-center gap-4 hover:shadow-md transition-all"
+            >
+                <div
+                    className={`w-11 h-11 rounded-lg flex items-center justify-center shrink-0 ${overdue > 0 ? "bg-danger/10 text-danger" : "bg-muted/40 text-muted-foreground"}`}
+                >
+                    <AlertTriangle size={22} />
+                </div>
+                <div className="min-w-0">
+                    <p className="text-xs md:text-sm text-muted-foreground">
+                        Quá hạn chưa trả
+                    </p>
+                    <p
+                        className={`text-xl md:text-2xl font-black ${overdue > 0 ? "text-danger" : "text-foreground"}`}
+                    >
+                        {value(overdue)} đơn
+                    </p>
+                </div>
+            </Link>
+        </div>
+    );
+}
 
 const statusLabel = (s: string) => {
     switch (s) {
@@ -187,6 +246,10 @@ export default function DashboardPage() {
 
     return (
         <div className="space-y-4 md:space-y-6">
+            <Can anyOf={ROUTE_PERMISSIONS["/returns"]}>
+                <ReturnsDueCard />
+            </Can>
+
             {/* Phân tích theo ngày / tháng / năm */}
             <div className="vuexy-card p-4 md:p-6 space-y-4 md:space-y-5">
                 <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">

@@ -9,12 +9,17 @@ import {
   Phone,
   CheckCircle2,
   Clock,
-  Scissors
+  Scissors,
+  CalendarClock,
+  AlertTriangle,
 } from 'lucide-react';
+import { useSearchParams } from 'next/navigation';
 import {
   RETURNS_PAGE_SIZE,
   useReturnsCounts,
+  useReturnsDueCounts,
   useReturnsOrders,
+  type ReturnTimeRange,
   useUpdateOrder,
 } from '@/api/orders';
 import { Modal } from '@/components/ui/Modal';
@@ -28,8 +33,22 @@ import {
   orderStatusLabelVi,
   resolveStatusWhenMarkingDelivered,
 } from '@/lib/orderStatusUi';
+import {
+  formatVnDate,
+  vnDayStartIso,
+  vnDaysUntilToday,
+  vnNextDayStartIso,
+  vnYmd,
+} from '@/lib/vnDate';
 
 const DELIVERED_STATUSES = ['Delivered', 'DeliveredOwing'] as const;
+
+type ReturnsTab = 'dueToday' | 'overdue' | 'ready' | 'delivered';
+const RETURNS_TABS: readonly ReturnsTab[] = ['dueToday', 'overdue', 'ready', 'delivered'];
+
+function parseReturnsTab(raw: string | null): ReturnsTab {
+  return RETURNS_TABS.includes(raw as ReturnsTab) ? (raw as ReturnsTab) : 'ready';
+}
 
 export default function ReturnsPage() {
   const {
@@ -40,7 +59,9 @@ export default function ReturnsPage() {
 
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 400);
-  const [tab, setTab] = useState<'ready' | 'delivered'>('ready');
+  // `?tab=dueToday|overdue` — thẻ trên Dashboard mở thẳng tab tương ứng.
+  const searchParams = useSearchParams();
+  const [tab, setTab] = useState<ReturnsTab>(() => parseReturnsTab(searchParams.get('tab')));
   const [returningOrder, setReturningOrder] = useState<Order | null>(null);
 
   const [page, setPage] = useState(1);
@@ -48,11 +69,20 @@ export default function ReturnsPage() {
 
   // Lọc theo trạng thái + tìm kiếm chạy ở phía DB. Lọc ở client như trước sẽ chỉ
   // thấy 100 đơn mới nhất, khách mang phiếu cũ tới lấy đồ là không tra ra.
+  // Ngày hẹn so theo giờ VN; tính lại mỗi lần render nên qua nửa đêm key tự đổi.
+  const todayYmd = vnYmd();
+  const returnTimeRange: ReturnTimeRange | undefined =
+    tab === 'dueToday'
+      ? { gte: vnDayStartIso(todayYmd), lt: vnNextDayStartIso(todayYmd) }
+      : tab === 'overdue'
+        ? { lt: vnDayStartIso(todayYmd) }
+        : undefined;
   const { data: ordersPage, isLoading, isFetching } = useReturnsOrders(
-    tab === 'ready' ? ORDER_STATUSES_ALLOW_COUNTER_DELIVERY : DELIVERED_STATUSES,
+    tab === 'delivered' ? DELIVERED_STATUSES : ORDER_STATUSES_ALLOW_COUNTER_DELIVERY,
     debouncedSearch,
     page,
     pageSize,
+    returnTimeRange,
   );
   const orders = ordersPage?.data;
   const matchedCount = ordersPage?.count ?? 0;
@@ -64,6 +94,18 @@ export default function ReturnsPage() {
   );
   const readyCount = counts?.ready ?? 0;
   const deliveredCount = counts?.delivered ?? 0;
+
+  const { data: dueCounts } = useReturnsDueCounts(
+    ORDER_STATUSES_ALLOW_COUNTER_DELIVERY,
+    todayYmd,
+  );
+  const dueTodayCount = dueCounts?.dueToday ?? 0;
+  const overdueCount = dueCounts?.overdue ?? 0;
+
+  const changeTab = (next: ReturnsTab) => {
+    setTab(next);
+    setPage(1);
+  };
 
   const displayedOrders = orders || [];
 
@@ -102,15 +144,27 @@ export default function ReturnsPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 p-1 bg-muted/30 rounded-lg w-fit">
+      <div className="flex flex-wrap gap-1 p-1 bg-muted/30 rounded-lg w-fit">
         <button
-          onClick={() => { setTab('ready'); setPage(1); }}
+          onClick={() => changeTab('dueToday')}
+          className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${tab === 'dueToday' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+        >
+          <CalendarClock size={14} className="inline mr-1.5" />Hẹn trả hôm nay ({dueTodayCount})
+        </button>
+        <button
+          onClick={() => changeTab('overdue')}
+          className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${tab === 'overdue' ? 'bg-card shadow-sm' : 'hover:text-foreground'} ${overdueCount > 0 ? 'text-danger' : tab === 'overdue' ? 'text-foreground' : 'text-muted-foreground'}`}
+        >
+          <AlertTriangle size={14} className="inline mr-1.5" />Quá hạn ({overdueCount})
+        </button>
+        <button
+          onClick={() => changeTab('ready')}
           className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${tab === 'ready' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
         >
           <Clock size={14} className="inline mr-1.5" />Chờ trả ({readyCount})
         </button>
         <button
-          onClick={() => { setTab('delivered'); setPage(1); }}
+          onClick={() => changeTab('delivered')}
           className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${tab === 'delivered' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
         >
           <CheckCircle2 size={14} className="inline mr-1.5" />Đã trả ({deliveredCount})
@@ -165,7 +219,11 @@ export default function ReturnsPage() {
 
                       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] md:text-xs text-muted-foreground mt-2">
                         <span className="flex items-center gap-1"><Calendar size={12} className="text-primary" />Nhận: {new Date(order.created_at).toLocaleDateString('vi-VN')}</span>
-                        {order.return_time && <span className="flex items-center gap-1"><PackageCheck size={12} className="text-primary" />Trả: {new Date(order.return_time).toLocaleDateString('vi-VN')}</span>}
+                        {order.return_time && (tab === 'overdue' ? (
+                          <span className="flex items-center gap-1 font-bold text-danger"><AlertTriangle size={12} />Hẹn trả: {formatVnDate(order.return_time)} · trễ {vnDaysUntilToday(order.return_time)} ngày</span>
+                        ) : (
+                          <span className="flex items-center gap-1"><PackageCheck size={12} className="text-primary" />{tab === 'delivered' ? 'Đã trả' : 'Hẹn trả'}: {formatVnDate(order.return_time)}</span>
+                        ))}
                       </div>
 
                       {/* Items */}
@@ -190,7 +248,7 @@ export default function ReturnsPage() {
                       {debt <= 0 && <p className="text-[10px] font-bold text-success">Đã thanh toán đủ</p>}
                     </div>
 
-                    {tab === 'ready' && (
+                    {tab !== 'delivered' && (
                       <button
                         onClick={() => setReturningOrder(order)}
                         className="px-4 py-2 bg-primary text-white rounded-md font-bold text-xs hover:bg-primary/90 transition-all flex items-center gap-1.5 shrink-0"
@@ -207,7 +265,13 @@ export default function ReturnsPage() {
           <div className="vuexy-card p-16 text-center flex flex-col items-center gap-3 bg-transparent border-2 border-dashed border-border shadow-none">
             <PackageCheck size={40} className="text-muted-foreground opacity-20" />
             <p className="text-muted-foreground italic">
-              {tab === 'ready' ? 'Không có đơn nào chờ trả đồ.' : 'Chưa có đơn nào đã trả.'}
+              {tab === 'dueToday'
+                ? 'Hôm nay không có đơn nào hẹn trả.'
+                : tab === 'overdue'
+                  ? 'Không có đơn nào quá hạn trả.'
+                  : tab === 'ready'
+                    ? 'Không có đơn nào chờ trả đồ.'
+                    : 'Chưa có đơn nào đã trả.'}
             </p>
           </div>
         )}
