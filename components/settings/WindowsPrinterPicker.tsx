@@ -1,6 +1,20 @@
 "use client";
 
 import type { WindowsPrinterOption } from "@/lib/print/electronPrintClient";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+/** Radix Select không nhận value rỗng → dùng giá trị thay thế cho "máy in mặc định". */
+const DEFAULT_PRINTER = "__default__";
+const CUSTOM_PRINTER = "__custom__";
 
 export interface WindowsPrinterPickerProps {
   readonly id: string;
@@ -25,58 +39,54 @@ export function WindowsPrinterPicker({
   const inList = printers.some((p) => p.name === value);
   let selectValue = "";
   if (value !== "") {
-    selectValue = inList ? value : "__custom__";
+    selectValue = inList ? value : CUSTOM_PRINTER;
   }
 
   let labelFor = id;
-  if (printers.length > 0 && selectValue !== "__custom__") {
+  if (printers.length > 0 && selectValue !== CUSTOM_PRINTER) {
     labelFor = `${id}-select`;
   }
 
   return (
     <div className="space-y-1.5">
-      <label
-        htmlFor={labelFor}
-        className="text-[11px] font-bold text-muted-foreground uppercase opacity-80"
-      >
+      <Label htmlFor={labelFor} className="text-xs font-semibold text-muted-foreground">
         {label}
-      </label>
+      </Label>
       {printers.length > 0 && (
-        <select
-          id={`${id}-select`}
-          className="w-full bg-muted/20 border border-border rounded-md px-4 py-2.5 outline-none focus:ring-1 focus:ring-primary text-sm"
-          value={selectValue}
-          onChange={(e) => {
-            const v = e.target.value;
-            if (v === "__custom__") {
+        <Select
+          value={selectValue === "" ? DEFAULT_PRINTER : selectValue}
+          onValueChange={(v) => {
+            if (v === CUSTOM_PRINTER) {
               onChange(value);
               return;
             }
-            onChange(v);
+            onChange(v === DEFAULT_PRINTER ? "" : v);
           }}
         >
-          <option value="">(Máy in mặc định Windows)</option>
-          {printers.map((p) => (
-            <option key={p.name} value={p.name}>
-              {p.displayName}
-              {p.isDefault ? " ★" : ""} — {p.name}
-            </option>
-          ))}
-          <option value="__custom__">Khác… (nhập tay)</option>
-        </select>
+          <SelectTrigger id={`${id}-select`} className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={DEFAULT_PRINTER}>(Máy in mặc định Windows)</SelectItem>
+            {printers.map((p) => (
+              <SelectItem key={p.name} value={p.name}>
+                {p.displayName}
+                {p.isDefault ? " ★" : ""} — {p.name}
+              </SelectItem>
+            ))}
+            <SelectItem value={CUSTOM_PRINTER}>Khác… (nhập tay)</SelectItem>
+          </SelectContent>
+        </Select>
       )}
-      {(printers.length === 0 || selectValue === "__custom__") && (
-        <input
+      {(printers.length === 0 || selectValue === CUSTOM_PRINTER) && (
+        <Input
           id={id}
-          className="w-full bg-muted/20 border border-border rounded-md px-4 py-2.5 outline-none focus:ring-1 focus:ring-primary text-sm"
           placeholder="Tên máy in (hệ thống hoặc hiển thị)"
           value={value}
           onChange={(e) => onChange(e.target.value)}
         />
       )}
-      {loading && (
-        <p className="text-[11px] text-muted-foreground">Đang tải danh sách máy in…</p>
-      )}
+      {loading && <Skeleton className="h-9 w-full" aria-label="Đang tải danh sách máy in" />}
     </div>
   );
 }
