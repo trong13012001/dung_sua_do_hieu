@@ -1,15 +1,10 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Montserrat } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
+const montserrat = Montserrat({
+  variable: "--font-montserrat",
+  subsets: ["latin", "vietnamese"],
 });
 
 export const metadata: Metadata = {
@@ -19,6 +14,8 @@ export const metadata: Metadata = {
 
 import QueryProvider from "@/components/providers/QueryProvider";
 import { PrintRoot } from "@/components/print/PrintRoot";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { Toaster } from "@/components/ui/sonner";
 
 export default function RootLayout({
   children,
@@ -26,16 +23,16 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
+    <html lang="vi">
+      <body className={`${montserrat.variable} antialiased`}>
         <QueryProvider>
-          {children}
+          <TooltipProvider delayDuration={200}>
+            {children}
+            <Toaster position="top-right" richColors closeButton />
+          </TooltipProvider>
           <PrintRoot />
         </QueryProvider>
       </body>
     </html>
   );
 }
-

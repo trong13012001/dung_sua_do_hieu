@@ -8,11 +8,11 @@ import {
     type InfiniteData,
     type QueryClient,
 } from "@tanstack/react-query";
-import { Order, OrderDetail, Payment } from "@/lib/types";
-import { fetchAllPages, fetchByIdChunks } from "@/lib/supabasePaging";
+import { Customer, Order, OrderDetail, Payment } from "@/lib/types";
+import { fetchAllPages, fetchByIdChunks, sanitizeOrFilterValue } from "@/lib/supabasePaging";
 import { orderStatusLabelVi } from "@/lib/orderStatusUi";
 import { vnDayStartIso, vnNextDayStartIso } from "@/lib/vnDate";
-import { insertOrderLog } from "@/api/orderLogs";
+import { insertOrderLog, insertOrderLogs } from "@/api/orderLogs";
 
 const PAGE_SIZE = 25;
 
@@ -428,6 +428,35 @@ export function useOrders() {
     });
 }
 
+/**
+ * Vài đơn mới nhất cho dashboard: chỉ cột cần hiển thị + tên/SĐT khách qua embed.
+ * (Trước đây dashboard dùng useOrders(): 100 đơn kèm món, thanh toán, nhân viên để hiện 8 dòng.)
+ * Key nằm dưới tiền tố ["orders"] nên mọi invalidate đơn hàng vẫn làm mới nó.
+ */
+export function useRecentOrders(limit: number = 8) {
+    return useQuery({
+        queryKey: ["orders", "recent", limit],
+        queryFn: async () => {
+            const { data, error } = await supabase
+                .from("orders")
+                .select(
+                    "id, status, total_amount, created_at, customer:customers(name, phone)",
+                )
+                .order("created_at", { ascending: false })
+                .order("id", { ascending: false })
+                .limit(limit)
+                .overrideTypes<
+                    (Pick<Order, "id" | "status" | "total_amount" | "created_at"> & {
+                        customer: { name: string; phone: string | null } | null;
+                    })[],
+                    { merge: false }
+                >();
+            if (error) throw error;
+            return data || [];
+        },
+    });
+}
+
 export function useOrdersInfinite(filters: OrdersFilters) {
     return useInfiniteQuery({
         queryKey: [
@@ -598,14 +627,6 @@ const TASK_BOARD_STATUSES = [
  */
 export const TASK_STATUS_LIMIT = 300;
 
-/**
- * Làm sạch từ khoá trước khi ghép vào filter `or(...)` của PostgREST.
- * Dấu phẩy và ngoặc là cú pháp của filter — để nguyên sẽ làm hỏng câu truy vấn.
- */
-function sanitizeOrFilterValue(term: string): string {
-    return term.replaceAll(/[,()"']/g, " ").trim();
-}
-
 /** Số đơn tối đa lấy về khi tra theo tên/SĐT khách — đủ dùng cho ô tìm kiếm. */
 const CUSTOMER_SEARCH_ORDER_LIMIT = 500;
 
@@ -643,6 +664,14 @@ type TaskDetailRow = {
     status: string;
     assigned_tailor_id: string | null;
     created_at: string;
+    /** Embed nhiều-một: đơn cha + tên khách, và thợ được giao. */
+    order: {
+        id: number;
+        status: string;
+        created_at: string;
+        customer: { name: string } | null;
+    } | null;
+    tailor: { id: number | string; name: string } | null;
 };
 
 /** Phần API của query builder mà hàm dưới dùng tới (tránh phụ thuộc kiểu nội bộ của supabase-js). */
@@ -675,7 +704,9 @@ async function fetchTaskDetailsByStatus(options?: {
             let q = supabase
                 .from("order_details")
                 .select(
-                    "id, order_id, item_name, description, unit_price, status, assigned_tailor_id, created_at",
+                    // Đơn cha, tên khách và thợ lấy luôn qua embed — trước đây là 2–3 query
+                    // `.in()` thêm với tới 1200 id không chia lô (nguy cơ HTTP 400).
+                    "id, order_id, item_name, description, unit_price, status, assigned_tailor_id, created_at, order:orders(id, status, created_at, customer:customers(name)), tailor:users(id, name)",
                 ) as unknown as TaskDetailQuery;
             if (options?.applyFilter) q = options.applyFilter(q);
             q = q.eq("status", status);
@@ -864,53 +895,27 @@ export function useReturnsCounts(
     });
 }
 
+/** Dòng bảng Công việc: món + thông tin đơn cha đã làm phẳng. */
+function toTaskRow({ order, tailor, ...d }: TaskDetailRow) {
+    return {
+        ...d,
+        tailor: tailor ? { id: String(tailor.id), name: tailor.name } : null,
+        orderNumber: d.order_id,
+        customerName: order?.customer?.name || "Vãng lai",
+        orderCreatedAt: order?.created_at || "",
+        orderStatus: order?.status || "",
+    };
+}
+
 export function useOrderItems(tailorId?: string | number | null) {
     return useQuery({
         queryKey: ["order-items", tailorId],
         enabled: tailorId != null && tailorId !== "",
         queryFn: async () => {
-            // Step 1: fetch details for this tailor (assigned_tailor_id is UUID)
             const details = await fetchTaskDetailsByStatus({
                 applyFilter: (q) => q.eq("assigned_tailor_id", tailorId!),
             });
-            if (details.length === 0) return [];
-
-            // Step 2: fetch parent orders + customers
-            const orderIds = [...new Set(details.map((d) => d.order_id))];
-            const { data: orders } = await supabase
-                .from("orders")
-                .select("id, created_at, customer_id")
-                .in("id", orderIds);
-            const customerIds = [
-                ...new Set(
-                    (orders || []).map((o) => o.customer_id).filter(Boolean),
-                ),
-            ] as number[];
-            const { data: customers } =
-                customerIds.length > 0
-                    ? await supabase
-                          .from("customers")
-                          .select("id, name")
-                          .in("id", customerIds)
-                    : { data: [] };
-
-            const customerMap: Record<number, string> = {};
-            if (customers)
-                for (const c of customers) customerMap[c.id] = c.name;
-            const orderMap: Record<number, any> = {};
-            if (orders)
-                for (const o of orders)
-                    orderMap[o.id] = {
-                        ...o,
-                        customerName: customerMap[o.customer_id] || "Vãng lai",
-                    };
-
-            return details.map((d: any) => ({
-                ...d,
-                orderNumber: d.order_id,
-                customerName: orderMap[d.order_id]?.customerName || "Vãng lai",
-                orderCreatedAt: orderMap[d.order_id]?.created_at || "",
-            }));
+            return details.map(toTaskRow);
         },
     });
 }
@@ -920,74 +925,7 @@ export function useAllOrderItems(search?: string) {
         queryKey: ["all-order-items", search ?? ""],
         queryFn: async () => {
             const details = await fetchTaskDetailsByStatus({ search });
-            if (details.length === 0) return [];
-
-            // Step 2: fetch related orders + customers + tailors in parallel
-            const orderIds = [...new Set(details.map((d) => d.order_id))];
-            const tailorIds = [
-                ...new Set(
-                    details
-                        .map((d: any) => d.assigned_tailor_id)
-                        .filter(Boolean),
-                ),
-            ];
-
-            const [ordersRes, tailorsRes] = await Promise.all([
-                supabase
-                    .from("orders")
-                    .select("id, status, created_at, customer_id")
-                    .in("id", orderIds),
-                tailorIds.length > 0
-                    ? supabase
-                          .from("users")
-                          .select("id, name")
-                          .in("id", tailorIds)
-                    : Promise.resolve({ data: [] }),
-            ]);
-
-            const customerIds = [
-                ...new Set(
-                    (ordersRes.data || [])
-                        .map((o) => o.customer_id)
-                        .filter(Boolean),
-                ),
-            ] as number[];
-            const { data: customers } =
-                customerIds.length > 0
-                    ? await supabase
-                          .from("customers")
-                          .select("id, name")
-                          .in("id", customerIds)
-                    : { data: [] };
-
-            const customerMap: Record<number, string> = {};
-            if (customers)
-                for (const c of customers) customerMap[c.id] = c.name;
-            const orderMap: Record<number, any> = {};
-            if (ordersRes.data)
-                for (const o of ordersRes.data)
-                    orderMap[o.id] = {
-                        ...o,
-                        customerName: customerMap[o.customer_id] || "Vãng lai",
-                    };
-            const tailorMap: Record<string, { id: string; name: string }> = {};
-            if (tailorsRes.data)
-                for (const t of tailorsRes.data)
-                    tailorMap[String(t.id)] = {
-                        id: String(t.id),
-                        name: t.name,
-                    };
-
-            return details.map((d: any) => ({
-                ...d,
-                tailor: d.assigned_tailor_id
-                    ? tailorMap[String(d.assigned_tailor_id)] || null
-                    : null,
-                orderNumber: d.order_id,
-                customerName: orderMap[d.order_id]?.customerName || "Vãng lai",
-                orderCreatedAt: orderMap[d.order_id]?.created_at || "",
-                orderStatus: orderMap[d.order_id]?.status || "",
-            }));
+            return details.map(toTaskRow);
         },
     });
 }
@@ -1342,55 +1280,55 @@ export function useUpdateOrderDetail() {
                 .single();
             if (error) throw error;
 
-            await insertOrderLog({
-                order_id: data.order_id,
-                action: "detail_updated",
-                entity_type: "order_detail",
-                entity_id: id,
-                new_value: detail as Record<string, unknown>,
-                updated_by,
-            });
+            const orderId = data.order_id;
+            const needsTotal = "unit_price" in detail || "item_name" in detail;
 
-            // If price or other fields that affect total changed, recalc order total from sum of details
-            if ("unit_price" in detail || "item_name" in detail) {
-                const { data: allDetails } = await supabase
-                    .from("order_details")
-                    .select("unit_price")
-                    .eq("order_id", data.order_id);
-                const newTotal = (allDetails || []).reduce(
-                    (s, d) => s + Number(d.unit_price || 0),
+            // Các bước đọc không phụ thuộc nhau → chạy song song (trước đây ~10 lượt nối tiếp).
+            const [, totalInputs, statusInputs, taskTailor] = await Promise.all([
+                insertOrderLog({
+                    order_id: orderId,
+                    action: "detail_updated",
+                    entity_type: "order_detail",
+                    entity_id: id,
+                    new_value: detail as Record<string, unknown>,
+                    updated_by,
+                }),
+                needsTotal
+                    ? supabase
+                          .from("order_details")
+                          .select("unit_price")
+                          .eq("order_id", orderId)
+                    : null,
+                detail.status
+                    ? Promise.all([
+                          supabase
+                              .from("order_details")
+                              .select("status")
+                              .eq("order_id", orderId),
+                          supabase
+                              .from("orders")
+                              .select("status")
+                              .eq("id", orderId)
+                              .single(),
+                      ])
+                    : null,
+                fetchTailorForTaskRow(data.assigned_tailor_id),
+            ]);
+
+            // Gom thay đổi của đơn cha vào một lần update.
+            const orderPatch: Record<string, unknown> = {};
+
+            // Giá/tên món đổi → tổng đơn = tổng đơn giá các món.
+            if (totalInputs) {
+                orderPatch.total_amount = (totalInputs.data || []).reduce(
+                    (sum, d) => sum + Number(d.unit_price || 0),
                     0,
                 );
-                await supabase
-                    .from("orders")
-                    .update({
-                        total_amount: newTotal,
-                        updated_at: new Date().toISOString(),
-                    })
-                    .eq("id", data.order_id);
-                const { data: orderRow } = await supabase
-                    .from("orders")
-                    .select("customer_id")
-                    .eq("id", data.order_id)
-                    .single();
-                if (orderRow?.customer_id != null) {
-                    await supabase.rpc("recalculate_customer_debt", {
-                        customer_id: Number(orderRow.customer_id),
-                    });
-                }
             }
 
-            // Auto-sync parent order status based on all sibling item statuses
-            if (detail.status) {
-                const { data: siblings } = await supabase
-                    .from("order_details")
-                    .select("status")
-                    .eq("order_id", data.order_id);
-                const { data: curOrdRow } = await supabase
-                    .from("orders")
-                    .select("status")
-                    .eq("id", data.order_id)
-                    .single();
+            // Tự đồng bộ trạng thái đơn theo trạng thái các món.
+            if (statusInputs) {
+                const [{ data: siblings }, { data: curOrdRow }] = statusInputs;
                 const curOrderSt = (curOrdRow?.status as string) || "New";
                 if (siblings && siblings.length > 0) {
                     const lineWorkDone = (st: string) =>
@@ -1404,40 +1342,45 @@ export function useUpdateOrderDetail() {
                     const anyInProgress = siblings.some(
                         (s) => s.status === "In Progress",
                     );
-                    let newOrderStatus: string | null = null;
                     if (
                         allReady &&
                         (curOrderSt === "New" || curOrderSt === "In Progress")
                     ) {
-                        newOrderStatus = "Ready";
+                        orderPatch.status = "Ready";
                     } else if (
                         anyInProgress ||
                         detail.status === "In Progress"
                     ) {
-                        newOrderStatus = "In Progress";
-                    }
-                    if (newOrderStatus) {
-                        await supabase
-                            .from("orders")
-                            .update({
-                                status: newOrderStatus,
-                                updated_at: new Date().toISOString(),
-                            })
-                            .eq("id", data.order_id);
+                        orderPatch.status = "In Progress";
                     }
                 }
             }
 
-            const { data: parentRow, error: parentErr } = await supabase
-                .from("orders")
-                .select("total_amount, status, updated_at")
-                .eq("id", data.order_id)
-                .single();
+            const PARENT_COLUMNS = "total_amount, status, updated_at, customer_id";
+            const { data: parentRow, error: parentErr } =
+                Object.keys(orderPatch).length > 0
+                    ? await supabase
+                          .from("orders")
+                          .update({
+                              ...orderPatch,
+                              updated_at: new Date().toISOString(),
+                          })
+                          .eq("id", orderId)
+                          .select(PARENT_COLUMNS)
+                          .single()
+                    : await supabase
+                          .from("orders")
+                          .select(PARENT_COLUMNS)
+                          .eq("id", orderId)
+                          .single();
             if (parentErr) throw parentErr;
 
-            const taskTailor = await fetchTailorForTaskRow(
-                data.assigned_tailor_id,
-            );
+            // Công nợ khách chỉ phụ thuộc total_amount/paid_amount → tính lại sau khi đã ghi tổng.
+            if (needsTotal && parentRow.customer_id != null) {
+                await supabase.rpc("recalculate_customer_debt", {
+                    customer_id: Number(parentRow.customer_id),
+                });
+            }
 
             return {
                 detail: data as OrderDetail,
@@ -1466,25 +1409,20 @@ export function useUpdateOrderDetail() {
                 );
             }
 
-            const prevAllOrderItems = qc.getQueryData<CachedOrderTaskRow[]>([
-                "all-order-items",
-            ]);
+            // Key thật là ["all-order-items", search] — phải khớp theo tiền tố (getQueriesData),
+            // getQueryData(["all-order-items"]) khớp chính xác nên trước đây luôn trả undefined
+            // và thẻ trên bảng Công việc không đổi ngay khi kéo/sửa.
+            const prevAllOrderItems = qc.getQueriesData<CachedOrderTaskRow[]>(
+                { queryKey: ["all-order-items"] },
+            );
             const prevOrderItemsQueries = qc.getQueriesData<CachedOrderTaskRow[]>(
                 { queryKey: ["order-items"] },
             );
 
-            if (prevAllOrderItems !== undefined) {
-                qc.setQueryData(
-                    ["all-order-items"],
-                    applyDetailPatchToTaskRows(
-                        prevAllOrderItems,
-                        id,
-                        detail,
-                        assignee_tailor,
-                    ),
-                );
-            }
-            for (const [queryKey, rowData] of prevOrderItemsQueries) {
+            for (const [queryKey, rowData] of [
+                ...prevAllOrderItems,
+                ...prevOrderItemsQueries,
+            ]) {
                 if (rowData !== undefined) {
                     qc.setQueryData(
                         queryKey,
@@ -1538,15 +1476,17 @@ export function useUpdateOrderDetail() {
                 },
             );
 
-            qc.setQueryData<CachedOrderTaskRow[]>(["all-order-items"], (old) =>
-                old
-                    ? applyDetailPatchToTaskRows(
-                          old,
-                          detail.id,
-                          taskPatch,
-                          assigneeHint,
-                      )
-                    : old,
+            qc.setQueriesData<CachedOrderTaskRow[]>(
+                { queryKey: ["all-order-items"] },
+                (old) =>
+                    old
+                        ? applyDetailPatchToTaskRows(
+                              old,
+                              detail.id,
+                              taskPatch,
+                              assigneeHint,
+                          )
+                        : old,
             );
 
             qc.setQueriesData<CachedOrderTaskRow[]>(
@@ -1577,13 +1517,11 @@ export function useUpdateOrderDetail() {
         },
         onError: (_err, _vars, ctx) => {
             if (ctx?.prev) qc.setQueryData(["orders"], ctx.prev);
-            if (ctx?.prevAllOrderItems !== undefined) {
-                qc.setQueryData(["all-order-items"], ctx.prevAllOrderItems);
-            }
-            if (ctx?.prevOrderItemsQueries) {
-                for (const [queryKey, data] of ctx.prevOrderItemsQueries) {
-                    qc.setQueryData(queryKey, data);
-                }
+            for (const [queryKey, data] of [
+                ...(ctx?.prevAllOrderItems ?? []),
+                ...(ctx?.prevOrderItemsQueries ?? []),
+            ]) {
+                qc.setQueryData(queryKey, data);
             }
         },
         onSettled: () => {
@@ -1689,8 +1627,8 @@ export function useAddOrderDetails() {
                 );
                 if (debtErr) throw debtErr;
             }
-            for (const d of inserted || []) {
-                await insertOrderLog({
+            await insertOrderLogs(
+                (inserted || []).map((d) => ({
                     order_id: orderId,
                     action: "detail_updated",
                     entity_type: "order_detail",
@@ -1700,8 +1638,8 @@ export function useAddOrderDetails() {
                         unit_price: d.unit_price,
                     } as Record<string, unknown>,
                     updated_by,
-                });
-            }
+                })),
+            );
             return inserted as OrderDetail[];
         },
         onSuccess: (_data, variables) => {
@@ -1971,77 +1909,48 @@ export async function getCustomerOrdersPage(
     };
 }
 
-export async function getOrder(orderId: number | string): Promise<Order> {
-    const { data: order, error } = await supabase
-        .from("orders")
-        .select("*")
-        .eq("id", orderId)
-        .single();
-    if (error) throw error;
+/** Hình dạng trả về của embed trong `getOrder` (supabase-js không có kiểu sinh từ DB). */
+type OrderWithEmbeds = Order & {
+    customer: Customer | null;
+    details: (OrderDetail & { tailor: { id: number | string; name: string } | null })[];
+    payments: Payment[];
+};
 
-    const [customerRes, detailsRes, paymentsRes, creatorLogRes] = await Promise.all([
-        order.customer_id
-            ? supabase
-                  .from("customers")
-                  .select("*")
-                  .eq("id", order.customer_id)
-                  .single()
-            : Promise.resolve({ data: null }),
+export async function getOrder(orderId: number | string): Promise<Order> {
+    // Một request kèm khách, món (+ thợ) và thanh toán qua embed; người tạo đơn lấy song song.
+    // Trước đây là 4 đợt nối tiếp: đơn → khách/món/thanh toán/log → thợ → người tạo.
+    const [orderRes, creatorLogRes] = await Promise.all([
         supabase
-            .from("order_details")
-            .select("*")
-            .eq("order_id", order.id)
-            .order("id", { ascending: true }),
-        supabase.from("payments").select("*").eq("order_id", order.id),
+            .from("orders")
+            .select(
+                "*, customer:customers(*), details:order_details(*, tailor:users(id, name)), payments(*)",
+            )
+            .eq("id", orderId)
+            .order("id", { referencedTable: "order_details", ascending: true })
+            .single<OrderWithEmbeds>(),
         supabase
             .from("order_logs")
-            .select("updated_by, created_at")
-            .eq("order_id", order.id)
+            .select("created_at, creator:users(name)")
+            .eq("order_id", orderId)
             .eq("action", "order_created")
             .order("created_at", { ascending: true })
-            .limit(1),
+            .limit(1)
+            .overrideTypes<{ creator: { name: string } | null }[], { merge: false }>(),
     ]);
+    if (orderRes.error) throw orderRes.error;
+    const order = orderRes.data;
 
-    const details = detailsRes.data || [];
-    const tailorIds = [
-        ...new Set(
-            details.map((d: any) => d.assigned_tailor_id).filter(Boolean),
-        ),
-    ];
-    const tailorMap: Record<string, { id: string; name: string }> = {};
-    if (tailorIds.length > 0) {
-        const { data: tailors } = await supabase
-            .from("users")
-            .select("id, name")
-            .in("id", tailorIds);
-        if (tailors)
-            for (const t of tailors)
-                tailorMap[String(t.id)] = { id: String(t.id), name: t.name };
-    }
-
-    const detailsWithTailor = details.map((d: any) => ({
+    const details = (order.details || []).map((d) => ({
         ...d,
-        tailor: d.assigned_tailor_id
-            ? tailorMap[String(d.assigned_tailor_id)] || null
-            : null,
+        tailor: d.tailor ? { id: String(d.tailor.id), name: d.tailor.name } : null,
     }));
-
-    let createdByName: string | null = null;
-    const creatorId = creatorLogRes.data?.[0]?.updated_by;
-    if (creatorId != null) {
-        const { data: creator } = await supabase
-            .from("users")
-            .select("name")
-            .eq("id", creatorId)
-            .single();
-        createdByName = creator?.name ?? null;
-    }
+    const creator = creatorLogRes.data?.[0]?.creator;
 
     return {
         ...order,
-        created_by_name: createdByName,
-        customer: customerRes.data || null,
-        details: detailsWithTailor,
-        payments: paymentsRes.data || [],
+        created_by_name: creator?.name ?? null,
+        customer: order.customer || null,
+        details,
+        payments: order.payments || [],
     } as Order;
 }

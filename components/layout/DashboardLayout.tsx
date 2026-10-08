@@ -4,6 +4,7 @@ import React, { useState, useCallback } from 'react';
 import { Sidebar } from './Sidebar';
 import { BrandLogo } from '@/components/ui/BrandLogo';
 import { Menu } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import { ShopSettingsSync } from '@/components/providers/ShopSettingsSync';
 
@@ -19,22 +20,20 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       <ShopSettingsSync />
       <Sidebar isOpen={sidebarOpen} onClose={closeSidebar} />
 
-      <div className="flex-1 lg:ml-[260px] flex flex-col">
+      {/* min-w-0: flex item mặc định không co nhỏ hơn nội dung → một bảng/hàng rộng sẽ đẩy cả trang cuộn ngang trên mobile. */}
+      <div className="flex min-w-0 flex-1 flex-col lg:ml-[260px]">
         {/* Mobile-only top bar */}
         <div className="sticky top-0 z-30 lg:hidden flex items-center gap-3 px-4 h-14 bg-card/80 backdrop-blur-md border-b border-border">
-          <button
-            onClick={toggleSidebar}
-            className="p-2 -ml-1 text-foreground hover:bg-muted rounded-lg transition-colors"
-          >
-            <Menu size={22} />
-          </button>
+          <Button variant="ghost" size="icon" onClick={toggleSidebar} aria-label="Mở menu" className="-ml-1">
+            <Menu className="size-5" />
+          </Button>
           <span className="flex items-center gap-2 min-w-0">
             <BrandLogo className="h-8 w-auto shrink-0 object-contain object-left" />
             <span className="text-sm font-bold text-foreground truncate">Dũng Sửa Đồ Hiệu</span>
           </span>
         </div>
 
-        <main className="flex-1 px-4 md:px-8 py-6 max-w-[1440px] mx-auto w-full">
+        <main className="mx-auto w-full min-w-0 max-w-[1440px] flex-1 px-4 py-6 md:px-8">
           {children}
         </main>
       </div>

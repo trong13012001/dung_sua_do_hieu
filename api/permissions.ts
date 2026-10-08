@@ -7,19 +7,14 @@ export function usePermissionsForRole(roleId: number | null) {
     queryKey: ['permissions-for-role', roleId],
     queryFn: async (): Promise<string[]> => {
       if (roleId == null) return [];
-      const { data: rp, error: rpErr } = await supabase
+      // Tên quyền lấy qua embed (role_permissions → permissions) — một request thay vì hai.
+      const { data, error } = await supabase
         .from('role_permissions')
-        .select('permission_id')
-        .eq('role_id', roleId);
-      if (rpErr) throw rpErr;
-      const ids = (rp || []).map((r: { permission_id: number }) => r.permission_id);
-      if (ids.length === 0) return [];
-      const { data: perms, error } = await supabase
-        .from('permissions')
-        .select('name')
-        .in('id', ids);
+        .select('permission:permissions(name)')
+        .eq('role_id', roleId)
+        .overrideTypes<{ permission: { name: string } | null }[], { merge: false }>();
       if (error) throw error;
-      return (perms || []).map((p: { name: string }) => p.name);
+      return (data || []).flatMap((r) => (r.permission ? [r.permission.name] : []));
     },
     enabled: roleId != null,
   });

@@ -32,6 +32,13 @@ Project skills live in `.claude/skills/` and load automatically when relevant. T
 | `paginating-lists` | Any list, table, report, export or aggregate — see the PostgREST caps below |
 | `changing-supabase-schema` | New SQL: table, column, function, trigger, permission |
 | `changing-thermal-printing` | Invoice / label printing |
+| `using-shadcn-ui` | Any screen, form, dialog, table, badge, toast; adding to `components/ui/` |
+| `tailwind-v4-tokens` | Colors, radius, fonts, `app/globals.css`; looking for `tailwind.config` |
+| `react-query-patterns` | `useQuery`/`useMutation`, query keys, `staleTime`, optimistic updates |
+| `optimizing-supabase-queries` | `.select()`/`.rpc()`, multi-table mutations, realtime, slow screens / request waterfalls |
+| `memoizing-react-components` | Lists/rows/cards, callbacks passed to children, derived data during render |
+| `nextjs-app-router` | Splitting pages, `_components/`, `"use client"`, `next/dynamic`, fonts, `NEXT_PUBLIC_*` |
+| `charts-and-kanban` | recharts on the dashboard, `@hello-pangea/dnd` boards on `/tasks`, `/my-tasks` |
 
 [superpowers](https://github.com/obra/superpowers) (brainstorming, writing-plans, systematic-debugging, code review) is a **per-machine** plugin, not committed here — install it with `/plugin install superpowers@claude-plugins-official`. Note that `superpowers:test-driven-development` assumes a test runner, which this repo does not have; here RED-GREEN means reproducing the bug against real data first, fixing, then re-proving it the same way.
 
@@ -68,7 +75,7 @@ Optional (all print-related; every `NEXT_PUBLIC_*` is inlined at build time, so 
 - **Tổng tiền phải cộng bằng SQL**, không kéo dòng về client: `get_dashboard_stats()` / `get_monthly_revenue()`.
 - **Một khuôn phân trang duy nhất.** `components/ui/Pagination.tsx` (nút số trang + ô "Hiển thị mỗi trang") dùng cho mọi màn danh sách; `fetchPage()` trong `lib/supabasePaging.ts` trả `{ data, count }`. Trang **đếm từ 1** ở mọi nơi. Đưa `page` về 1 ngay trong handler đổi từ khoá / tab / số dòng — ESLint của repo chặn `setState` đồng bộ trong `useEffect`.
 - **Query-key invalidation is centralized and broad.** `invalidateOrderRelatedQueries(qc)` in `api/orders.ts` is the canonical list of order-related keys (`orders`, `orders-infinite`, `orders-page`, `stats`, `payments`, `all-order-items`, `customers`, …). Reuse it after any order/payment mutation rather than invalidating ad hoc, or keys will drift.
-- **Realtime.** `hooks/useRealtimeSubscription.ts` (mounted once in the dashboard layout) subscribes to `orders` / `order_details` / `payments` postgres changes and invalidates queries, with a 25s polling fallback + visibility-refetch + auto-reconnect because Realtime drops on phones. Order-status changes also fire `notifyOrderStatusUpdate` (`lib/orderNotification.ts`).
+- **Realtime.** `hooks/useRealtimeSubscription.ts` (mounted once in the dashboard layout) subscribes to `orders` / `order_details` / `payments` postgres changes, debounces them (600ms) and invalidates only the key families of the tables that changed (`KEYS_BY_TABLE`). Polling fallback runs every 25s while the channel is not `SUBSCRIBED` and every 2 min while it is (Realtime drops silently on phones); polling never refreshes `stats`. Returning to the tab refreshes everything, so `refetchOnWindowFocus` is off in `QueryProvider`. When you add a query-key family, add it here too. Order-status changes also fire `notifyOrderStatusUpdate` (`lib/orderNotification.ts`).
 
 ### Auth & permissions
 
@@ -81,7 +88,7 @@ Optional (all print-related; every `NEXT_PUBLIC_*` is inlined at build time, so 
 
 ### Routing & pages
 
-App Router. Real screens live under `app/(dashboard)/` (orders, pos, customers, returns, tasks, my-tasks, employees, roles, permissions, settings, dashboard, profile). `app/login` and `app/reset-password` are outside the group. The only server endpoint is `app/api/users/create/route.ts` (uses the admin client to create an auth user + `users` row). `components/` holds shared UI (`ui/`, `layout/`, `auth/`, `settings/`, `print/`, `providers/`).
+App Router. Real screens live under `app/(dashboard)/` (orders, pos, customers, returns, tasks, my-tasks, employees, roles, permissions, settings, dashboard, profile). `app/login` and `app/reset-password` are outside the group. The only server endpoint is `app/api/users/create/route.ts` (uses the admin client to create an auth user + `users` row). `components/` holds shared UI (`ui/`, `common/`, `orders/`, `customers/`, `tasks/`, `layout/`, `auth/`, `settings/`, `print/`, `providers/`).
 
 ### Printing (the non-obvious subsystem)
 
@@ -99,6 +106,8 @@ The invoice job is an 80mm-wide `@page`, left-aligned (1.25mm margin, ~71.5mm co
 ## Conventions
 
 - Path alias `@/*` → repo root (`tsconfig.json`). TypeScript `strict` is on.
+- **UI is shadcn/ui** (Radix + Tailwind v4, `components.json`). Primitives live in `components/ui/<lowercase>.tsx`; shared blocks in `components/common/` (`PageHeader`, `FormDialog`, `FormField`, `ConfirmDialog`, `EmptyState`, `IconAction`); per-domain pieces in `components/orders|customers|tasks/`; page-only pieces in `app/(dashboard)/<route>/_components/`. Colors come from tokens in `app/globals.css` (primary `#7367f0`); the app is **light-only** (`dark:` is pinned to an unused `.dark` class). Toasts are `sonner`. Font is Montserrat via `next/font`. See the `using-shadcn-ui` and `tailwind-v4-tokens` skills.
+- **Rows and cards in lists are `memo` components** fed stable callbacks (`useCallback`, or one `useMemo` actions object); React Compiler is not enabled. See `memoizing-react-components`.
 - Comments and UI copy are in Vietnamese; match that when editing existing files.
 - **No silent caps.** Where a hard `.limit()` is unavoidable (`TASK_STATUS_LIMIT`, `EXPORT_MAX_ORDERS`), the UI must say so — a column badge, a toast, a note under the list. A cap the user cannot see reads as "that is all the data".
 - `README.md` is untouched `create-next-app` boilerplate; nothing project-specific lives there.

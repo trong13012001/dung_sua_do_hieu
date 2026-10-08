@@ -9,7 +9,7 @@ import type {
     MonthlyRevenue,
 } from "@/lib/types";
 import { ORDER_STATUS_FILTER_SEQUENCE } from "@/lib/orderStatusUi";
-import { fetchAllPages, fetchByIdChunks } from "@/lib/supabasePaging";
+import { chunk, fetchAllPages, fetchByIdChunks } from "@/lib/supabasePaging";
 
 export interface DashboardStats {
     totalRevenue: number;
@@ -360,112 +360,126 @@ async function fetchAllReturnedOrderIdsInRange(
     return ids;
 }
 
-async function fetchCustomerNames(
-    ids: (number | null | undefined)[],
-): Promise<Record<number, string>> {
-    const unique = [...new Set(ids.filter((x): x is number => typeof x === "number" && x > 0))];
-    if (unique.length === 0) return {};
-    const map: Record<number, string> = {};
-    for (let i = 0; i < unique.length; i += 150) {
-        const chunk = unique.slice(i, i + 150);
-        const { data, error } = await supabase
-            .from("customers")
-            .select("id, name")
-            .in("id", chunk);
-        if (error) throw error;
-        for (const c of data || []) map[c.id] = c.name;
-    }
-    return map;
+/** Đơn dùng cho các danh sách theo kỳ. */
+type PeriodOrderRaw = {
+    id: number;
+    customer_id: number | null;
+    total_amount: number;
+    paid_amount: number;
+    status: string;
+    return_time: string | null;
+    created_at: string;
+    customer: { name: string } | null;
+};
+
+/**
+ * Kèm tên khách qua embed — khỏi tra bảng customers ở một bước riêng.
+ * Quan hệ nhiều-một nên PostgREST trả `customer` là object; supabase-js không có kiểu
+ * sinh từ DB nên đoán là mảng → ép kiểu bằng `overrideTypes`.
+ */
+const PERIOD_ORDER_SELECT =
+    "id, customer_id, total_amount, paid_amount, status, return_time, created_at, customer:customers(name)";
+
+const RETURNED_STATUSES = ["Delivered", "DeliveredOwing"];
+
+function customerNameOf(row: { customer?: { name: string } | null } | null | undefined): string {
+    return row?.customer?.name || "Vãng lai";
 }
 
-async function fetchOrdersByIds(
-    ids: number[],
-): Promise<
-    {
-        id: number;
-        customer_id: number | null;
-        total_amount: number;
-        paid_amount: number;
-        status: string;
-        return_time: string | null;
-        created_at: string;
-    }[]
-> {
-    if (ids.length === 0) return [];
-    const rows: {
-        id: number;
-        customer_id: number | null;
-        total_amount: number;
-        paid_amount: number;
-        status: string;
-        return_time: string | null;
-        created_at: string;
-    }[] = [];
-    for (let i = 0; i < ids.length; i += 200) {
-        const chunk = ids.slice(i, i + 200);
-        const { data, error } = await supabase
+/** Đơn theo danh sách id: chia lô `in()` và chạy song song. */
+async function fetchOrdersByIds(ids: number[]): Promise<PeriodOrderRaw[]> {
+    return fetchByIdChunks<PeriodOrderRaw, number>(ids, (chunkIds, from, to) =>
+        supabase
             .from("orders")
-            .select(
-                "id, customer_id, total_amount, paid_amount, status, return_time, created_at",
-            )
-            .in("id", chunk);
-        if (error) throw error;
-        rows.push(
-            ...((data || []) as {
-                id: number;
-                customer_id: number | null;
-                total_amount: number;
-                paid_amount: number;
-                status: string;
-                return_time: string | null;
-                created_at: string;
-            }[]),
-        );
-    }
-    return rows;
+            .select(PERIOD_ORDER_SELECT)
+            .in("id", chunkIds)
+            .order("id", { ascending: true })
+            .range(from, to)
+            .overrideTypes<PeriodOrderRaw[], { merge: false }>(),
+    );
 }
 
-async function fetchPeriodAnalytics(
-    sel: DashboardPeriodSelection,
-): Promise<DashboardPeriodAnalytics> {
-    const { startIso, endIso } = getPeriodIsoBounds(sel);
+type PeriodSummary = Pick<
+    DashboardPeriodAnalytics,
+    | "ordersCreatedCount"
+    | "ordersReturnedCount"
+    | "itemsCreatedCount"
+    | "itemsReturnedCount"
+    | "periodUnpaidOnOrdersCreated"
+    | "ordersCreatedStatusCounts"
+>;
 
+/**
+ * Các con số tổng của kỳ. Ưu tiên RPC `get_period_summary` (một request,
+ * supabase_migration_period_summary.sql); hàm chưa được tạo thì tính kiểu cũ.
+ */
+async function fetchPeriodSummary(
+    startIso: string,
+    endIso: string,
+): Promise<PeriodSummary> {
+    const { data, error } = await supabase.rpc("get_period_summary", {
+        p_start: startIso,
+        p_end: endIso,
+    });
+    if (!error && data) {
+        const counts = (data.status_counts ?? {}) as Record<string, number>;
+        const ordersCreatedStatusCounts: Record<string, number> = {};
+        for (const st of ORDER_STATUS_FILTER_SEQUENCE) {
+            ordersCreatedStatusCounts[st] = Number(counts[st] ?? 0);
+        }
+        return {
+            ordersCreatedCount: Number(data.orders_created_count ?? 0),
+            ordersReturnedCount: Number(data.orders_returned_count ?? 0),
+            itemsCreatedCount: Number(data.items_created_count ?? 0),
+            itemsReturnedCount: Number(data.items_returned_count ?? 0),
+            periodUnpaidOnOrdersCreated: Number(data.unpaid_on_orders_created ?? 0),
+            ordersCreatedStatusCounts,
+        };
+    }
+    // Dự phòng cho khoảng thời gian code đã deploy nhưng SQL chưa được chạy.
+    return fetchPeriodSummaryLegacy(startIso, endIso);
+}
+
+async function fetchPeriodSummaryLegacy(
+    startIso: string,
+    endIso: string,
+): Promise<PeriodSummary> {
     const [
         createdCountRes,
         returnedCountRes,
         itemsCreatedCountRes,
-        revenueSummary,
         periodUnpaidOnOrdersCreated,
+        allReturnedOrderIds,
         ...createdStatusCountRes
     ] = await Promise.all([
+        supabase
+            .from("orders")
+            .select("id", { count: "exact", head: true })
+            .gte("created_at", startIso)
+            .lte("created_at", endIso),
+        supabase
+            .from("orders")
+            .select("id", { count: "exact", head: true })
+            .in("status", RETURNED_STATUSES)
+            .not("return_time", "is", null)
+            .gte("return_time", startIso)
+            .lte("return_time", endIso),
+        supabase
+            .from("order_details")
+            .select("id", { count: "exact", head: true })
+            .gte("created_at", startIso)
+            .lte("created_at", endIso),
+        sumUnpaidOnOrdersCreatedInRange(startIso, endIso),
+        fetchAllReturnedOrderIdsInRange(startIso, endIso),
+        ...ORDER_STATUS_FILTER_SEQUENCE.map((st) =>
             supabase
                 .from("orders")
-                .select("*", { count: "exact", head: true })
+                .select("id", { count: "exact", head: true })
+                .eq("status", st)
                 .gte("created_at", startIso)
                 .lte("created_at", endIso),
-            supabase
-                .from("orders")
-                .select("*", { count: "exact", head: true })
-                .in("status", ["Delivered", "DeliveredOwing"])
-                .not("return_time", "is", null)
-                .gte("return_time", startIso)
-                .lte("return_time", endIso),
-            supabase
-                .from("order_details")
-                .select("*", { count: "exact", head: true })
-                .gte("created_at", startIso)
-                .lte("created_at", endIso),
-            sumRevenuePaymentsInRange(startIso, endIso),
-            sumUnpaidOnOrdersCreatedInRange(startIso, endIso),
-            ...ORDER_STATUS_FILTER_SEQUENCE.map((st) =>
-                supabase
-                    .from("orders")
-                    .select("*", { count: "exact", head: true })
-                    .eq("status", st)
-                    .gte("created_at", startIso)
-                    .lte("created_at", endIso),
-            ),
-        ]);
+        ),
+    ]);
 
     if (createdCountRes.error) throw createdCountRes.error;
     if (returnedCountRes.error) throw returnedCountRes.error;
@@ -478,63 +492,84 @@ async function fetchPeriodAnalytics(
         ordersCreatedStatusCounts[st] = r.count ?? 0;
     });
 
-    const allReturnedOrderIds = await fetchAllReturnedOrderIdsInRange(
-        startIso,
-        endIso,
-    );
-    let itemsReturnedCount = 0;
-    for (let i = 0; i < allReturnedOrderIds.length; i += 200) {
-        const chunk = allReturnedOrderIds.slice(i, i + 200);
-        const { count, error } = await supabase
-            .from("order_details")
-            .select("*", { count: "exact", head: true })
-            .in("order_id", chunk);
-        if (error) throw error;
-        itemsReturnedCount += count || 0;
-    }
-
-    const revenueOrderIds = [...revenueSummary.byOrder.keys()];
-    const revenueOrderIdsSorted = revenueOrderIds
-        .sort((a, b) => {
-            const ta =
-                parsePaymentTime(revenueSummary.byOrder.get(a)?.latestPaymentTime)
-                    ?.getTime() ?? 0;
-            const tb =
-                parsePaymentTime(revenueSummary.byOrder.get(b)?.latestPaymentTime)
-                    ?.getTime() ?? 0;
-            return tb - ta;
-        });
-
-    const [ordersCreatedDataRes, ordersReturnedDataRes, detailsCreatedRes] =
-        await Promise.all([
-            supabase
-                .from("orders")
-                .select(
-                    "id, customer_id, total_amount, paid_amount, status, return_time, created_at",
-                )
-                .gte("created_at", startIso)
-                .lte("created_at", endIso)
-                .order("created_at", { ascending: false })
-                .limit(300),
-            supabase
-                .from("orders")
-                .select(
-                    "id, customer_id, total_amount, paid_amount, status, return_time, created_at",
-                )
-                .in("status", ["Delivered", "DeliveredOwing"])
-                .not("return_time", "is", null)
-                .gte("return_time", startIso)
-                .lte("return_time", endIso)
-                .order("return_time", { ascending: false })
-                .limit(150),
-            supabase
+    const itemCounts = await Promise.all(
+        chunk(allReturnedOrderIds).map(async (ids) => {
+            const { count, error } = await supabase
                 .from("order_details")
-                .select("id, order_id, item_name, status, created_at")
-                .gte("created_at", startIso)
-                .lte("created_at", endIso)
-                .order("created_at", { ascending: false })
-                .limit(200),
-        ]);
+                .select("id", { count: "exact", head: true })
+                .in("order_id", ids);
+            if (error) throw error;
+            return count || 0;
+        }),
+    );
+
+    return {
+        ordersCreatedCount: createdCountRes.count ?? 0,
+        ordersReturnedCount: returnedCountRes.count ?? 0,
+        itemsCreatedCount: itemsCreatedCountRes.count ?? 0,
+        itemsReturnedCount: itemCounts.reduce((s, n) => s + n, 0),
+        periodUnpaidOnOrdersCreated,
+        ordersCreatedStatusCounts,
+    };
+}
+
+type PeriodDetailRaw = {
+    id: number;
+    order_id: number;
+    item_name: string;
+    status: string;
+    created_at: string;
+};
+
+async function fetchPeriodAnalytics(
+    sel: DashboardPeriodSelection,
+): Promise<DashboardPeriodAnalytics> {
+    const { startIso, endIso } = getPeriodIsoBounds(sel);
+
+    const [
+        summary,
+        revenueSummary,
+        ordersCreatedDataRes,
+        ordersReturnedDataRes,
+        detailsCreatedRes,
+    ] = await Promise.all([
+        fetchPeriodSummary(startIso, endIso),
+        sumRevenuePaymentsInRange(startIso, endIso),
+        supabase
+            .from("orders")
+            .select(PERIOD_ORDER_SELECT)
+            .gte("created_at", startIso)
+            .lte("created_at", endIso)
+            .order("created_at", { ascending: false })
+            .order("id", { ascending: false })
+            .limit(300)
+            .overrideTypes<PeriodOrderRaw[], { merge: false }>(),
+        supabase
+            .from("orders")
+            .select(PERIOD_ORDER_SELECT)
+            .in("status", RETURNED_STATUSES)
+            .not("return_time", "is", null)
+            .gte("return_time", startIso)
+            .lte("return_time", endIso)
+            .order("return_time", { ascending: false })
+            .order("id", { ascending: false })
+            .limit(150)
+            .overrideTypes<PeriodOrderRaw[], { merge: false }>(),
+        supabase
+            .from("order_details")
+            .select(
+                "id, order_id, item_name, status, created_at, order:orders(customer:customers(name))",
+            )
+            .gte("created_at", startIso)
+            .lte("created_at", endIso)
+            .order("created_at", { ascending: false })
+            .order("id", { ascending: false })
+            .limit(200)
+            .overrideTypes<
+                (PeriodDetailRaw & { order: { customer: { name: string } | null } | null })[],
+                { merge: false }
+            >(),
+    ]);
 
     if (ordersCreatedDataRes.error) throw ordersCreatedDataRes.error;
     if (ordersReturnedDataRes.error) throw ordersReturnedDataRes.error;
@@ -543,26 +578,43 @@ async function fetchPeriodAnalytics(
     const ordersCreatedRaw = ordersCreatedDataRes.data || [];
     const ordersReturnedRaw = ordersReturnedDataRes.data || [];
     const detailsCreatedRaw = detailsCreatedRes.data || [];
-    const ordersRevenueRaw = await fetchOrdersByIds(revenueOrderIdsSorted);
+
+    const revenueOrderIds = [...revenueSummary.byOrder.keys()];
+    const listRetIds = ordersReturnedRaw.map((o) => o.id);
     const allOrderIdsForPayment = [
         ...new Set([
             ...ordersCreatedRaw.map((o) => o.id),
-            ...ordersReturnedRaw.map((o) => o.id),
+            ...listRetIds,
         ]),
     ];
-    // Chia lô bắt buộc: chọn kỳ "Năm" cho ra vài nghìn order id, nhét hết vào một
-    // filter in.(...) làm URL dài ~35KB và Supabase trả HTTP 400.
-    const paymentsForOrders = await fetchByIdChunks<
-        { order_id: number; payment_method: string; payment_time: string },
-        number
-    >(allOrderIdsForPayment, (ids, from, to) =>
-        supabase
-            .from("payments")
-            .select("order_id, payment_method, payment_time")
-            .in("order_id", ids)
-            .order("id", { ascending: true })
-            .range(from, to),
-    );
+
+    // Các bước dưới không phụ thuộc nhau → chạy song song. Mọi `in()` đều chia lô:
+    // chọn kỳ "Năm" cho ra vài nghìn order id, một filter in.(...) dài ~35KB là HTTP 400.
+    const [ordersRevenueRaw, paymentsForOrders, returnedDetails] =
+        await Promise.all([
+            fetchOrdersByIds(revenueOrderIds),
+            fetchByIdChunks<
+                { order_id: number; payment_method: string; payment_time: string },
+                number
+            >(allOrderIdsForPayment, (ids, from, to) =>
+                supabase
+                    .from("payments")
+                    .select("order_id, payment_method, payment_time")
+                    .in("order_id", ids)
+                    .order("id", { ascending: true })
+                    .range(from, to),
+            ),
+            fetchByIdChunks<PeriodDetailRaw, number>(listRetIds, (ids, from, to) =>
+                supabase
+                    .from("order_details")
+                    .select("id, order_id, item_name, status, created_at")
+                    .in("order_id", ids)
+                    .order("created_at", { ascending: false })
+                    .order("id", { ascending: false })
+                    .range(from, to),
+            ),
+        ]);
+
     const latestPaymentByOrder = new Map<
         number,
         { method: "Cash" | "Card" | "Transfer"; time: number }
@@ -578,67 +630,26 @@ async function fetchPeriodAnalytics(
         }
     }
 
-    const custIds = [
-        ...ordersCreatedRaw.map((o) => o.customer_id),
-        ...ordersReturnedRaw.map((o) => o.customer_id),
-        ...ordersRevenueRaw.map((o) => o.customer_id),
-    ];
-    const detailOrderIdsForCreated = [...new Set(detailsCreatedRaw.map((d) => d.order_id))];
-    const ordersForDetailRows = await fetchByIdChunks<
-        { id: number; customer_id: number },
-        number
-    >(detailOrderIdsForCreated, (ids, from, to) =>
-        supabase
-            .from("orders")
-            .select("id, customer_id")
-            .in("id", ids)
-            .order("id", { ascending: true })
-            .range(from, to),
-    );
-    for (const o of ordersForDetailRows)
-        custIds.push(o.customer_id);
+    const toOrderRow = (o: PeriodOrderRaw): DashboardPeriodOrderRow => {
+        const total = Number(o.total_amount);
+        const paid = Number(o.paid_amount ?? 0);
+        return {
+            id: o.id,
+            created_at: o.created_at,
+            return_time: o.return_time,
+            status: o.status,
+            customer_name: customerNameOf(o),
+            total_amount: total,
+            paid_amount: paid,
+            unpaid_amount: Math.max(0, total - paid),
+            payment_method: latestPaymentByOrder.get(o.id)?.method ?? null,
+        };
+    };
 
-    const customerMap = await fetchCustomerNames(custIds);
-
-    const ordersCreated: DashboardPeriodOrderRow[] = ordersCreatedRaw.map(
-        (o) => {
-            const total = Number(o.total_amount);
-            const paid = Number(o.paid_amount ?? 0);
-            return {
-                id: o.id,
-                created_at: o.created_at,
-                return_time: o.return_time,
-                status: o.status,
-                customer_name:
-                    customerMap[o.customer_id as number] || "Vãng lai",
-                total_amount: total,
-                paid_amount: paid,
-                unpaid_amount: Math.max(0, total - paid),
-                payment_method:
-                    latestPaymentByOrder.get(o.id)?.method ?? null,
-            };
-        },
-    );
+    const ordersCreated: DashboardPeriodOrderRow[] = ordersCreatedRaw.map(toOrderRow);
 
     const ordersDebt: DashboardPeriodDebtOrderRow[] = ordersCreatedRaw
-        .map((o) => {
-            const total = Number(o.total_amount);
-            const paid = Number(o.paid_amount ?? 0);
-            const unpaid = Math.max(0, total - paid);
-            return {
-                id: o.id,
-                created_at: o.created_at,
-                return_time: o.return_time,
-                status: o.status,
-                customer_name:
-                    customerMap[o.customer_id as number] || "Vãng lai",
-                total_amount: total,
-                paid_amount: paid,
-                unpaid_amount: unpaid,
-                payment_method:
-                    latestPaymentByOrder.get(o.id)?.method ?? null,
-            };
-        })
+        .map(toOrderRow)
         .filter((o) => o.unpaid_amount > 0)
         .sort((a, b) => b.unpaid_amount - a.unpaid_amount);
 
@@ -654,8 +665,7 @@ async function fetchPeriodAnalytics(
                 order_created_at: o.created_at,
                 return_time: o.return_time,
                 status: o.status,
-                customer_name:
-                    customerMap[o.customer_id as number] || "Vãng lai",
+                customer_name: customerNameOf(o),
                 total_amount: total,
                 paid_amount: rev?.amount ?? 0,
                 unpaid_amount: Math.max(0, total - paidOverall),
@@ -675,110 +685,43 @@ async function fetchPeriodAnalytics(
                 new Date(a.created_at).getTime(),
         );
 
-    const ordersReturned: DashboardPeriodOrderRow[] = ordersReturnedRaw.map(
-        (o) => {
-            const total = Number(o.total_amount);
-            const paid = Number(o.paid_amount ?? 0);
-            return {
-                id: o.id,
-                created_at: o.created_at,
-                return_time: o.return_time,
-                status: o.status,
-                customer_name:
-                    customerMap[o.customer_id as number] || "Vãng lai",
-                total_amount: total,
-                paid_amount: paid,
-                unpaid_amount: Math.max(0, total - paid),
-                payment_method:
-                    latestPaymentByOrder.get(o.id)?.method ?? null,
-            };
-        },
-    );
+    const ordersReturned: DashboardPeriodOrderRow[] = ordersReturnedRaw.map(toOrderRow);
 
-    const orderIdToCustomerId: Record<number, number | null> = {};
-    for (const o of ordersForDetailRows || [])
-        orderIdToCustomerId[o.id] = o.customer_id;
+    const itemsCreated: DashboardPeriodItemRow[] = detailsCreatedRaw.map((d) => ({
+        id: d.id,
+        order_id: d.order_id,
+        item_name: d.item_name,
+        status: d.status,
+        created_at: d.created_at,
+        customer_name: customerNameOf(d.order),
+    }));
 
-    const itemsCreated: DashboardPeriodItemRow[] = detailsCreatedRaw.map(
-        (d) => {
-            const cid = orderIdToCustomerId[d.order_id];
-            return {
-                id: d.id,
-                order_id: d.order_id,
-                item_name: d.item_name,
-                status: d.status,
-                created_at: d.created_at,
-                customer_name:
-                    (cid != null && customerMap[cid]) || "Vãng lai",
-            };
-        },
-    );
-
-    const listRetIds = ordersReturnedRaw.map((o) => o.id);
-    let itemsReturned: DashboardPeriodItemRow[] = [];
-    if (listRetIds.length > 0) {
-        // Chia lô để URL không phình theo số đơn trong kỳ; vẫn giữ trần 400 dòng
-        // hiển thị như cũ, nhưng lấy đúng 400 dòng mới nhất trên toàn bộ các lô.
-        const rdAll = await fetchByIdChunks<
-            {
-                id: number;
-                order_id: number;
-                item_name: string;
-                status: string;
-                created_at: string;
-            },
-            number
-        >(listRetIds, (ids, from, to) =>
-            supabase
-                .from("order_details")
-                .select("id, order_id, item_name, status, created_at")
-                .in("order_id", ids)
-                .order("created_at", { ascending: false })
-                .order("id", { ascending: false })
-                .range(from, to),
-        );
-        const rd = rdAll
-            .sort((a, b) => b.created_at.localeCompare(a.created_at))
-            .slice(0, 400);
-        const retMeta = new Map<
-            number,
-            { return_time: string; customer_id: number | null }
-        >();
-        for (const o of ordersReturnedRaw) {
-            retMeta.set(o.id, {
-                return_time: o.return_time as string,
-                customer_id: o.customer_id,
-            });
-        }
-        itemsReturned = (rd || []).map((d) => {
+    // Giữ trần 400 dòng hiển thị như cũ, lấy đúng 400 dòng mới nhất trên toàn bộ các lô.
+    const retMeta = new Map(ordersReturnedRaw.map((o) => [o.id, o]));
+    const itemsReturned: DashboardPeriodItemRow[] = returnedDetails
+        .sort((a, b) => b.created_at.localeCompare(a.created_at))
+        .slice(0, 400)
+        .map((d) => {
             const meta = retMeta.get(d.order_id);
-            const cid = meta?.customer_id;
             return {
                 id: d.id,
                 order_id: d.order_id,
                 item_name: d.item_name,
                 status: d.status,
                 created_at: d.created_at,
-                customer_name:
-                    cid != null && customerMap[cid] ? customerMap[cid] : "Vãng lai",
+                customer_name: customerNameOf(meta),
                 return_time: meta?.return_time ?? null,
             };
-        });
-        itemsReturned.sort((a, b) => {
+        })
+        .sort((a, b) => {
             const ta = new Date(a.return_time || 0).getTime();
             const tb = new Date(b.return_time || 0).getTime();
             return tb - ta;
         });
-    }
 
     return {
-        ordersCreatedCount: createdCountRes.count ?? 0,
-        ordersReturnedCount: returnedCountRes.count ?? 0,
-        itemsCreatedCount: itemsCreatedCountRes.count ?? 0,
-        itemsReturnedCount,
+        ...summary,
         periodRevenue: revenueSummary.total,
-        periodUnpaidOnOrdersCreated,
-        ordersCreatedStatusCounts,
         ordersCreated,
         ordersRevenue,
         ordersDebt,

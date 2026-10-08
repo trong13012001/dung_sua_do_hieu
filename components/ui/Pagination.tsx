@@ -2,6 +2,9 @@
 
 import React from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { cn } from '@/lib/utils';
 
 export const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 
@@ -50,14 +53,6 @@ function buildPageItems(page: number, totalPages: number): (number | null)[] {
     return items;
 }
 
-const arrowClass = (enabled: boolean) =>
-    [
-        'w-9 h-9 rounded-md flex items-center justify-center transition-colors border',
-        enabled
-            ? 'bg-primary text-white border-primary hover:bg-primary/90'
-            : 'bg-card text-muted-foreground border-border opacity-50 cursor-not-allowed',
-    ].join(' ');
-
 export function Pagination({
     page,
     totalCount,
@@ -80,90 +75,83 @@ export function Pagination({
     const firstRow = totalCount === 0 ? 0 : (safePage - 1) * pageSize + 1;
     const lastRow = Math.min(safePage * pageSize, totalCount);
 
+    const rangeLabel = (
+        <>
+            {firstRow}–{lastRow} trên {totalCount}
+            {unitLabel ? ` ${unitLabel}` : ''}
+        </>
+    );
+
     return (
-        <div
-            className={`flex flex-col md:flex-row md:items-center md:justify-between gap-4 ${className}`}
-        >
+        <div className={cn('flex min-w-0 flex-col gap-4 md:flex-row md:items-center md:justify-between', className)}>
             {/* Số dòng mỗi trang */}
             {onPageSizeChange ? (
                 <div className="flex items-center gap-2.5 text-sm text-muted-foreground">
-                    <label htmlFor="pagination-page-size">
-                        Hiển thị mỗi trang
-                    </label>
-                    <select
-                        id="pagination-page-size"
-                        value={pageSize}
-                        onChange={(e) => onPageSizeChange(Number(e.target.value))}
-                        className="bg-card border border-border rounded-md px-2.5 py-1.5 text-sm font-medium text-foreground outline-none focus:ring-1 focus:ring-primary"
-                    >
-                        {pageSizeOptions.map((size) => (
-                            <option key={size} value={size}>
-                                {size}
-                            </option>
-                        ))}
-                    </select>
-                    <span className="hidden sm:inline text-xs tabular-nums">
-                        {firstRow}–{lastRow} trên {totalCount}
-                        {unitLabel ? ` ${unitLabel}` : ''}
-                    </span>
+                    <label htmlFor="pagination-page-size">Hiển thị mỗi trang</label>
+                    <Select value={String(pageSize)} onValueChange={(v) => onPageSizeChange(Number(v))}>
+                        <SelectTrigger id="pagination-page-size" size="sm" className="w-[76px] bg-card font-medium text-foreground">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {pageSizeOptions.map((size) => (
+                                <SelectItem key={size} value={String(size)}>
+                                    {size}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                    <span className="hidden sm:inline text-xs tabular-nums">{rangeLabel}</span>
                 </div>
             ) : (
-                <span className="text-xs text-muted-foreground tabular-nums">
-                    {firstRow}–{lastRow} trên {totalCount}
-                    {unitLabel ? ` ${unitLabel}` : ''}
-                </span>
+                <span className="text-xs text-muted-foreground tabular-nums">{rangeLabel}</span>
             )}
 
             {/* Chuyển trang */}
             {totalPages > 1 && (
-                <div className="flex items-center gap-1.5">
-                    <button
-                        type="button"
+                <nav aria-label="Phân trang" className="flex min-w-0 flex-wrap items-center justify-center gap-1 md:justify-end">
+                    <Button
+                        variant="outline"
+                        size="icon"
                         disabled={!canPrev}
                         onClick={() => onPageChange(safePage - 1)}
-                        className={arrowClass(canPrev)}
                         aria-label="Trang trước"
                     >
-                        <ChevronLeft size={18} />
-                    </button>
+                        <ChevronLeft />
+                    </Button>
 
                     {buildPageItems(safePage, totalPages).map((item, idx) =>
                         item === null ? (
                             <span
                                 key={`gap-${idx}`}
-                                className="w-9 h-9 flex items-center justify-center text-muted-foreground select-none"
+                                className="size-9 flex items-center justify-center text-muted-foreground select-none"
                             >
                                 …
                             </span>
                         ) : (
-                            <button
+                            <Button
                                 key={item}
-                                type="button"
+                                variant={item === safePage ? 'default' : 'ghost'}
+                                size="icon"
                                 disabled={isFetching}
                                 onClick={() => onPageChange(item)}
                                 aria-current={item === safePage ? 'page' : undefined}
-                                className={[
-                                    'w-9 h-9 rounded-md text-sm tabular-nums transition-colors disabled:cursor-not-allowed',
-                                    item === safePage
-                                        ? 'font-bold text-foreground bg-muted/50'
-                                        : 'font-medium text-muted-foreground hover:bg-muted/40 hover:text-foreground',
-                                ].join(' ')}
+                                className="tabular-nums"
                             >
                                 {item}
-                            </button>
+                            </Button>
                         ),
                     )}
 
-                    <button
-                        type="button"
+                    <Button
+                        variant="outline"
+                        size="icon"
                         disabled={!canNext}
                         onClick={() => onPageChange(safePage + 1)}
-                        className={arrowClass(canNext)}
                         aria-label="Trang sau"
                     >
-                        <ChevronRight size={18} />
-                    </button>
-                </div>
+                        <ChevronRight />
+                    </Button>
+                </nav>
             )}
         </div>
     );

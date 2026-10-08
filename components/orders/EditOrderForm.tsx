@@ -1,7 +1,11 @@
 "use client";
 
-import React, { useState } from "react";
-import { ChevronDown, Trash2 } from "lucide-react";
+import React, { memo, useCallback, useState } from "react";
+import { Plus, Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { FormField } from "@/components/common/FormField";
 import { onlyDigits } from "@/lib/validation";
 import { Order, Role, User } from "@/lib/types";
 import { orderDetailStatusSelectOptions } from "@/lib/orderDetailStatusUi";
@@ -45,8 +49,189 @@ interface EditOrderFormProps {
     onSubmit: (data: EditOrderSubmitData) => void;
 }
 
-const selectClass =
-    "w-full bg-muted/20 border border-border rounded-md px-3 py-2 text-sm appearance-none outline-none focus:ring-1 focus:ring-primary";
+/** Radix Select không nhận value rỗng → giá trị thay thế cho "chưa phân công". */
+const UNASSIGNED = "__none__";
+const toSelect = (tailorId: string) => (tailorId === "" ? UNASSIGNED : tailorId);
+const fromSelect = (value: string) => (value === UNASSIGNED ? "" : value);
+
+function TailorSelect({
+    value,
+    onChange,
+    tailors,
+    ariaLabel,
+}: {
+    value: string;
+    onChange: (tailorId: string) => void;
+    tailors: TailorOption[];
+    ariaLabel: string;
+}) {
+    return (
+        <Select value={toSelect(value)} onValueChange={(v) => onChange(fromSelect(v))}>
+            <SelectTrigger aria-label={ariaLabel} className="w-full min-w-0">
+                <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+                <SelectItem value={UNASSIGNED}>Chưa phân công</SelectItem>
+                {tailors.map((t) => (
+                    <SelectItem key={String(t.id)} value={String(t.id)}>
+                        {t.name}
+                    </SelectItem>
+                ))}
+            </SelectContent>
+        </Select>
+    );
+}
+
+/** Nhãn cột chỉ hiện trên mobile (desktop có hàng tiêu đề chung). */
+const MobileLabel = ({ children }: { children: React.ReactNode }) => (
+    <span className="text-[10px] font-bold uppercase text-muted-foreground sm:hidden">{children}</span>
+);
+
+/** Một món đã có trong đơn. memo: gõ ở dòng này không render lại các dòng khác. */
+const DetailEditRow = memo(function DetailEditRow({
+    detailId,
+    edit,
+    tailors,
+    onChange,
+    onDelete,
+}: {
+    detailId: number;
+    edit: DetailEdit;
+    tailors: TailorOption[];
+    onChange: (detailId: number, field: keyof DetailEdit, value: string) => void;
+    onDelete: (detailId: number) => void;
+}) {
+    return (
+        <div className="grid grid-cols-1 gap-2 p-3 sm:grid-cols-12 sm:items-center sm:gap-2 sm:p-2">
+            <label className="flex flex-col gap-1 sm:col-span-3">
+                <MobileLabel>Tên SP</MobileLabel>
+                <Input
+                    value={edit.item_name}
+                    onChange={(e) => onChange(detailId, "item_name", e.target.value)}
+                    placeholder="Tên sản phẩm"
+                    aria-label="Tên sản phẩm"
+                />
+            </label>
+            <label className="flex flex-col gap-1 sm:col-span-2">
+                <MobileLabel>Đơn giá (đ)</MobileLabel>
+                <Input
+                    inputMode="numeric"
+                    value={edit.unit_price}
+                    onChange={(e) => onChange(detailId, "unit_price", onlyDigits(e.target.value))}
+                    placeholder="0"
+                    aria-label="Đơn giá"
+                />
+            </label>
+            <label className="flex flex-col gap-1 sm:col-span-2">
+                <MobileLabel>Mô tả</MobileLabel>
+                <Input
+                    value={edit.description}
+                    onChange={(e) => onChange(detailId, "description", e.target.value)}
+                    placeholder="Tùy chọn"
+                    aria-label="Mô tả"
+                />
+            </label>
+            <div className="flex flex-col gap-1 sm:col-span-2">
+                <MobileLabel>Trạng thái món</MobileLabel>
+                <Select value={edit.status} onValueChange={(v) => onChange(detailId, "status", v)}>
+                    <SelectTrigger aria-label="Trạng thái món" className="w-full min-w-0">
+                        <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {orderDetailStatusSelectOptions.map((s) => (
+                            <SelectItem key={s.value} value={s.value}>
+                                {s.label}
+                            </SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+            </div>
+            <div className="flex flex-col gap-1 sm:col-span-2">
+                <MobileLabel>Thợ</MobileLabel>
+                <TailorSelect
+                    value={edit.assigned_tailor_id}
+                    onChange={(v) => onChange(detailId, "assigned_tailor_id", v)}
+                    tailors={tailors}
+                    ariaLabel="Thợ"
+                />
+            </div>
+            <div className="flex justify-end sm:col-span-1">
+                <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={() => onDelete(detailId)}
+                    aria-label="Xóa dòng"
+                    className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                >
+                    <Trash2 />
+                </Button>
+            </div>
+        </div>
+    );
+});
+
+/** Một dòng sản phẩm mới đang nhập. */
+const NewItemEditRow = memo(function NewItemEditRow({
+    index,
+    row,
+    tailors,
+    onChange,
+    onRemove,
+}: {
+    index: number;
+    row: NewItemRow;
+    tailors: TailorOption[];
+    onChange: (index: number, field: keyof NewItemRow, value: string) => void;
+    onRemove: (index: number) => void;
+}) {
+    return (
+        <div className="grid grid-cols-1 gap-2 rounded-md border border-border bg-card p-3 sm:grid-cols-12 sm:items-center sm:border-0 sm:bg-transparent sm:p-0">
+            <Input
+                className="sm:col-span-3"
+                value={row.name}
+                onChange={(e) => onChange(index, "name", e.target.value)}
+                placeholder="Tên sản phẩm"
+                aria-label="Tên sản phẩm mới"
+            />
+            <Input
+                className="sm:col-span-2"
+                inputMode="numeric"
+                value={row.price}
+                onChange={(e) => onChange(index, "price", onlyDigits(e.target.value))}
+                placeholder="Đơn giá"
+                aria-label="Đơn giá"
+            />
+            <Input
+                className="sm:col-span-2"
+                value={row.description}
+                onChange={(e) => onChange(index, "description", e.target.value)}
+                placeholder="Mô tả"
+                aria-label="Mô tả"
+            />
+            <div className="sm:col-span-4">
+                <TailorSelect
+                    value={row.assigned_tailor_id}
+                    onChange={(v) => onChange(index, "assigned_tailor_id", v)}
+                    tailors={tailors}
+                    ariaLabel="Thợ"
+                />
+            </div>
+            <div className="flex justify-end sm:col-span-1">
+                <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={() => onRemove(index)}
+                    aria-label="Xóa dòng"
+                    className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                >
+                    <Trash2 />
+                </Button>
+            </div>
+        </div>
+    );
+});
 
 function buildDetailEdits(order: Order): Record<number, DetailEdit> {
     const edits: Record<number, DetailEdit> = {};
@@ -92,19 +277,18 @@ export function EditOrderForm({
         returnDate?.initial ?? "",
     );
 
-    const setDetailEdit = (
-        detailId: number,
-        field: keyof DetailEdit,
-        value: string,
-    ) => {
-        setDetailEdits((prev) => ({
-            ...prev,
-            [detailId]: {
-                ...(prev[detailId] ?? ({} as DetailEdit)),
-                [field]: value,
-            },
-        }));
-    };
+    const setDetailEdit = useCallback(
+        (detailId: number, field: keyof DetailEdit, value: string) => {
+            setDetailEdits((prev) => ({
+                ...prev,
+                [detailId]: {
+                    ...(prev[detailId] ?? ({} as DetailEdit)),
+                    [field]: value,
+                },
+            }));
+        },
+        [],
+    );
 
     const addNewItemRow = () => {
         setNewItems((prev) => [
@@ -113,21 +297,20 @@ export function EditOrderForm({
         ]);
     };
 
-    const updateNewItem = (
-        index: number,
-        field: keyof NewItemRow,
-        value: string,
-    ) => {
-        setNewItems((prev) => {
-            const next = [...prev];
-            next[index] = { ...next[index], [field]: value };
-            return next;
-        });
-    };
+    const updateNewItem = useCallback(
+        (index: number, field: keyof NewItemRow, value: string) => {
+            setNewItems((prev) => {
+                const next = [...prev];
+                next[index] = { ...next[index], [field]: value };
+                return next;
+            });
+        },
+        [],
+    );
 
-    const removeNewItem = (index: number) => {
+    const removeNewItem = useCallback((index: number) => {
         setNewItems((prev) => prev.filter((_, i) => i !== index));
-    };
+    }, []);
 
     const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
@@ -145,249 +328,68 @@ export function EditOrderForm({
     return (
         <>
             {logSlot}
-            <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="space-y-1.5">
-                    <label className="text-[11px] font-bold text-muted-foreground uppercase">
-                        Trạng thái đơn hàng
-                    </label>
-                    <div className="relative">
-                        <select
-                            name="order-status"
-                            className={selectClass}
-                            defaultValue={order.status || "New"}
-                        >
-                            {statusOptions.map((s) => (
-                                <option key={s.value} value={s.value}>
-                                    {s.label}
-                                </option>
-                            ))}
-                        </select>
-                        <ChevronDown
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
-                            size={14}
-                        />
-                    </div>
-                </div>
+            <form onSubmit={handleSubmit} className="space-y-5">
+                <div className={returnDate ? "grid grid-cols-1 gap-4 sm:grid-cols-2" : undefined}>
+                    <FormField label="Trạng thái đơn hàng" htmlFor="order-status">
+                        <Select name="order-status" defaultValue={order.status || "New"}>
+                            <SelectTrigger id="order-status" className="w-full">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {statusOptions.map((s) => (
+                                    <SelectItem key={s.value} value={s.value}>
+                                        {s.label}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </FormField>
 
-                {returnDate && (
-                    <div className="space-y-1.5">
-                        <label className="text-[11px] font-bold text-muted-foreground uppercase">
-                            Ngày hẹn trả đồ
-                        </label>
-                        <input
-                            type="date"
-                            value={returnDateValue}
-                            onChange={(e) => setReturnDateValue(e.target.value)}
-                            className={selectClass}
-                        />
-                    </div>
-                )}
+                    {returnDate && (
+                        <FormField label="Ngày hẹn trả đồ" htmlFor="return-date">
+                            <Input
+                                id="return-date"
+                                type="date"
+                                value={returnDateValue}
+                                onChange={(e) => setReturnDateValue(e.target.value)}
+                            />
+                        </FormField>
+                    )}
+                </div>
 
                 {order.details && order.details.length > 0 && (
                     <div className="space-y-2">
-                        <p className="text-[11px] font-bold text-muted-foreground uppercase">
+                        <p className="text-xs font-semibold text-muted-foreground">
                             Chi tiết sản phẩm ({order.details.length})
                         </p>
-                        <p className="text-[10px] text-muted-foreground leading-snug">
-                            Giao từng món: chọn &quot;Đã giao món&quot; hoặc
-                            &quot;Đã giao — nợ món&quot; khi khách chỉ nhận / chỉ
-                            trả trước một phần đồ. Tiền vẫn ghi ở nút thanh toán
-                            đơn.
+                        <p className="text-[11px] leading-snug text-muted-foreground">
+                            Giao từng món: chọn &quot;Đã giao món&quot; hoặc &quot;Đã giao — nợ món&quot; khi khách chỉ
+                            nhận / chỉ trả trước một phần đồ. Tiền vẫn ghi ở nút thanh toán đơn.
                         </p>
-                        <div className="border border-border rounded-lg overflow-hidden">
-                            <div className="max-h-[min(50vh,400px)] overflow-y-auto">
-                                <table className="w-full text-sm border-collapse">
-                                    <thead className="sticky top-0 bg-muted/30 border-b border-border z-10">
-                                        <tr>
-                                            <th className="text-left p-2 font-bold text-[10px] uppercase text-muted-foreground w-[22%]">
-                                                Tên SP
-                                            </th>
-                                            <th className="text-left p-2 font-bold text-[10px] uppercase text-muted-foreground w-[12%]">
-                                                Đơn giá (đ)
-                                            </th>
-                                            <th className="text-left p-2 font-bold text-[10px] uppercase text-muted-foreground w-[18%]">
-                                                Mô tả
-                                            </th>
-                                            <th className="text-left p-2 font-bold text-[10px] uppercase text-muted-foreground w-[22%]">
-                                                Trạng thái món
-                                            </th>
-                                            <th className="text-left p-2 font-bold text-[10px] uppercase text-muted-foreground w-[22%]">
-                                                Thợ
-                                            </th>
-                                            <th className="w-10 p-2"></th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {order.details.map((d) => {
-                                            const edit = detailEdits[d.id];
-                                            if (!edit) return null;
-                                            return (
-                                                <tr
-                                                    key={d.id}
-                                                    className="border-b border-border/50 last:border-0 hover:bg-muted/10"
-                                                >
-                                                    <td className="p-1.5">
-                                                        <input
-                                                            type="text"
-                                                            value={edit.item_name}
-                                                            onChange={(e) =>
-                                                                setDetailEdit(
-                                                                    d.id,
-                                                                    "item_name",
-                                                                    e.target.value,
-                                                                )
-                                                            }
-                                                            placeholder="Tên sản phẩm"
-                                                            className={
-                                                                selectClass +
-                                                                " min-w-0"
-                                                            }
-                                                        />
-                                                    </td>
-                                                    <td className="p-1.5">
-                                                        <input
-                                                            type="text"
-                                                            inputMode="numeric"
-                                                            value={edit.unit_price}
-                                                            onChange={(e) =>
-                                                                setDetailEdit(
-                                                                    d.id,
-                                                                    "unit_price",
-                                                                    onlyDigits(
-                                                                        e.target
-                                                                            .value,
-                                                                    ),
-                                                                )
-                                                            }
-                                                            placeholder="0"
-                                                            className={
-                                                                selectClass +
-                                                                " min-w-0"
-                                                            }
-                                                        />
-                                                    </td>
-                                                    <td className="p-1.5">
-                                                        <input
-                                                            type="text"
-                                                            value={
-                                                                edit.description
-                                                            }
-                                                            onChange={(e) =>
-                                                                setDetailEdit(
-                                                                    d.id,
-                                                                    "description",
-                                                                    e.target.value,
-                                                                )
-                                                            }
-                                                            placeholder="Tùy chọn"
-                                                            className={
-                                                                selectClass +
-                                                                " min-w-0"
-                                                            }
-                                                        />
-                                                    </td>
-                                                    <td className="p-1.5">
-                                                        <div className="relative">
-                                                            <select
-                                                                value={edit.status}
-                                                                onChange={(e) =>
-                                                                    setDetailEdit(
-                                                                        d.id,
-                                                                        "status",
-                                                                        e.target
-                                                                            .value,
-                                                                    )
-                                                                }
-                                                                className={
-                                                                    selectClass +
-                                                                    " min-w-0"
-                                                                }
-                                                            >
-                                                                {orderDetailStatusSelectOptions.map(
-                                                                    (s) => (
-                                                                        <option
-                                                                            key={
-                                                                                s.value
-                                                                            }
-                                                                            value={
-                                                                                s.value
-                                                                            }
-                                                                        >
-                                                                            {
-                                                                                s.label
-                                                                            }
-                                                                        </option>
-                                                                    ),
-                                                                )}
-                                                            </select>
-                                                            <ChevronDown
-                                                                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
-                                                                size={12}
-                                                            />
-                                                        </div>
-                                                    </td>
-                                                    <td className="p-1.5">
-                                                        <div className="relative">
-                                                            <select
-                                                                value={
-                                                                    edit.assigned_tailor_id
-                                                                }
-                                                                onChange={(e) =>
-                                                                    setDetailEdit(
-                                                                        d.id,
-                                                                        "assigned_tailor_id",
-                                                                        e.target
-                                                                            .value,
-                                                                    )
-                                                                }
-                                                                className={
-                                                                    selectClass +
-                                                                    " min-w-0"
-                                                                }
-                                                            >
-                                                                <option value="">
-                                                                    Chưa phân công
-                                                                </option>
-                                                                {tailors.map(
-                                                                    (t) => (
-                                                                        <option
-                                                                            key={String(
-                                                                                t.id,
-                                                                            )}
-                                                                            value={String(
-                                                                                t.id,
-                                                                            )}
-                                                                        >
-                                                                            {t.name}
-                                                                        </option>
-                                                                    ),
-                                                                )}
-                                                            </select>
-                                                            <ChevronDown
-                                                                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
-                                                                size={12}
-                                                            />
-                                                        </div>
-                                                    </td>
-                                                    <td className="p-1.5">
-                                                        <button
-                                                            type="button"
-                                                            onClick={() =>
-                                                                onRequestDeleteDetail(
-                                                                    d.id,
-                                                                )
-                                                            }
-                                                            className="p-1.5 rounded text-muted-foreground hover:text-danger hover:bg-danger/10 transition-colors"
-                                                            title="Xóa dòng"
-                                                        >
-                                                            <Trash2 size={16} />
-                                                        </button>
-                                                    </td>
-                                                </tr>
-                                            );
-                                        })}
-                                    </tbody>
-                                </table>
+                        <div className="overflow-hidden rounded-lg border border-border">
+                            <div className="hidden grid-cols-12 gap-2 border-b border-border bg-muted/40 px-2 py-2 text-[10px] font-bold uppercase text-muted-foreground sm:grid">
+                                <span className="col-span-3">Tên SP</span>
+                                <span className="col-span-2">Đơn giá (đ)</span>
+                                <span className="col-span-2">Mô tả</span>
+                                <span className="col-span-2">Trạng thái món</span>
+                                <span className="col-span-2">Thợ</span>
+                                <span className="col-span-1" />
+                            </div>
+                            <div className="custom-scrollbar max-h-[min(50vh,400px)] divide-y divide-border/60 overflow-y-auto">
+                                {order.details.map((d) => {
+                                    const edit = detailEdits[d.id];
+                                    if (!edit) return null;
+                                    return (
+                                        <DetailEditRow
+                                            key={d.id}
+                                            detailId={d.id}
+                                            edit={edit}
+                                            tailors={tailors}
+                                            onChange={setDetailEdit}
+                                            onDelete={onRequestDeleteDetail}
+                                        />
+                                    );
+                                })}
                             </div>
                         </div>
                     </div>
@@ -395,130 +397,34 @@ export function EditOrderForm({
 
                 <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                        <p className="text-[11px] font-bold text-muted-foreground uppercase">
-                            Thêm sản phẩm
-                        </p>
-                        <button
-                            type="button"
-                            onClick={addNewItemRow}
-                            className="text-xs font-bold text-primary hover:underline"
-                        >
-                            + Thêm dòng
-                        </button>
+                        <p className="text-xs font-semibold text-muted-foreground">Thêm sản phẩm</p>
+                        <Button type="button" variant="ghost" size="sm" onClick={addNewItemRow} className="text-primary">
+                            <Plus /> Thêm dòng
+                        </Button>
                     </div>
                     {newItems.length > 0 && (
-                        <div className="border border-border rounded-lg overflow-hidden">
-                            <div className="max-h-[200px] overflow-y-auto p-2 space-y-2 bg-muted/5">
-                                {newItems.map((row, idx) => (
-                                    <div
-                                        key={idx}
-                                        className="grid grid-cols-12 gap-2 items-center"
-                                    >
-                                        <div className="col-span-3">
-                                            <input
-                                                type="text"
-                                                value={row.name}
-                                                onChange={(e) =>
-                                                    updateNewItem(
-                                                        idx,
-                                                        "name",
-                                                        e.target.value,
-                                                    )
-                                                }
-                                                placeholder="Tên sản phẩm"
-                                                className={selectClass}
-                                            />
-                                        </div>
-                                        <div className="col-span-2">
-                                            <input
-                                                type="text"
-                                                inputMode="numeric"
-                                                value={row.price}
-                                                onChange={(e) =>
-                                                    updateNewItem(
-                                                        idx,
-                                                        "price",
-                                                        onlyDigits(
-                                                            e.target.value,
-                                                        ),
-                                                    )
-                                                }
-                                                placeholder="Đơn giá"
-                                                className={selectClass}
-                                            />
-                                        </div>
-                                        <div className="col-span-2">
-                                            <input
-                                                type="text"
-                                                value={row.description}
-                                                onChange={(e) =>
-                                                    updateNewItem(
-                                                        idx,
-                                                        "description",
-                                                        e.target.value,
-                                                    )
-                                                }
-                                                placeholder="Mô tả"
-                                                className={selectClass}
-                                            />
-                                        </div>
-                                        <div className="col-span-4">
-                                            <select
-                                                value={row.assigned_tailor_id}
-                                                onChange={(e) =>
-                                                    updateNewItem(
-                                                        idx,
-                                                        "assigned_tailor_id",
-                                                        e.target.value,
-                                                    )
-                                                }
-                                                className={selectClass}
-                                            >
-                                                <option value="">
-                                                    Chưa phân công
-                                                </option>
-                                                {tailors.map((t) => (
-                                                    <option
-                                                        key={String(t.id)}
-                                                        value={String(t.id)}
-                                                    >
-                                                        {t.name}
-                                                    </option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                        <div className="col-span-1 flex justify-end">
-                                            <button
-                                                type="button"
-                                                onClick={() => removeNewItem(idx)}
-                                                className="p-2 text-muted-foreground hover:text-danger"
-                                                title="Xóa dòng"
-                                            >
-                                                <Trash2 size={16} />
-                                            </button>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
+                        <div className="custom-scrollbar max-h-[260px] space-y-2 overflow-y-auto rounded-lg border border-border bg-muted/20 p-2">
+                            {newItems.map((row, idx) => (
+                                <NewItemEditRow
+                                    key={idx}
+                                    index={idx}
+                                    row={row}
+                                    tailors={tailors}
+                                    onChange={updateNewItem}
+                                    onRemove={removeNewItem}
+                                />
+                            ))}
                         </div>
                     )}
                 </div>
 
-                <div className="flex gap-4 pt-2">
-                    <button
-                        type="button"
-                        onClick={onCancel}
-                        className="flex-1 bg-muted/40 text-foreground py-2.5 rounded-md font-bold text-sm border border-border"
-                    >
+                <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
+                    <Button type="button" variant="outline" onClick={onCancel}>
                         Hủy
-                    </button>
-                    <button
-                        type="submit"
-                        disabled={isPending}
-                        className="flex-1 btn-primary py-2.5 rounded-md font-bold text-sm disabled:opacity-50"
-                    >
+                    </Button>
+                    <Button type="submit" disabled={isPending}>
                         {isPending ? "Đang lưu..." : "Cập nhật"}
-                    </button>
+                    </Button>
                 </div>
             </form>
         </>

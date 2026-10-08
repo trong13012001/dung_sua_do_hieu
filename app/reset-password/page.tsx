@@ -4,8 +4,12 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Lock, Loader2, Circle } from 'lucide-react';
+import { CheckCircle2, Lock, Loader2 } from 'lucide-react';
 import { validatePassword } from '@/lib/validation';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { FormField } from '@/components/common/FormField';
+import { AuthNotice, AuthShell } from '@/components/common/AuthShell';
 
 type Status = 'loading' | 'ready' | 'invalid' | 'success';
 
@@ -67,122 +71,90 @@ export default function ResetPasswordPage() {
 
   if (status === 'loading') {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background p-4">
-        <div className="flex flex-col items-center gap-4 text-muted-foreground">
-          <Loader2 className="animate-spin" size={32} />
-          <p className="text-sm">Đang xác thực link...</p>
-        </div>
-      </div>
+      <AuthShell className="items-center text-center">
+        <Loader2 className="mb-4 animate-spin text-muted-foreground" size={32} />
+        <p className="text-sm text-muted-foreground">Đang xác thực link...</p>
+      </AuthShell>
     );
   }
 
   if (status === 'invalid') {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background p-4">
-        <div className="vuexy-card p-8 max-w-md w-full text-center space-y-4">
-          <div className="w-12 h-12 rounded-full bg-danger/10 flex items-center justify-center text-danger mx-auto">
-            <Lock size={24} />
-          </div>
-          <h1 className="text-lg font-bold text-foreground">Link không hợp lệ hoặc đã hết hạn</h1>
-          <p className="text-sm text-muted-foreground">
-            Link đặt lại mật khẩu chỉ dùng được một lần và có thời hạn. Vui lòng yêu cầu gửi lại email đặt mật khẩu.
-          </p>
-          <Link
-            href="/login"
-            className="inline-block btn-primary px-5 py-2.5 rounded-md font-bold text-sm"
-          >
-            Về trang đăng nhập
-          </Link>
+      <AuthShell className="items-center gap-4 text-center">
+        <div className="flex size-12 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+          <Lock size={24} />
         </div>
-      </div>
+        <h1 className="text-lg font-bold text-foreground">Link không hợp lệ hoặc đã hết hạn</h1>
+        <p className="text-sm text-muted-foreground">
+          Link đặt lại mật khẩu chỉ dùng được một lần và có thời hạn. Vui lòng yêu cầu gửi lại email đặt mật khẩu.
+        </p>
+        <Button asChild>
+          <Link href="/login">Về trang đăng nhập</Link>
+        </Button>
+      </AuthShell>
     );
   }
 
   if (status === 'success') {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background p-4">
-        <div className="vuexy-card p-8 max-w-md w-full text-center space-y-4">
-          <div className="w-12 h-12 rounded-full bg-success/10 flex items-center justify-center text-success mx-auto">
-            <Circle size={24} fill="currentColor" />
-          </div>
-          <h1 className="text-lg font-bold text-foreground">Đặt mật khẩu thành công</h1>
-          <p className="text-sm text-muted-foreground">Đang chuyển về trang đăng nhập...</p>
-          <Loader2 className="animate-spin mx-auto text-primary" size={24} />
+      <AuthShell className="items-center gap-4 text-center">
+        <div className="flex size-12 items-center justify-center rounded-full bg-success/10 text-success">
+          <CheckCircle2 size={24} />
         </div>
-      </div>
+        <h1 className="text-lg font-bold text-foreground">Đặt mật khẩu thành công</h1>
+        <p className="text-sm text-muted-foreground">Đang chuyển về trang đăng nhập...</p>
+        <Loader2 className="animate-spin text-primary" size={24} />
+      </AuthShell>
     );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4 relative overflow-hidden">
-      <div className="absolute top-0 right-0 w-96 h-96 bg-primary/5 rounded-full blur-[100px] -mr-48 -mt-48" />
-      <div className="absolute bottom-0 left-0 w-96 h-96 bg-primary/5 rounded-full blur-[100px] -ml-48 -mb-48" />
-
-      <div className="w-full max-w-[450px] space-y-8 relative z-10">
-        <div className="vuexy-card p-10">
-          <div className="flex items-center gap-3 mb-8">
-            <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center text-white shadow-lg">
-              <Circle size={24} fill="currentColor" />
-            </div>
-            <h1 className="text-2xl font-black text-foreground tracking-tight">Đặt lại mật khẩu</h1>
-          </div>
-          <p className="text-sm text-muted-foreground mb-6">
-            Nhập mật khẩu mới (tối thiểu 6 ký tự).
-          </p>
-
-          {error && (
-            <div className="bg-danger/10 border border-danger/20 text-danger p-3 rounded-md text-[13px] mb-6 font-medium">
-              {error}
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div className="space-y-1.5">
-              <label htmlFor="new-password" className="text-[11px] font-bold text-muted-foreground uppercase opacity-80">
-                Mật khẩu mới
-              </label>
-              <input
-                id="new-password"
-                type="password"
-                required
-                minLength={6}
-                placeholder="············"
-                className="w-full bg-transparent border border-border rounded-md py-2.5 px-4 outline-none focus:ring-1 focus:ring-primary text-sm text-foreground"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label htmlFor="confirm-password" className="text-[11px] font-bold text-muted-foreground uppercase opacity-80">
-                Xác nhận mật khẩu
-              </label>
-              <input
-                id="confirm-password"
-                type="password"
-                required
-                minLength={6}
-                placeholder="············"
-                className="w-full bg-transparent border border-border rounded-md py-2.5 px-4 outline-none focus:ring-1 focus:ring-primary text-sm text-foreground"
-                value={confirm}
-                onChange={(e) => setConfirm(e.target.value)}
-              />
-            </div>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="w-full btn-primary py-2.5 rounded-md font-bold text-sm flex items-center justify-center gap-2 mt-2"
-            >
-              {submitting ? <Loader2 className="animate-spin" size={20} /> : 'Đặt mật khẩu'}
-            </button>
-          </form>
-
-          <p className="mt-6 text-center">
-            <Link href="/login" className="text-sm text-primary font-bold hover:underline">
-              ← Về trang đăng nhập
-            </Link>
-          </p>
+    <AuthShell>
+      <div className="mb-6 flex items-center gap-3">
+        <div className="flex size-10 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm shadow-primary/30">
+          <Lock size={20} />
         </div>
+        <h1 className="text-2xl font-black tracking-tight text-foreground">Đặt lại mật khẩu</h1>
       </div>
-    </div>
+      <p className="mb-6 text-sm text-muted-foreground">Nhập mật khẩu mới (tối thiểu 6 ký tự).</p>
+
+      {error && <AuthNotice tone="error">{error}</AuthNotice>}
+
+      <form onSubmit={handleSubmit} className="space-y-5">
+        <FormField label="Mật khẩu mới" htmlFor="new-password">
+          <Input
+            id="new-password"
+            type="password"
+            required
+            minLength={6}
+            autoComplete="new-password"
+            placeholder="············"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+        </FormField>
+        <FormField label="Xác nhận mật khẩu" htmlFor="confirm-password">
+          <Input
+            id="confirm-password"
+            type="password"
+            required
+            minLength={6}
+            autoComplete="new-password"
+            placeholder="············"
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+          />
+        </FormField>
+        <Button type="submit" disabled={submitting} className="w-full">
+          {submitting ? <Loader2 className="animate-spin" /> : 'Đặt mật khẩu'}
+        </Button>
+      </form>
+
+      <p className="mt-6 text-center">
+        <Link href="/login" className="text-sm font-bold text-primary hover:underline">
+          ← Về trang đăng nhập
+        </Link>
+      </p>
+    </AuthShell>
   );
 }

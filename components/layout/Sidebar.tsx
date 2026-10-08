@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { memo, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
@@ -11,7 +11,6 @@ import {
   UserPen,
   LogOut,
   X,
-  User,
   Shield,
   Key,
   ClipboardList,
@@ -19,13 +18,20 @@ import {
   PackageCheck,
   Hammer,
   Settings,
+  type LucideIcon,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useCurrentUserPermissions } from '@/hooks/useCurrentUserPermissions';
 import { canAccessRoute } from '@/lib/permissions';
 import { BrandLogo } from '@/components/ui/BrandLogo';
+import { Button } from '@/components/ui/button';
+import { Separator } from '@/components/ui/separator';
+import { Sheet, SheetClose, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
+import { cn } from '@/lib/utils';
 
-const navSections = [
+type NavItemDef = { name: string; href: string; icon: LucideIcon };
+
+const navSections: { label: string; items: NavItemDef[] }[] = [
   {
     label: 'Ứng dụng',
     items: [
@@ -55,6 +61,134 @@ const navSections = [
   },
 ];
 
+function isActiveRoute(pathname: string, href: string) {
+  return pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
+}
+
+function initialsOf(name: string | null | undefined) {
+  if (!name) return '?';
+  const parts = name.trim().split(/\s+/);
+  return ((parts[0]?.[0] ?? '') + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase();
+}
+
+const NavItem = memo(function NavItem({
+  item,
+  active,
+  onNavigate,
+}: {
+  item: NavItemDef;
+  active: boolean;
+  onNavigate: () => void;
+}) {
+  const Icon = item.icon;
+  return (
+    <Link
+      href={item.href}
+      onClick={onNavigate}
+      aria-current={active ? 'page' : undefined}
+      className={cn(
+        'group flex items-center gap-3 rounded-md px-3 py-2 text-[13px] font-medium transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
+        active
+          ? 'bg-primary text-primary-foreground shadow-sm shadow-primary/30'
+          : 'text-foreground hover:bg-accent hover:text-accent-foreground',
+      )}
+    >
+      <Icon
+        size={17}
+        className={cn('shrink-0', active ? 'text-primary-foreground' : 'text-foreground/70 group-hover:text-primary')}
+      />
+      <span className="truncate">{item.name}</span>
+    </Link>
+  );
+});
+
+type SidebarBodyProps = {
+  pathname: string;
+  sections: typeof navSections;
+  userName: string | null;
+  roleName: string | null;
+  onNavigate: () => void;
+  onLogout: () => void;
+  /** Chỉ bản mobile (trong Sheet) có nút đóng. */
+  closeButton?: React.ReactNode;
+};
+
+/** Nội dung sidebar dùng chung cho bản desktop (cố định) và mobile (Sheet). */
+const SidebarBody = memo(function SidebarBody({
+  pathname,
+  sections,
+  userName,
+  roleName,
+  onNavigate,
+  onLogout,
+  closeButton,
+}: SidebarBodyProps) {
+  return (
+    <div className="flex h-full flex-col bg-card">
+      <div className="flex items-center justify-between gap-2 p-5">
+        <Link href="/dashboard" onClick={onNavigate} className="group flex min-w-0 items-center gap-3">
+          <BrandLogo className="h-11 w-auto shrink-0 object-contain object-left transition-opacity group-hover:opacity-90" />
+          <span className="line-clamp-2 text-lg font-bold leading-tight tracking-tight text-foreground">
+            Dũng Sửa Đồ Hiệu
+          </span>
+        </Link>
+        {closeButton}
+      </div>
+
+      <nav aria-label="Điều hướng chính" className="custom-scrollbar flex-1 space-y-4 overflow-y-auto px-4 pb-4">
+        {sections.map((section) => (
+          <div key={section.label}>
+            <div className="px-2 py-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+              {section.label}
+            </div>
+            <div className="mt-1 space-y-0.5">
+              {section.items.map((item) => (
+                <NavItem
+                  key={item.href}
+                  item={item}
+                  active={isActiveRoute(pathname, item.href)}
+                  onNavigate={onNavigate}
+                />
+              ))}
+            </div>
+          </div>
+        ))}
+      </nav>
+
+      <Separator />
+      <div className="space-y-2 p-4">
+        <div className="flex items-center gap-3 rounded-md bg-muted/40 px-3 py-2.5">
+          <div className="relative flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
+            {initialsOf(userName)}
+            <span className="absolute bottom-0 right-0 size-2.5 rounded-full border-2 border-card bg-success" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-bold text-foreground">{userName ?? '—'}</p>
+            <p className="truncate text-[11px] text-muted-foreground">{roleName ?? '—'}</p>
+          </div>
+        </div>
+        <Button
+          variant="ghost"
+          onClick={onLogout}
+          className="w-full justify-start gap-3 px-3 text-[13px] text-foreground/70 hover:bg-destructive/10 hover:text-destructive"
+        >
+          <LogOut size={17} />
+          Đăng xuất
+        </Button>
+      </div>
+    </div>
+  );
+});
+
+/** Hằng module để SidebarBody (memo) không nhận element mới mỗi lần render. */
+const SHEET_CLOSE_BUTTON = (
+  <SheetClose asChild>
+    <Button variant="ghost" size="icon-sm" aria-label="Đóng menu" className="text-muted-foreground">
+      <X />
+    </Button>
+  </SheetClose>
+);
+
 interface SidebarProps {
   isOpen: boolean;
   onClose: () => void;
@@ -65,85 +199,50 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const router = useRouter();
   const { permissions, isLoading, currentUser } = useCurrentUserPermissions();
 
-  const handleLogout = async () => {
+  const handleLogout = useCallback(async () => {
     await supabase.auth.signOut();
     router.push('/login');
+  }, [router]);
+
+  // Khi đang tải quyền thì hiện đủ menu như trước (tránh menu nháy rỗng), rồi lọc theo quyền.
+  const sections = useMemo(
+    () =>
+      navSections
+        .map((section) => ({
+          ...section,
+          items: section.items.filter((item) => isLoading || canAccessRoute(permissions, item.href)),
+        }))
+        .filter((section) => section.items.length > 0),
+    [permissions, isLoading],
+  );
+
+  const bodyProps = {
+    pathname,
+    sections,
+    userName: currentUser?.name ?? null,
+    roleName: currentUser?.role?.name ?? null,
+    onNavigate: onClose,
+    onLogout: handleLogout,
   };
 
   return (
     <>
-      {isOpen && (
-        <div
-          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
-          onClick={onClose}
-        />
-      )}
-
-      <aside
-        className={`
-          fixed left-0 top-0 h-screen w-[260px] bg-card border-r border-border flex flex-col z-50 transition-transform duration-300
-          lg:translate-x-0
-          ${isOpen ? 'translate-x-0' : '-translate-x-full'}
-        `}
-      >
-        <div className="p-6 flex items-center justify-between gap-2">
-          <Link href="/dashboard" onClick={onClose} className="flex items-center gap-3 min-w-0 group">
-            <BrandLogo className="h-11 w-auto shrink-0 object-contain object-left group-hover:opacity-90 transition-opacity" />
-            <h1 className="text-lg font-bold text-foreground tracking-tight leading-tight line-clamp-2">Dũng Sửa Đồ Hiệu</h1>
-          </Link>
-          <button onClick={onClose} className="lg:hidden p-1.5 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
-            <X size={20} />
-          </button>
-        </div>
-
-        <nav className="flex-1 overflow-y-auto custom-scrollbar px-4 space-y-4 mt-1 pb-4">
-          {navSections.map(section => (
-            <div key={section.label}>
-              <div className="px-2 py-1.5 text-[11px] font-bold text-muted-foreground uppercase tracking-wider">{section.label}</div>
-              <div className="space-y-0.5 mt-1">
-                {section.items
-                  .filter(item => isLoading || canAccessRoute(permissions, item.href))
-                  .map(item => {
-                    const Icon = item.icon;
-                    const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href));
-                    return (
-                      <Link
-                        key={item.href}
-                        href={item.href}
-                        onClick={onClose}
-                        className={`flex items-center gap-3 px-3 py-2 rounded-md transition-all duration-200 group ${isActive
-                          ? 'bg-linear-to-r from-primary to-[#8f85f3] text-white shadow-[0_2px_6px_0_rgba(115,103,240,0.3)]'
-                          : 'text-foreground hover:bg-muted/50'
-                        }`}
-                      >
-                        <Icon size={17} className={isActive ? 'text-white' : 'text-foreground/70 group-hover:text-primary'} />
-                        <span className="text-[13px] font-medium">{item.name}</span>
-                      </Link>
-                    );
-                  })}
-              </div>
-            </div>
-          ))}
-        </nav>
-
-        {/* User section */}
-        <div className="px-4 py-3 border-t border-border">
-          <div className="flex items-center gap-3 px-3 py-2.5 rounded-md bg-muted/30 mb-2">
-            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary relative shrink-0">
-              <User size={16} />
-              <span className="absolute bottom-0 right-0 w-2 h-2 bg-success rounded-full border-2 border-card" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-bold text-foreground truncate">{currentUser?.name ?? '—'}</p>
-              <p className="text-[10px] text-muted-foreground truncate">{currentUser?.role?.name ?? '—'}</p>
-            </div>
-          </div>
-          <button onClick={handleLogout} className="flex items-center gap-3 px-3 py-2 w-full text-foreground/70 hover:text-danger hover:bg-danger/10 rounded-md transition-colors">
-            <LogOut size={17} />
-            <span className="text-[13px] font-medium">Đăng xuất</span>
-          </button>
-        </div>
+      {/* Desktop: cố định bên trái */}
+      <aside className="fixed left-0 top-0 z-40 hidden h-screen w-[260px] border-r border-border lg:block">
+        <SidebarBody {...bodyProps} />
       </aside>
+
+      {/* Mobile / tablet: ngăn kéo */}
+      <Sheet open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
+        <SheetContent side="left" showCloseButton={false} className="w-[280px] max-w-[85vw] gap-0 p-0 lg:hidden">
+          <SheetTitle className="sr-only">Menu</SheetTitle>
+          <SheetDescription className="sr-only">Điều hướng giữa các màn hình</SheetDescription>
+          <SidebarBody
+            {...bodyProps}
+            closeButton={SHEET_CLOSE_BUTTON}
+          />
+        </SheetContent>
+      </Sheet>
     </>
   );
 }

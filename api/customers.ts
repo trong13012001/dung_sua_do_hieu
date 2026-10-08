@@ -1,3 +1,4 @@
+import { sanitizeOrFilterValue } from '@/lib/supabasePaging';
 import { supabase } from '@/lib/supabase';
 import { Customer } from '@/lib/types';
 
@@ -9,10 +10,9 @@ export async function getCustomers({ page = 0, pageSize = 10, searchTerm = '' } 
     .from('customers')
     .select('*', { count: 'exact' });
 
-  if (searchTerm) {
-    query = query.or(
-      `name.ilike.%${searchTerm}%,phone.ilike.%${searchTerm}%,address.ilike.%${searchTerm}%`,
-    );
+  const term = sanitizeOrFilterValue(searchTerm ?? '');
+  if (term) {
+    query = query.or(`name.ilike.%${term}%,phone.ilike.%${term}%,address.ilike.%${term}%`);
   }
 
   // Khoá phụ `id` là bắt buộc: rất nhiều khách trùng tên (vd 19 khách "A AN").

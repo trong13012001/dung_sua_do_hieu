@@ -31,6 +31,22 @@ Verify bằng dữ liệu thật: viết script tạm trong scratchpad, đọc `
 `SUPABASE_SERVICE_ROLE_KEY`, so số dòng nhận được với `Prefer: count=exact` (header
 `content-range` trả tổng thật). Chạy trên bản ghi lớn nhất, không phải bản ghi mẫu.
 
+## Thay đổi giao diện — đo tràn ngang trên mobile
+
+Build xanh không nói gì về bố cục. Trang phải **không cuộn ngang** ở 320 / 375 / 768 / 1024px,
+kể cả khung con (bảng có `overflow-x-auto` vẫn là cuộn ngang với người dùng điện thoại).
+
+Không đăng nhập được thì vẫn đo được: tạo route tạm `app/zz-overflow-check/page.tsx` render
+`<DashboardLayout>` + component/trang cần đo với dữ liệu mẫu **cố ý dài** (tên khách 50 ký tự, số
+tiền 9 chữ số), thêm một effect liệt kê phần tử có `getBoundingClientRect().right > clientWidth` và
+phần tử `overflow-x:auto` có `scrollWidth > clientWidth` vào một thẻ `<pre>`; đọc bằng
+`chrome-headless-shell --window-size=375,900 --virtual-time-budget=9000 --dump-dom <url>`
+(có sẵn trong `~/Library/Caches/ms-playwright/`). Đo cả bản trước khi sửa để chắc phép đo bắt được
+lỗi. **Xoá route tạm trước khi commit.**
+
+Nguyên nhân hay gặp: flex item thiếu `min-w-0`; nhóm nút `shrink-0` không `flex-wrap`;
+`min-w-[…]` không có tiền tố `sm:`; bảng nhiều cột (dưới `xl` đổi sang thẻ xếp dọc).
+
 ## Thay đổi phần in nhiệt
 
 Không có cách verify tự động. Nói thẳng với người dùng là cần in thử trên XP-80C / XP-235B.
@@ -39,6 +55,7 @@ Xem skill `changing-thermal-printing`.
 ## Red flags — dừng lại, chưa xong
 
 - "Build pass rồi chắc ổn" cho một thay đổi query dữ liệu
+- Báo xong một màn hình mà chưa đo ở bề rộng điện thoại
 - Sửa lint xuống 0 rồi coi đó là điều kiện xong
 - Báo xong phần in mà chưa nói rõ là chưa in thử
 - Verify bằng khách hàng có 3 đơn trong khi bug xảy ra ở khách có 2000 đơn

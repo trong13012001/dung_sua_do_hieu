@@ -12,6 +12,8 @@ export default function QueryProvider({ children }: { children: React.ReactNode 
           queries: {
             staleTime: 60 * 1000,
             retry: 1,
+            // useRealtimeSubscription đã làm mới khi quay lại tab; để mặc định sẽ refetch hai lần.
+            refetchOnWindowFocus: false,
           },
         },
       })

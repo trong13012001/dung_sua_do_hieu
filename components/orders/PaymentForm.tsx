@@ -3,6 +3,12 @@
 import React, { useMemo, useState } from "react";
 import { onlyDigits } from "@/lib/validation";
 import { Order, Payment } from "@/lib/types";
+import { formatVnd } from "@/lib/format";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { FormField } from "@/components/common/FormField";
 
 export type PaymentFormData = {
     amount: string;
@@ -20,15 +26,36 @@ interface PaymentFormProps {
     onSubmit: (data: PaymentFormData) => void;
 }
 
-const inputClass =
-    "w-full bg-muted/20 border border-border rounded-md px-4 py-2.5 text-sm outline-none focus:ring-1 focus:ring-primary";
-const selectClass = inputClass + " appearance-none";
+const PAYMENT_METHODS = [
+    { value: "Cash", label: "Tiền mặt" },
+    { value: "Card", label: "Thẻ" },
+    { value: "Transfer", label: "Chuyển khoản" },
+] as const;
 
-const fmtVnd = (n: number) =>
-    new Intl.NumberFormat("vi-VN", {
-        style: "currency",
-        currency: "VND",
-    }).format(n);
+function MethodSelect({
+    id,
+    value,
+    onChange,
+}: {
+    id: string;
+    value: Payment["payment_method"];
+    onChange: (v: Payment["payment_method"]) => void;
+}) {
+    return (
+        <Select value={value} onValueChange={(v) => onChange(v as Payment["payment_method"])}>
+            <SelectTrigger id={id} className="w-full">
+                <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+                {PAYMENT_METHODS.map((m) => (
+                    <SelectItem key={m.value} value={m.value}>
+                        {m.label}
+                    </SelectItem>
+                ))}
+            </SelectContent>
+        </Select>
+    );
+}
 
 /**
  * Form ghi nhận thanh toán (modal "Ghi nhận thanh toán"). Giữ state nhập liệu
@@ -86,171 +113,98 @@ export function PaymentForm({
 
     return (
         <form onSubmit={handleSubmit} className="space-y-5">
-            <p className="text-[11px] text-muted-foreground leading-relaxed">
+            <p className="text-[11px] leading-relaxed text-muted-foreground">
                 Chỉ cộng tiền đã thu. Khi đủ tiền, hệ thống tự đặt trạng thái{" "}
-                <span className="font-semibold text-foreground">
-                    Đã thanh toán
-                </span>{" "}
-                (hoặc chuyển{" "}
-                <span className="font-semibold text-foreground">
-                    Trả thiếu tiền
-                </span>{" "}
-                → Đã trả đồ nếu đơn đang nợ sau khi giao).
+                <span className="font-semibold text-foreground">Đã thanh toán</span> (hoặc chuyển{" "}
+                <span className="font-semibold text-foreground">Trả thiếu tiền</span> → Đã trả đồ nếu đơn đang nợ sau
+                khi giao).
             </p>
-            <div className="p-4 bg-muted/10 rounded-lg border border-border space-y-2">
+            <div className="space-y-2 rounded-lg border border-border bg-muted/30 p-4">
                 <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Tổng cộng</span>
-                    <span className="font-bold">{fmtVnd(preview.total)}</span>
+                    <span className="font-bold">{formatVnd(preview.total)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Đã thu đến nay</span>
-                    <span className="font-bold text-success">
-                        {fmtVnd(preview.paid)}
-                    </span>
+                    <span className="font-bold text-success">{formatVnd(preview.paid)}</span>
                 </div>
                 {preview.thisPayment > 0 && (
                     <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">
-                            Sau khi ghi nhận lần này
-                        </span>
-                        <span className="font-bold text-success">
-                            {fmtVnd(preview.paidAfter)}
-                        </span>
+                        <span className="text-muted-foreground">Sau khi ghi nhận lần này</span>
+                        <span className="font-bold text-success">{formatVnd(preview.paidAfter)}</span>
                     </div>
                 )}
-                <div className="flex justify-between text-sm font-bold border-t border-border pt-2">
-                    <span className="text-primary">
-                        {preview.thisPayment > 0
-                            ? "Còn lại (dự kiến)"
-                            : "Còn lại"}
-                    </span>
-                    <span className="text-primary">
-                        {fmtVnd(
-                            preview.thisPayment > 0
-                                ? preview.remainingAfter
-                                : preview.currentDebt,
-                        )}
+                <div className="flex justify-between border-t border-border pt-2 text-sm font-bold text-primary">
+                    <span>{preview.thisPayment > 0 ? "Còn lại (dự kiến)" : "Còn lại"}</span>
+                    <span>
+                        {formatVnd(preview.thisPayment > 0 ? preview.remainingAfter : preview.currentDebt)}
                     </span>
                 </div>
             </div>
-            <div className="flex items-start gap-2 rounded-md border border-border bg-muted/5 p-3">
-                <input
+
+            <label
+                htmlFor="orders-list-split-pay"
+                className="flex cursor-pointer items-start gap-2 rounded-md border border-border p-3 has-[[data-state=checked]]:border-primary/40 has-[[data-state=checked]]:bg-primary/5"
+            >
+                <Checkbox
                     id="orders-list-split-pay"
-                    type="checkbox"
                     checked={payForm.splitPay}
-                    onChange={(e) =>
-                        setPayForm((p) => ({
-                            ...p,
-                            splitPay: e.target.checked,
-                        }))
-                    }
-                    className="mt-0.5 shrink-0"
+                    onCheckedChange={(checked) => setPayForm((p) => ({ ...p, splitPay: checked === true }))}
+                    className="mt-0.5"
                 />
-                <label
-                    htmlFor="orders-list-split-pay"
-                    className="cursor-pointer text-[11px] leading-snug text-muted-foreground"
-                >
-                    <span className="font-bold text-foreground">
-                        Chia nhiều phương thức
-                    </span>
-                    {" — "}
-                    ghi hai khoản trong một lần (vd. tiền mặt + chuyển khoản).
-                </label>
+                <span className="text-[11px] leading-snug text-muted-foreground">
+                    <span className="font-bold text-foreground">Chia nhiều phương thức</span>
+                    {" — "}ghi hai khoản trong một lần (vd. tiền mặt + chuyển khoản).
+                </span>
+            </label>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <FormField label={payForm.splitPay ? "Khoản 1 — số tiền" : "Số tiền thu"} htmlFor="pay-amount">
+                    <Input
+                        id="pay-amount"
+                        required
+                        inputMode="numeric"
+                        autoFocus
+                        value={payForm.amount}
+                        onChange={(e) => setPayForm((p) => ({ ...p, amount: onlyDigits(e.target.value) }))}
+                    />
+                </FormField>
+                <FormField label={payForm.splitPay ? "Khoản 1 — phương thức" : "Phương thức"} htmlFor="pay-method">
+                    <MethodSelect
+                        id="pay-method"
+                        value={payForm.method}
+                        onChange={(method) => setPayForm((p) => ({ ...p, method }))}
+                    />
+                </FormField>
+                {payForm.splitPay && (
+                    <>
+                        <FormField label="Khoản 2 — số tiền" htmlFor="pay-amount-2">
+                            <Input
+                                id="pay-amount-2"
+                                required
+                                inputMode="numeric"
+                                value={payForm.amount2}
+                                onChange={(e) => setPayForm((p) => ({ ...p, amount2: onlyDigits(e.target.value) }))}
+                            />
+                        </FormField>
+                        <FormField label="Khoản 2 — phương thức" htmlFor="pay-method-2">
+                            <MethodSelect
+                                id="pay-method-2"
+                                value={payForm.method2}
+                                onChange={(method2) => setPayForm((p) => ({ ...p, method2 }))}
+                            />
+                        </FormField>
+                    </>
+                )}
             </div>
-            <div className="space-y-1.5">
-                <label className="text-[11px] font-bold text-muted-foreground uppercase">
-                    {payForm.splitPay ? "Khoản 1 — số tiền" : "Số tiền thu"}
-                </label>
-                <input
-                    required
-                    type="text"
-                    inputMode="numeric"
-                    className={inputClass}
-                    value={payForm.amount}
-                    onChange={(e) =>
-                        setPayForm((p) => ({
-                            ...p,
-                            amount: onlyDigits(e.target.value),
-                        }))
-                    }
-                />
-            </div>
-            <div className="space-y-1.5">
-                <label className="text-[11px] font-bold text-muted-foreground uppercase">
-                    {payForm.splitPay ? "Khoản 1 — phương thức" : "Phương thức"}
-                </label>
-                <select
-                    className={selectClass}
-                    value={payForm.method}
-                    onChange={(e) =>
-                        setPayForm((p) => ({
-                            ...p,
-                            method: e.target.value as Payment["payment_method"],
-                        }))
-                    }
-                >
-                    <option value="Cash">Tiền mặt</option>
-                    <option value="Card">Thẻ</option>
-                    <option value="Transfer">Chuyển khoản</option>
-                </select>
-            </div>
-            {payForm.splitPay ? (
-                <>
-                    <div className="space-y-1.5">
-                        <label className="text-[11px] font-bold text-muted-foreground uppercase">
-                            Khoản 2 — số tiền
-                        </label>
-                        <input
-                            required
-                            type="text"
-                            inputMode="numeric"
-                            className={inputClass}
-                            value={payForm.amount2}
-                            onChange={(e) =>
-                                setPayForm((p) => ({
-                                    ...p,
-                                    amount2: onlyDigits(e.target.value),
-                                }))
-                            }
-                        />
-                    </div>
-                    <div className="space-y-1.5">
-                        <label className="text-[11px] font-bold text-muted-foreground uppercase">
-                            Khoản 2 — phương thức
-                        </label>
-                        <select
-                            className={selectClass}
-                            value={payForm.method2}
-                            onChange={(e) =>
-                                setPayForm((p) => ({
-                                    ...p,
-                                    method2: e.target
-                                        .value as Payment["payment_method"],
-                                }))
-                            }
-                        >
-                            <option value="Cash">Tiền mặt</option>
-                            <option value="Card">Thẻ</option>
-                            <option value="Transfer">Chuyển khoản</option>
-                        </select>
-                    </div>
-                </>
-            ) : null}
-            <div className="flex gap-4 mt-8">
-                <button
-                    type="button"
-                    onClick={onCancel}
-                    className="flex-1 bg-muted/40 text-foreground py-2.5 rounded-md font-bold text-sm border border-border"
-                >
+
+            <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
+                <Button type="button" variant="outline" onClick={onCancel}>
                     Hủy
-                </button>
-                <button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="flex-1 btn-primary py-2.5 rounded-md font-bold text-sm disabled:opacity-50"
-                >
+                </Button>
+                <Button type="submit" disabled={isSubmitting}>
                     {isSubmitting ? "Đang xử lý..." : "Ghi nhận thanh toán"}
-                </button>
+                </Button>
             </div>
         </form>
     );

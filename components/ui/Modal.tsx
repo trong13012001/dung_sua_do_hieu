@@ -1,7 +1,8 @@
 'use client';
 
 import React from 'react';
-import { X } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { cn } from '@/lib/utils';
 
 interface ModalProps {
   isOpen: boolean;
@@ -9,9 +10,33 @@ interface ModalProps {
   title: string;
   children: React.ReactNode;
   maxWidth?: string;
-  /** z-index cao hơn modal thường — khi mở chồng lên modal khác (vd. in tem từ chi tiết đơn). */
+  /** Mở chồng lên modal khác (vd. in tem từ chi tiết đơn). Radix đã xếp chồng theo thứ tự mở; prop này chỉ nâng z-index cho chắc. */
   stackOnTop?: boolean;
 }
+
+/*
+ * Lớp tương thích trên shadcn `Dialog` — giữ nguyên props cũ để các trang chưa chuyển vẫn chạy.
+ * Code mới dùng thẳng `Dialog` / `AlertDialog`.
+ *
+ * Đóng là unmount ngay (không chờ animation đóng) như bản cũ: nhiều trang tính `title`/children
+ * từ state bị đặt về null khi đóng, nếu giữ nội dung thêm một nhịp animation sẽ đọc phải null.
+ */
+/*
+ * `maxWidth` cũ là class không tiền tố (vd. `max-w-2xl`), nhưng DialogContent đặt `sm:max-w-lg`
+ * nên class không tiền tố bị đè từ 640px trở lên. Ánh xạ sang class `sm:` viết sẵn
+ * (Tailwind không quét được class ghép chuỗi động).
+ */
+const SM_MAX_WIDTH: Record<string, string> = {
+  'max-w-sm': 'sm:max-w-sm',
+  'max-w-md': 'sm:max-w-md',
+  'max-w-lg': 'sm:max-w-lg',
+  'max-w-xl': 'sm:max-w-xl',
+  'max-w-2xl': 'sm:max-w-2xl',
+  'max-w-3xl': 'sm:max-w-3xl',
+  'max-w-4xl': 'sm:max-w-4xl',
+  'max-w-5xl': 'sm:max-w-5xl',
+  'max-w-6xl': 'sm:max-w-6xl',
+};
 
 export const Modal: React.FC<ModalProps> = ({
   isOpen,
@@ -23,31 +48,21 @@ export const Modal: React.FC<ModalProps> = ({
 }) => {
   if (!isOpen) return null;
 
-  const zOverlay = stackOnTop ? 'z-[110]' : 'z-[100]';
-
   return (
-    <div
-      className={`fixed inset-0 bg-[#00000080] backdrop-blur-sm ${zOverlay} flex items-center justify-center p-0 md:p-4`}
-      onClick={onClose}
-      role="dialog"
-      aria-modal="true"
-    >
-      <div
-        className={`bg-card border border-border rounded-none md:rounded-lg p-5 md:p-8 w-full ${maxWidth} max-h-[90vh] md:max-h-[88vh] shadow-2xl relative animate-in slide-in-from-bottom-4 duration-200 flex flex-col`}
-        onClick={(e) => e.stopPropagation()}
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent
+        aria-describedby={undefined}
+        className={cn(
+          'flex w-full flex-col gap-4 bg-card p-5 md:p-6 max-h-[90vh] md:max-h-[88vh]',
+          SM_MAX_WIDTH[maxWidth] ?? 'sm:max-w-md',
+          stackOnTop && 'z-[60]',
+        )}
       >
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 md:top-6 md:right-6 p-2 rounded-full hover:bg-muted transition-colors text-muted-foreground hover:text-foreground z-10 shrink-0"
-        >
-          <X size={20} />
-        </button>
-
-        <h3 className="text-base md:text-xl font-bold text-foreground mb-4 pr-10 uppercase tracking-widest shrink-0">{title}</h3>
-        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
-          {children}
-        </div>
-      </div>
-    </div>
+        <DialogHeader className="shrink-0 pr-8">
+          <DialogTitle className="text-base md:text-lg font-semibold text-foreground">{title}</DialogTitle>
+        </DialogHeader>
+        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">{children}</div>
+      </DialogContent>
+    </Dialog>
   );
 };
