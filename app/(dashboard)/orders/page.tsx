@@ -408,7 +408,7 @@ export default function OrdersPage() {
 
             {/* Bộ lọc */}
             <div className="flex flex-wrap items-end gap-3">
-                <div className="relative min-w-[200px] flex-1">
+                <div className="relative w-full min-w-0 sm:w-auto sm:min-w-[200px] sm:flex-1">
                     <Search
                         className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
                         size={16}
@@ -424,11 +424,11 @@ export default function OrdersPage() {
                         }}
                     />
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto">
                     <Input
                         type="date"
                         aria-label="Từ ngày"
-                        className="h-10 w-auto bg-card"
+                        className="h-10 min-w-0 flex-1 bg-card sm:w-auto sm:flex-none"
                         value={startDate}
                         onChange={(e) => {
                             setStartDate(e.target.value);
@@ -439,7 +439,7 @@ export default function OrdersPage() {
                     <Input
                         type="date"
                         aria-label="Đến ngày"
-                        className="h-10 w-auto bg-card"
+                        className="h-10 min-w-0 flex-1 bg-card sm:w-auto sm:flex-none"
                         value={endDate}
                         onChange={(e) => {
                             setEndDate(e.target.value);
@@ -454,7 +454,7 @@ export default function OrdersPage() {
                         setPage(1);
                     }}
                 >
-                    <SelectTrigger className="h-10 min-w-[170px] bg-card" aria-label="Lọc theo trạng thái">
+                    <SelectTrigger className="h-10 w-full bg-card sm:w-auto sm:min-w-[170px]" aria-label="Lọc theo trạng thái">
                         <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -470,7 +470,7 @@ export default function OrdersPage() {
                     variant="outline"
                     onClick={handleExportExcel}
                     disabled={exporting}
-                    className="h-10 border-success/30 bg-success/10 text-success hover:bg-success/20 hover:text-success"
+                    className="h-10 flex-1 border-success/30 bg-success/10 text-success hover:bg-success/20 hover:text-success sm:flex-none"
                 >
                     <FileDown /> {exporting ? "Đang xuất..." : "Xuất Excel"}
                 </Button>
@@ -478,7 +478,7 @@ export default function OrdersPage() {
                     <Button
                         variant="outline"
                         onClick={() => setBatchPrintOpen(true)}
-                        className="h-10 border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 hover:text-primary"
+                        className="h-10 flex-1 border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 hover:text-primary sm:flex-none"
                     >
                         <Printer /> In phiếu đã chọn ({selectedForPrint.size})
                     </Button>

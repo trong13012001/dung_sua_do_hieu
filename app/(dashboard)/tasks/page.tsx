@@ -127,7 +127,7 @@ export default function TasksPage() {
                     />
                 </div>
                 <Select value={tailorFilter} onValueChange={setTailorFilter}>
-                    <SelectTrigger className="h-10 min-w-[170px] bg-card" aria-label="Lọc theo thợ">
+                    <SelectTrigger className="h-10 w-full bg-card sm:w-auto sm:min-w-[170px]" aria-label="Lọc theo thợ">
                         <SelectValue />
                     </SelectTrigger>
                     <SelectContent>

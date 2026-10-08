@@ -114,15 +114,15 @@ export const OrderRow = memo(function OrderRow({
           </div>
         </div>
 
-        <div className="flex w-full items-center gap-3 border-t pt-3 sm:w-auto sm:flex-col sm:items-end sm:gap-1 sm:border-none sm:pt-0">
-          <div className="flex-1 text-right sm:flex-none">
+        <div className="flex w-full min-w-0 flex-col gap-2 border-t pt-3 sm:w-auto sm:items-end sm:gap-1 sm:border-none sm:pt-0">
+          <div className="text-right">
             <p className="text-base font-black text-foreground">{formatVnd(order.total_amount)}</p>
             {debt > 0 && <p className="text-[11px] font-bold text-warning">Nợ: {formatNumber(debt)}đ</p>}
             {isPaid && <p className="text-[11px] font-bold text-success">Đã thanh toán</p>}
             {deliveryStatusLabel && <p className="text-[11px] font-bold text-primary">{deliveryStatusLabel}</p>}
             {paymentMethodLabel && <p className="text-[11px] font-bold text-info">PTTT: {paymentMethodLabel}</p>}
           </div>
-          <div className="flex max-w-full shrink-0 flex-wrap justify-end gap-0.5">
+          <div className="flex min-w-0 flex-wrap justify-end gap-0.5">
             <IconAction icon={ListOrdered} label="Chi tiết đơn và danh sách mặt hàng" onClick={stop(() => actions.onOpen(order.id))} />
             {debt > 0 && (
               <IconAction icon={DollarSign} label="Ghi nhận thanh toán (chỉ tiền)" tone="success" disabled={busy} onClick={stop(() => actions.onPay(order))} />

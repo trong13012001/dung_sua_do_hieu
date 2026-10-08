@@ -10,15 +10,18 @@ import { orderCode, paymentMethodLabel, statusColor, statusLabel } from './dashb
 /*
  * Bảng chi tiết theo kỳ. Dùng <table> thường (không phải shadcn Table) vì tiêu đề phải dính
  * (sticky) trong khung cuộn dọc của chính bảng — Table của shadcn tự bọc một khung cuộn ngang riêng.
+ *
+ * Dưới xl (điện thoại, tablet, laptop hẹp có sidebar): bảng 5–7 cột không vừa → mỗi dòng thành một thẻ
+ * xếp dọc, không cuộn ngang. Bảng chỉ hiện từ xl.
  */
 
-const TH = 'px-4 py-3 whitespace-nowrap';
-const TD = 'px-4 py-2.5';
+const TH = 'px-3 py-3';
+const TD = 'px-3 py-2.5';
 const dateTime = (iso: string) => new Date(iso).toLocaleString('vi-VN');
 
 function TableShell({ head, children }: { head: ReactNode; children: ReactNode }) {
   return (
-    <table className="w-full text-left text-sm">
+    <table className="hidden w-full text-left text-sm xl:table">
       <thead className="sticky top-0 z-1 bg-muted text-[11px] font-bold uppercase text-muted-foreground">
         <tr>{head}</tr>
       </thead>
@@ -34,6 +37,19 @@ function EmptyRow({ colSpan, children }: { colSpan: number; children: ReactNode 
         {children}
       </td>
     </tr>
+  );
+}
+
+/** Danh sách thẻ cho màn hẹp (bảng chỉ hiện từ xl). */
+function MobileList({ isEmpty, empty, children }: { isEmpty: boolean; empty: ReactNode; children: ReactNode }) {
+  return (
+    <div className="divide-y divide-border xl:hidden">
+      {isEmpty ? (
+        <p className="px-4 py-8 text-center text-xs italic leading-relaxed text-muted-foreground">{empty}</p>
+      ) : (
+        children
+      )}
+    </div>
   );
 }
 
@@ -66,12 +82,40 @@ const ItemRow = memo(function ItemRow({
       <td className={TD}>
         <OrderLink id={row.order_id} onOpen={onOpen} mono />
       </td>
-      <td className={cn(TD, 'text-muted-foreground')}>{row.customer_name}</td>
+      <td className={cn(TD, 'max-w-[220px] truncate text-muted-foreground')}>{row.customer_name}</td>
       <td className={TD}>
         <StatusBadge kind="detail" status={row.status} className="rounded text-[10px]" />
       </td>
-      <td className={cn(TD, 'whitespace-nowrap text-xs text-muted-foreground')}>{time ? dateTime(time) : '—'}</td>
+      <td className={cn(TD, 'text-xs text-muted-foreground')}>{time ? dateTime(time) : '—'}</td>
     </tr>
+  );
+});
+
+const ItemCard = memo(function ItemCard({
+  row,
+  time,
+  timeHeader,
+  onOpen,
+}: {
+  row: DashboardPeriodItemRow;
+  time: string | null | undefined;
+  timeHeader: string;
+  onOpen: (id: number) => void;
+}) {
+  return (
+    <div className="space-y-1.5 p-3">
+      <div className="flex items-start justify-between gap-2">
+        <p className="min-w-0 text-sm font-medium text-foreground">{row.item_name}</p>
+        <StatusBadge kind="detail" status={row.status} className="rounded text-[10px]" />
+      </div>
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+        <OrderLink id={row.order_id} onOpen={onOpen} mono />
+        <span className="min-w-0 truncate">{row.customer_name}</span>
+      </div>
+      <p className="text-[11px] text-muted-foreground">
+        {timeHeader}: {time ? dateTime(time) : '—'}
+      </p>
+    </div>
   );
 });
 
@@ -89,6 +133,12 @@ export const ItemsTable = memo(function ItemsTable({
   onOpen: (id: number) => void;
 }) {
   return (
+    <>
+    <MobileList isEmpty={rows.length === 0} empty={empty}>
+      {rows.map((row) => (
+        <ItemCard key={row.id} row={row} time={row[timeField]} timeHeader={timeHeader} onOpen={onOpen} />
+      ))}
+    </MobileList>
     <TableShell
       head={
         <>
@@ -106,6 +156,7 @@ export const ItemsTable = memo(function ItemsTable({
         rows.map((row) => <ItemRow key={row.id} row={row} time={row[timeField]} onOpen={onOpen} />)
       )}
     </TableShell>
+    </>
   );
 });
 
@@ -136,7 +187,7 @@ const OrderRow = memo(function OrderRow({
       <td className={TD}>
         <OrderLink id={o.id} onOpen={onOpen} />
       </td>
-      <td className={cn(TD, 'text-muted-foreground')}>{o.customer_name}</td>
+      <td className={cn(TD, 'max-w-[220px] truncate text-muted-foreground')}>{o.customer_name}</td>
       <td className={TD}>
         <span className={cn('rounded px-2 py-0.5 text-[10px] font-bold', statusColor(o.status))}>
           {statusLabel(o.status)}
@@ -147,7 +198,7 @@ const OrderRow = memo(function OrderRow({
       {variant === 'revenue' && (
         <>
           <td className={cn(money, 'font-semibold text-success')}>{formatVnd(o.paid_amount)}</td>
-          <td className={cn(TD, 'whitespace-nowrap text-xs text-muted-foreground')}>
+          <td className={cn(TD, 'text-xs text-muted-foreground')}>
             {dateTime(o.created_at)}
             <span className="ml-1">({paymentMethodLabel(o.payment_method)})</span>
           </td>
@@ -155,7 +206,7 @@ const OrderRow = memo(function OrderRow({
       )}
 
       {variant === 'returned' && (
-        <td className={cn(TD, 'whitespace-nowrap text-xs text-muted-foreground')}>
+        <td className={cn(TD, 'text-xs text-muted-foreground')}>
           {o.return_time ? dateTime(o.return_time) : '—'}
         </td>
       )}
@@ -175,10 +226,62 @@ const OrderRow = memo(function OrderRow({
           >
             {formatVnd(o.unpaid_amount)}
           </td>
-          <td className={cn(TD, 'whitespace-nowrap text-xs text-muted-foreground')}>{dateTime(o.created_at)}</td>
+          <td className={cn(TD, 'text-xs text-muted-foreground')}>{dateTime(o.created_at)}</td>
         </>
       )}
     </tr>
+  );
+});
+
+function Money({ label, value, className }: { label: string; value: number; className?: string }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-[10px] uppercase text-muted-foreground">{label}</p>
+      <p className={cn('truncate text-xs font-semibold tabular-nums', className)}>{formatVnd(value)}</p>
+    </div>
+  );
+}
+
+const OrderCard = memo(function OrderCard({
+  o,
+  variant,
+  onOpen,
+}: {
+  o: DashboardPeriodOrderRow;
+  variant: OrdersTableVariant;
+  onOpen: (id: number) => void;
+}) {
+  const v = VARIANT[variant];
+  const hasDebtCols = variant === 'created' || variant === 'byStatus' || variant === 'debt';
+  const time = variant === 'returned' ? o.return_time : o.created_at;
+  return (
+    <div className="space-y-2 p-3">
+      <div className="flex items-center justify-between gap-2">
+        <OrderLink id={o.id} onOpen={onOpen} />
+        <span className={cn('shrink-0 rounded px-2 py-0.5 text-[10px] font-bold', statusColor(o.status))}>
+          {statusLabel(o.status)}
+        </span>
+      </div>
+      <p className="truncate text-xs text-muted-foreground">{o.customer_name}</p>
+      <div className={cn('grid gap-2', hasDebtCols ? 'grid-cols-3' : variant === 'revenue' ? 'grid-cols-2' : 'grid-cols-1')}>
+        <Money label="Tổng tiền" value={o.total_amount} className="text-foreground" />
+        {variant === 'revenue' && <Money label="Thu trong kỳ" value={o.paid_amount} className="text-success" />}
+        {hasDebtCols && (
+          <>
+            <Money label="Đã thu" value={o.paid_amount} className="text-muted-foreground" />
+            <Money
+              label="Còn nợ"
+              value={o.unpaid_amount}
+              className={variant === 'debt' || o.unpaid_amount > 0 ? 'text-warning' : 'text-muted-foreground'}
+            />
+          </>
+        )}
+      </div>
+      <p className="text-[11px] text-muted-foreground">
+        {v.lastHeader}: {time ? dateTime(time) : '—'}
+        {variant === 'revenue' && <span className="ml-1">({paymentMethodLabel(o.payment_method)})</span>}
+      </p>
+    </div>
   );
 });
 
@@ -195,6 +298,12 @@ export const OrdersTable = memo(function OrdersTable({
 }) {
   const v = VARIANT[variant];
   return (
+    <>
+    <MobileList isEmpty={rows.length === 0} empty={empty}>
+      {rows.map((o) => (
+        <OrderCard key={o.id} o={o} variant={variant} onOpen={onOpen} />
+      ))}
+    </MobileList>
     <TableShell
       head={
         <>
@@ -219,6 +328,7 @@ export const OrdersTable = memo(function OrdersTable({
         rows.map((o) => <OrderRow key={o.id} o={o} variant={variant} onOpen={onOpen} />)
       )}
     </TableShell>
+    </>
   );
 });
 

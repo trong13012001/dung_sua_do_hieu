@@ -151,7 +151,7 @@ export default function ReturnsPage() {
       />
 
       <Tabs value={tab} onValueChange={(v) => changeTab(v as ReturnsTab)}>
-        <TabsList className="h-auto flex-wrap">
+        <TabsList className="h-auto max-w-full flex-wrap justify-start">
           <TabsTrigger value="dueToday" className="flex-none">
             <CalendarClock /> Hẹn trả hôm nay ({dueTodayCount})
           </TabsTrigger>

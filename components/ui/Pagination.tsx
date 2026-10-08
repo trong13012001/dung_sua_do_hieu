@@ -83,7 +83,7 @@ export function Pagination({
     );
 
     return (
-        <div className={cn('flex flex-col md:flex-row md:items-center md:justify-between gap-4', className)}>
+        <div className={cn('flex min-w-0 flex-col gap-4 md:flex-row md:items-center md:justify-between', className)}>
             {/* Số dòng mỗi trang */}
             {onPageSizeChange ? (
                 <div className="flex items-center gap-2.5 text-sm text-muted-foreground">
@@ -108,7 +108,7 @@ export function Pagination({
 
             {/* Chuyển trang */}
             {totalPages > 1 && (
-                <nav aria-label="Phân trang" className="flex items-center gap-1">
+                <nav aria-label="Phân trang" className="flex min-w-0 flex-wrap items-center justify-center gap-1 md:justify-end">
                     <Button
                         variant="outline"
                         size="icon"
