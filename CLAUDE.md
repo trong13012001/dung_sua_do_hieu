@@ -48,7 +48,13 @@ Project skills live in `.claude/skills/` and load automatically when relevant. T
 `.env.local` (not committed). Required:
 - `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` — client.
 - `SUPABASE_SERVICE_ROLE_KEY` — **server only** (`lib/supabase-server.ts`); used by API routes to bypass RLS / create auth users. Never reference it in client code.
-- Optional `NEXT_PUBLIC_THERMAL_PRINTER_INVOICE` / `_LABEL` — fallback printer names when shop settings are blank.
+Optional (all print-related; every `NEXT_PUBLIC_*` is inlined at build time, so changing one on Vercel needs a redeploy):
+- `NEXT_PUBLIC_THERMAL_PRINTER_INVOICE` / `_LABEL` (legacy aliases `_XP80C` / `_XP235B`) — fallback printer names when shop settings are blank (`lib/print/shopPrinterCache.ts`).
+- `NEXT_PUBLIC_PRINT_AGENT_URL` — enables the local print-agent channel (`lib/print/printAgentClient.ts`).
+- `NEXT_PUBLIC_THERMAL_INVOICE_EXTRA_TRIM_MM` (0–8) — narrows the invoice from the right when the XP-80C clips the right edge (`lib/print/invoiceThermalMetrics.ts`).
+- `NEXT_PUBLIC_THERMAL_LABEL_JOB_DELAY_MS` — gap between label print jobs (`lib/print/thermalPrint.ts`).
+- `NEXT_PUBLIC_THERMAL_INVOICE_BROWSER_PRINT=1` — force invoices through the browser print dialog.
+- `NEXT_PUBLIC_APP_URL` / `ELECTRON_START_URL` — which URL the Electron shell loads (see "Running Electron locally").
 
 ## Architecture
 
@@ -71,7 +77,7 @@ Project skills live in `.claude/skills/` and load automatically when relevant. T
 - **Two gating mechanisms, keep them in sync:**
   - `lib/permissions.ts` — `ROUTE_PERMISSIONS` maps each route to the permission(s) needed; `canAccessRoute()` drives sidebar/nav visibility.
   - `components/auth/Can.tsx` — `<Can permission="..."> / anyOf={[...]}` wraps individual UI elements.
-  When you add a route or a gated action, update both the route map and any relevant `<Can>` usage, and ensure the permission name exists in the DB seed (`supabase_schema.sql`).
+  When you add a route or a gated action, update both the route map and any relevant `<Can>` usage, and ensure the permission name exists in the DB seed (`supabase_schema.sql`). `supabase_assign_admin_permissions.sql` re-grants every permission to the "Quản trị viên" role — rerun it after adding a permission.
 
 ### Routing & pages
 
@@ -79,7 +85,9 @@ App Router. Real screens live under `app/(dashboard)/` (orders, pos, customers, 
 
 ### Printing (the non-obvious subsystem)
 
-Browsers can't print silently, so printing fans out across methods. `lib/printSmart.ts` decides between: Electron IPC (`window.electronThermalPrint`, Windows only), a local print agent, or a browser print dialog fallback. `lib/print/` holds the HTML builders and thermal metrics (58mm/80mm `@page` sizing matters — see comments tying `invoiceThermalMetrics.ts` to `main.cjs`). Printer **names** are resolved from shop settings (DB) and synced into a cache (`ShopSettingsSync` provider → `lib/print/shopPrinterCache.ts`); on Windows the device name is fuzzy-matched against `getPrintersAsync()` in `main.cjs`. Two physical printers: invoice (XP-80C) and label (XP-235B). Creating an order at the POS screen immediately queues both prints: `buildOrderForInvoicePrint` builds a print-shaped order, then `printTargetElementSmart` renders `<InvoicePrint>` and `<ItemLabelsPrint>`. Before touching anything here, read `electron/README.md`.
+Browsers can't print silently, so printing fans out across methods. `lib/printSmart.ts` decides between: Electron IPC (`window.electronThermalPrint`, typed in `types/electron-thermal.d.ts`, Windows only), a local print agent, or a browser print dialog fallback. `lib/print/` holds the HTML builders and thermal metrics (58mm/80mm `@page` sizing matters — see comments tying `invoiceThermalMetrics.ts` to `main.cjs`). Printer **names** are resolved from shop settings (DB) and synced into a cache (`ShopSettingsSync` provider → `lib/print/shopPrinterCache.ts`); on Windows the device name is fuzzy-matched against `getPrintersAsync()` in `main.cjs`. Two physical printers: invoice (XP-80C) and label (XP-235B). Creating an order at the POS screen immediately queues both prints: `buildOrderForInvoicePrint` builds a print-shaped order, then `printTargetElementSmart` renders `<InvoicePrint>` and `<ItemLabelsPrint>`. Before touching anything here, read `electron/README.md`.
+
+The invoice job is an 80mm-wide `@page`, left-aligned (1.25mm margin, ~71.5mm content box), while the XP-80C head only prints ~72mm. So a bill that suddenly loses text on the right with no code change is almost always the driver or the paper roll (after cleaning or a driver reinstall): check the printer self-test page and the Windows driver first, then `NEXT_PUBLIC_THERMAL_INVOICE_EXTRA_TRIM_MM` — don't change the layout code for it.
 
 ## Domain model notes
 
