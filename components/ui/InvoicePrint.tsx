@@ -109,6 +109,7 @@ export function InvoicePrintContent({
                     <div className="shrink-0">
                         <BrandLogo
                             unoptimized
+                            thermal
                             className="invoice-brand-mark h-[56px] w-[56px] sm:h-[56px] sm:w-[56px] object-contain object-left print:h-[14mm] print:w-[14mm] print:max-h-[14mm] print:max-w-[14mm]"
                         />
                     </div>
