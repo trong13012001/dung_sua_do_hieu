@@ -4,6 +4,7 @@ import React, { useState, useCallback } from 'react';
 import { Sidebar } from './Sidebar';
 import { BrandLogo } from '@/components/ui/BrandLogo';
 import { Menu } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import { ShopSettingsSync } from '@/components/providers/ShopSettingsSync';
 
@@ -22,12 +23,9 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       <div className="flex-1 lg:ml-[260px] flex flex-col">
         {/* Mobile-only top bar */}
         <div className="sticky top-0 z-30 lg:hidden flex items-center gap-3 px-4 h-14 bg-card/80 backdrop-blur-md border-b border-border">
-          <button
-            onClick={toggleSidebar}
-            className="p-2 -ml-1 text-foreground hover:bg-muted rounded-lg transition-colors"
-          >
-            <Menu size={22} />
-          </button>
+          <Button variant="ghost" size="icon" onClick={toggleSidebar} aria-label="Mở menu" className="-ml-1">
+            <Menu className="size-5" />
+          </Button>
           <span className="flex items-center gap-2 min-w-0">
             <BrandLogo className="h-8 w-auto shrink-0 object-contain object-left" />
             <span className="text-sm font-bold text-foreground truncate">Dũng Sửa Đồ Hiệu</span>
