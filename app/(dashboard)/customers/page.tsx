@@ -1,34 +1,28 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import {
-  Users,
-  Search,
-  Phone,
-  MapPin,
-  DollarSign,
-  History,
-  X,
-  Edit2,
-  Trash2
-} from 'lucide-react';
+import React, { useCallback, useState } from 'react';
+import { Plus, Search, Users } from 'lucide-react';
+import { toast } from 'sonner';
 import { useGetCustomer } from '@/hooks/customer/useGetCustomer';
 import { useCreateCustomer } from '@/hooks/customer/useCreateCustomer';
 import { useUpdateCustomer } from '@/hooks/customer/useUpdateCustomer';
 import { useDeleteCustomer } from '@/hooks/customer/useDeleteCustomer';
-import { Modal } from '@/components/ui/Modal';
-import { Pagination } from '@/components/ui/Pagination';
-import { Toast, useToast } from '@/components/ui/Toast';
 import { useDebounce } from '@/hooks/useDebounce';
-import { useRouter } from 'next/navigation';
 import { Customer } from '@/lib/types';
-import { validateRequired, validatePhone, validateMaxLength } from '@/lib/validation';
+import { errorMessage } from '@/lib/utils';
+import { Pagination } from '@/components/ui/Pagination';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { CardGridSkeleton } from '@/components/ui/loading-skeletons';
+import { PageHeader } from '@/components/common/PageHeader';
+import { ConfirmDialog } from '@/components/common/ConfirmDialog';
+import { EmptyState } from '@/components/common/EmptyState';
+import { CustomerFormDialog } from '@/components/customers/CustomerFormDialog';
+import { CustomerCard } from './_components/CustomerCard';
 
 export default function CustomersPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const debouncedSearchTerm = useDebounce(searchTerm, 500);
-  const router = useRouter();
   // Trang đếm từ 1 cho thống nhất với <Pagination> và các màn danh sách khác.
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(9);
@@ -36,176 +30,98 @@ export default function CustomersPage() {
   const customers = customerData?.data || [];
   const totalCount = customerData?.count || 0;
 
-  // Reset page when search term changes
-  useEffect(() => {
-    setPage(1);
-  }, [debouncedSearchTerm]);
+  const { mutateAsync: createCustomer, isPending: isCreating } = useCreateCustomer();
+  const { mutateAsync: updateCustomer, isPending: isUpdating } = useUpdateCustomer();
+  const { mutateAsync: deleteCustomer, isPending: isDeleting } = useDeleteCustomer();
 
-  const {
-    mutateAsync: mutateAsyncCreateCustomer,
-    isPending: isPendingCreateCustomer,
-  } = useCreateCustomer();
-  const {
-    mutateAsync: mutateAsyncUpdateCustomer,
-    isPending: isPendingUpdateCustomer,
-  } = useUpdateCustomer();
-  const {
-    mutateAsync: mutateAsyncDeleteCustomer,
-    isPending: isPendingDeleteCustomer,
-  } = useDeleteCustomer();
-  const { toast, showToast, hideToast } = useToast();
-
-  const [isAdding, setIsAdding] = useState(false);
+  const [formOpen, setFormOpen] = useState(false);
+  // Đổi key mỗi lần mở để form bắt đầu lại từ giá trị ban đầu.
+  const [formKey, setFormKey] = useState(0);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [deletingCustomer, setDeletingCustomer] = useState<Customer | null>(null);
-  const [formData, setFormData] = useState({ name: '', phone: '', address: '' });
-  const [formErrors, setFormErrors] = useState<{ name?: string; phone?: string; address?: string }>({});
 
-  const handleCreate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const nameErr = validateRequired(formData.name, 'Họ và tên');
-    const phoneErr = validatePhone(formData.phone, true);
-    const addressErr = validateMaxLength(formData.address, 500, 'Địa chỉ');
-    const errs = { name: nameErr || undefined, phone: phoneErr || undefined, address: addressErr || undefined };
-    setFormErrors(errs);
-    if (nameErr || phoneErr || addressErr) return;
-    try {
-      await mutateAsyncCreateCustomer({ name: formData.name.trim(), phone: formData.phone.trim() || undefined, address: formData.address.trim() || undefined });
-      setIsAdding(false);
-      setFormData({ name: '', phone: '', address: '' });
-      setFormErrors({});
-      showToast('Thêm khách hàng thành công', 'success');
-    } catch (error: any) {
-      showToast('Lỗi: ' + error.message, 'error');
-    }
+  const openCreate = () => {
+    setEditingCustomer(null);
+    setFormKey((k) => k + 1);
+    setFormOpen(true);
   };
 
-  const handleUpdate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const nameErr = validateRequired(formData.name, 'Họ và tên');
-    const phoneErr = validatePhone(formData.phone, false);
-    const addressErr = validateMaxLength(formData.address, 500, 'Địa chỉ');
-    const errs = { name: nameErr || undefined, phone: phoneErr || undefined, address: addressErr || undefined };
-    setFormErrors(errs);
-    if (nameErr || phoneErr || addressErr) return;
+  const openEdit = useCallback((customer: Customer) => {
+    setEditingCustomer(customer);
+    setFormKey((k) => k + 1);
+    setFormOpen(true);
+  }, []);
+
+  const openDelete = useCallback((customer: Customer) => {
+    setDeletingCustomer(customer);
+    setDeleteOpen(true);
+  }, []);
+
+  const handleSubmit = async (values: { name: string; phone?: string; address?: string }) => {
     try {
       if (editingCustomer) {
-        await mutateAsyncUpdateCustomer({ id: editingCustomer.id, customer: { name: formData.name.trim(), phone: formData.phone.trim() || undefined, address: formData.address.trim() || undefined } });
+        await updateCustomer({ id: editingCustomer.id, customer: values });
+        toast.success('Cập nhật khách hàng thành công');
+      } else {
+        await createCustomer(values);
+        toast.success('Thêm khách hàng thành công');
       }
-      setEditingCustomer(null);
-      setFormData({ name: '', phone: '', address: '' });
-      setFormErrors({});
-      showToast('Cập nhật khách hàng thành công', 'success');
-    } catch (error: any) {
-      showToast('Lỗi: ' + error.message, 'error');
+      setFormOpen(false);
+    } catch (err) {
+      toast.error('Lỗi: ' + errorMessage(err));
     }
   };
 
   const handleDelete = async () => {
     if (!deletingCustomer) return;
     try {
-      await mutateAsyncDeleteCustomer(deletingCustomer.id);
-      setDeletingCustomer(null);
-      showToast('Xóa khách hàng thành công', 'success');
-    } catch (error: any) {
-      showToast('Lỗi: ' + error.message, 'error');
+      await deleteCustomer(deletingCustomer.id);
+      setDeleteOpen(false);
+      toast.success('Xóa khách hàng thành công');
+    } catch (err) {
+      toast.error('Lỗi: ' + errorMessage(err));
     }
-  };
-
-  const openEdit = (customer: Customer) => {
-    setEditingCustomer(customer);
-    setFormData({ name: customer.name, phone: customer.phone || '', address: customer.address || '' });
-    setFormErrors({});
   };
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
-        <h4 className="text-lg md:text-xl font-bold text-foreground">Quản lý khách hàng</h4>
-        <button
-          onClick={() => {
-            setIsAdding(true);
-            setFormData({ name: '', phone: '', address: '' });
-            setFormErrors({});
-          }}
-          className="w-full sm:w-auto btn-primary px-5 py-2 md:py-2.5 rounded-md font-bold text-sm"
-        >
-          Thêm khách hàng
-        </button>
-      </div>
+      <PageHeader
+        title="Quản lý khách hàng"
+        actions={
+          <Button onClick={openCreate} className="w-full sm:w-auto">
+            <Plus /> Thêm khách hàng
+          </Button>
+        }
+      />
 
-      <div className="vuexy-card p-3 md:p-4 flex items-center gap-3 md:gap-4">
-        <Search className="text-muted-foreground shrink-0" size={18} />
-        <input
-          type="text"
-          placeholder="Tìm kiếm khách hàng..."
-          className="bg-transparent border-none outline-none w-full text-xs md:text-sm text-foreground"
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
+        <Input
+          type="search"
+          placeholder="Tìm theo tên, SĐT, địa chỉ..."
+          className="h-11 bg-card pl-10"
           value={searchTerm}
-          onChange={e => setSearchTerm(e.target.value)}
+          onChange={(e) => {
+            setSearchTerm(e.target.value);
+            setPage(1);
+          }}
         />
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
-        {isLoading ? (
-          <CardGridSkeleton count={6} />
-        ) : customers && customers.length > 0 ? (
-          customers.map((customer: Customer) => (
-            <div key={customer.id} className="vuexy-card p-6 flex flex-col justify-between hover:shadow-md transition-shadow group">
-              <div className="flex justify-between items-start mb-6">
-                <div className="w-11 h-11 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
-                  <Users size={24} />
-                </div>
-                <div className="flex flex-col items-end gap-2">
-                  <div className="flex items-center gap-1 text-danger font-bold text-xs bg-danger/10 px-2 py-0.5 rounded-md border border-danger/20">
-                    <DollarSign size={14} />
-                    Nợ: {new Intl.NumberFormat('vi-VN').format(customer.total_debt)}
-                  </div>
-                  <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button
-                      onClick={() => openEdit(customer)}
-                      className="p-1.5 rounded-md bg-muted/50 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
-                    >
-                      <Edit2 size={14} />
-                    </button>
-                    <button
-                      onClick={() => setDeletingCustomer(customer)}
-                      className="p-1.5 rounded-md bg-muted/50 text-muted-foreground hover:text-danger hover:bg-danger/10 transition-colors"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <h5 className="text-lg font-bold text-foreground">{customer.name}</h5>
-                <div className="space-y-2 mt-4 text-xs font-medium text-muted-foreground uppercase tracking-widest">
-                  <div className="flex items-center gap-2">
-                    <Phone size={14} className="text-primary" />
-                    {customer.phone || 'N/A'}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <MapPin size={14} className="text-primary" />
-                    {customer.address || 'N/A'}
-                  </div>
-                </div>
-              </div>
-
-              <button
-                onClick={() => router.push(`/customers/${customer.id}/orders`)}
-                className="mt-6 md:mt-8 w-full bg-muted/40 text-foreground hover:bg-muted py-2 md:py-2.5 rounded-md text-[10px] md:text-[11px] font-bold transition-colors flex items-center justify-center gap-2 uppercase tracking-widest border border-border"
-              >
-                <History size={14} />
-                Lịch sử đơn hàng
-              </button>
-            </div>
-          ))
-        ) : (
-          <div className="col-span-full py-20 text-center text-muted-foreground bg-transparent border-2 border-dashed border-border rounded-lg italic">
-            Không tìm thấy khách hàng nào.
-          </div>
-        )}
-      </div>
+      {!isLoading && customers.length === 0 ? (
+        <EmptyState icon={Users} title="Không tìm thấy khách hàng nào." />
+      ) : (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:gap-6 lg:grid-cols-3">
+          {isLoading ? (
+            <CardGridSkeleton count={6} />
+          ) : (
+            customers.map((customer: Customer) => (
+              <CustomerCard key={customer.id} customer={customer} onEdit={openEdit} onDelete={openDelete} />
+            ))
+          )}
+        </div>
+      )}
 
       <Pagination
         page={page}
@@ -222,113 +138,40 @@ export default function CustomersPage() {
         className="mt-8"
       />
 
-      {/* Add/Edit Modal */}
-      <Modal
-        isOpen={isAdding || !!editingCustomer}
-        onClose={() => {
-          setIsAdding(false);
-          setEditingCustomer(null);
-        }}
+      <CustomerFormDialog
+        key={formKey}
+        open={formOpen}
+        onOpenChange={setFormOpen}
         title={editingCustomer ? 'Sửa thông tin khách hàng' : 'Thêm khách hàng'}
-      >
-        <form onSubmit={editingCustomer ? handleUpdate : handleCreate} className="space-y-5">
-          <div className="space-y-1.5">
-            <label className="text-[11px] font-bold text-muted-foreground uppercase opacity-80">Họ và tên *</label>
-            <input
-              placeholder="Nguyễn Văn A"
-              className={`w-full bg-muted/20 border rounded-md px-4 py-2.5 outline-none focus:ring-1 focus:ring-primary text-sm transition-all ${formErrors.name ? 'border-danger' : 'border-border'}`}
-              value={formData.name}
-              onChange={e => { setFormData({ ...formData, name: e.target.value }); if (formErrors.name) setFormErrors({ ...formErrors, name: undefined }); }}
-            />
-            {formErrors.name && <p className="text-xs text-danger">{formErrors.name}</p>}
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-[11px] font-bold text-muted-foreground uppercase opacity-80">Số điện thoại {editingCustomer ? '' : '*'}</label>
-            <input
-              placeholder="091..."
-              className={`w-full bg-muted/20 border rounded-md px-4 py-2.5 outline-none focus:ring-1 focus:ring-primary text-sm transition-all ${formErrors.phone ? 'border-danger' : 'border-border'}`}
-              value={formData.phone}
-              onChange={e => { setFormData({ ...formData, phone: e.target.value }); if (formErrors.phone) setFormErrors({ ...formErrors, phone: undefined }); }}
-            />
-            {formErrors.phone && <p className="text-xs text-danger">{formErrors.phone}</p>}
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-[11px] font-bold text-muted-foreground uppercase opacity-80">Địa chỉ</label>
-            <input
-              placeholder="Hà Nội, Việt Nam"
-              className={`w-full bg-muted/20 border rounded-md px-4 py-2.5 outline-none focus:ring-1 focus:ring-primary text-sm transition-all ${formErrors.address ? 'border-danger' : 'border-border'}`}
-              value={formData.address}
-              onChange={e => { setFormData({ ...formData, address: e.target.value }); if (formErrors.address) setFormErrors({ ...formErrors, address: undefined }); }}
-            />
-            {formErrors.address && <p className="text-xs text-danger">{formErrors.address}</p>}
-          </div>
-          <div className="flex gap-4 mt-10">
-            <button
-              type="button"
-              onClick={() => {
-                setIsAdding(false);
-                setEditingCustomer(null);
-              }}
-              className="flex-1 bg-muted/40 text-foreground py-2.5 rounded-md font-bold text-sm border border-border hover:bg-muted transition-colors"
-            >
-              Hủy
-            </button>
-            <button
-              type="submit"
-              disabled={isPendingCreateCustomer || isPendingUpdateCustomer}
-              className="flex-1 btn-primary py-2.5 rounded-md font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2"
-            >
-              {(isPendingCreateCustomer || isPendingUpdateCustomer) && (
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-              )}
-              {editingCustomer
-                ? (isPendingUpdateCustomer ? 'Đang lưu...' : 'Cập nhật')
-                : (isPendingCreateCustomer ? 'Đang tạo...' : 'Thêm khách hàng')}
-            </button>
-          </div>
-        </form>
-      </Modal>
+        submitLabel={editingCustomer ? 'Cập nhật' : 'Thêm khách hàng'}
+        pendingLabel={editingCustomer ? 'Đang lưu...' : 'Đang tạo...'}
+        initial={
+          editingCustomer
+            ? { name: editingCustomer.name, phone: editingCustomer.phone || '', address: editingCustomer.address || '' }
+            : undefined
+        }
+        phoneRequired={!editingCustomer}
+        isPending={isCreating || isUpdating}
+        onSubmit={handleSubmit}
+      />
 
-      {/* Delete Confirmation Modal */}
-      <Modal
-        isOpen={!!deletingCustomer}
-        onClose={() => setDeletingCustomer(null)}
+      <ConfirmDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
         title="Xóa khách hàng"
-      >
-        <div className="space-y-6">
-          <p className="text-muted-foreground text-sm">
-            Bạn có chắc chắn muốn xóa <span className="font-bold text-foreground">{deletingCustomer?.name}</span>?
-            Hành động này không thể hoàn tác và sẽ xóa tất cả dữ liệu liên quan.
-          </p>
-          <div className="flex gap-4">
-            <button
-              onClick={() => setDeletingCustomer(null)}
-              className="flex-1 bg-muted/40 text-foreground py-2.5 rounded-md font-bold text-sm border border-border hover:bg-muted transition-colors"
-            >
-              Giữ lại
-            </button>
-            <button
-              onClick={handleDelete}
-              disabled={isPendingDeleteCustomer}
-              className="flex-1 bg-danger text-white hover:bg-danger/90 py-2.5 rounded-md font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2"
-            >
-              {isPendingDeleteCustomer && (
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-              )}
-              {isPendingDeleteCustomer ? 'Đang xóa...' : 'Xóa vĩnh viễn'}
-            </button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* Toast Notification */}
-      {toast && (
-        <Toast
-          message={toast.message}
-          type={toast.type}
-          onClose={hideToast}
-        />
-      )}
+        description={
+          <>
+            Bạn có chắc chắn muốn xóa <span className="font-bold text-foreground">{deletingCustomer?.name}</span>? Hành
+            động này không thể hoàn tác và sẽ xóa tất cả dữ liệu liên quan.
+          </>
+        }
+        confirmLabel="Xóa vĩnh viễn"
+        pendingLabel="Đang xóa..."
+        cancelLabel="Giữ lại"
+        destructive
+        isPending={isDeleting}
+        onConfirm={handleDelete}
+      />
     </div>
   );
 }

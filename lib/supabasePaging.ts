@@ -104,3 +104,11 @@ export async function fetchPage<T>(
     if (error) throw error;
     return { data: data ?? [], count: count ?? 0 };
 }
+
+/**
+ * Làm sạch từ khoá trước khi nhét vào filter `.or(...)` của PostgREST: dấu phẩy,
+ * ngoặc và nháy là ký tự cú pháp của filter, để nguyên sẽ làm hỏng cả truy vấn.
+ */
+export function sanitizeOrFilterValue(term: string): string {
+    return term.replaceAll(/[,()"']/g, " ").trim();
+}

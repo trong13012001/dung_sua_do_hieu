@@ -9,7 +9,7 @@ import {
     type QueryClient,
 } from "@tanstack/react-query";
 import { Customer, Order, OrderDetail, Payment } from "@/lib/types";
-import { fetchAllPages, fetchByIdChunks } from "@/lib/supabasePaging";
+import { fetchAllPages, fetchByIdChunks, sanitizeOrFilterValue } from "@/lib/supabasePaging";
 import { orderStatusLabelVi } from "@/lib/orderStatusUi";
 import { vnDayStartIso, vnNextDayStartIso } from "@/lib/vnDate";
 import { insertOrderLog, insertOrderLogs } from "@/api/orderLogs";
@@ -626,14 +626,6 @@ const TASK_BOARD_STATUSES = [
  * trống dù thực tế đang có việc. Vì vậy mỗi trạng thái có quota riêng.
  */
 export const TASK_STATUS_LIMIT = 300;
-
-/**
- * Làm sạch từ khoá trước khi ghép vào filter `or(...)` của PostgREST.
- * Dấu phẩy và ngoặc là cú pháp của filter — để nguyên sẽ làm hỏng câu truy vấn.
- */
-function sanitizeOrFilterValue(term: string): string {
-    return term.replaceAll(/[,()"']/g, " ").trim();
-}
 
 /** Số đơn tối đa lấy về khi tra theo tên/SĐT khách — đủ dùng cho ô tìm kiếm. */
 const CUSTOMER_SEARCH_ORDER_LIMIT = 500;
