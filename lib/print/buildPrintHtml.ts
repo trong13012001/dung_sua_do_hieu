@@ -1,5 +1,6 @@
 import { flattenCssImports, fetchText } from "@/lib/print/inlineCssImports";
 import {
+  THERMAL_INVOICE_HTML_PAGE_MARGIN_LEFT_MM,
   THERMAL_INVOICE_HTML_PAGE_MARGIN_MM,
   invoiceThermalLayoutMaxWidthMm,
   invoiceThermalViewportWidthMm,
@@ -403,8 +404,15 @@ export async function buildPrintableHtmlFromElement(
   }
 }\n`;
 
+  /**
+   * @page của hóa đơn phải lặp lại SAU bundle CSS: `@media print { @page { margin: 2mm } }` trong
+   * globals.css được nhét inline phía sau thẻ <style> đầu, nên nếu chỉ khai báo ở đầu thì lề 2mm
+   * của globals thắng (đo bằng printToPDF) và lề trái không bao giờ về 0.
+   */
+  const invoicePageCss = `@page { size: ${paperMm}mm ${THERMAL_INVOICE_HTML_PAGE_HEIGHT_MM}mm; margin: ${THERMAL_INVOICE_HTML_PAGE_MARGIN_MM}mm ${THERMAL_INVOICE_HTML_PAGE_MARGIN_MM}mm ${THERMAL_INVOICE_HTML_PAGE_MARGIN_MM}mm ${THERMAL_INVOICE_HTML_PAGE_MARGIN_LEFT_MM}mm; }`;
+
   const tailStyle = isInvoice
-    ? `<style type="text/css" data-thermal-invoice-fallback="1">\n${escapeForStyleTag(invoiceThermalTailwindFallback(invoiceThermalLayoutMaxWidthMm(paperMm)))}\n</style>`
+    ? `<style type="text/css" data-thermal-invoice-fallback="1">\n${invoicePageCss}\n${escapeForStyleTag(invoiceThermalTailwindFallback(invoiceThermalLayoutMaxWidthMm(paperMm)))}\n</style>`
     : `<style type="text/css" data-thermal-label-pagination="">
 @media print, screen {
   html.thermal-print #print-root:has(.item-labels-print) {
@@ -441,7 +449,7 @@ export async function buildPrintableHtmlFromElement(
    * trên Windows** (Printing Preferences → khổ giấy/độ dài) — cần nới ở driver, không phải ở code.
    */
   const pageCss = isInvoice
-    ? `@page { size: ${paperMm}mm ${THERMAL_INVOICE_HTML_PAGE_HEIGHT_MM}mm; margin: ${THERMAL_INVOICE_HTML_PAGE_MARGIN_MM}mm; }`
+    ? invoicePageCss
     : `@page { size: ${paperMm}mm ${LABEL_THERMAL_PAGE_HEIGHT_MM}mm; margin: 0; }`;
 
   return `<!DOCTYPE html><html class="thermal-print" lang="vi"><head><meta charset="utf-8"/>
