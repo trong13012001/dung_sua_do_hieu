@@ -13,7 +13,8 @@ import {
 import type { Order } from '@/lib/types';
 import { formatNumber, formatVnd } from '@/lib/format';
 
-export function ReturnConfirmDialog({
+/** Xác nhận trả đồ cho khách (màn Trả đồ, Đơn hàng). */
+export function DeliverOrderDialog({
   open,
   onOpenChange,
   order,
@@ -35,7 +36,9 @@ export function ReturnConfirmDialog({
     <Dialog open={open} onOpenChange={(next) => { if (!isPending) onOpenChange(next); }}>
       <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Xác nhận trả đồ</DialogTitle>
+          <DialogTitle>
+            {order ? `Xác nhận trả đồ · Đơn #${order.id.toString().padStart(5, '0')}` : 'Xác nhận trả đồ'}
+          </DialogTitle>
           <DialogDescription>
             Trạng thái sẽ là <span className="font-bold text-primary">Đã trả đồ</span> nếu đã thu đủ hoặc chưa thu; nếu đã
             thu một phần thì <span className="font-bold text-orange-700">Trả thiếu tiền</span>.
@@ -55,7 +58,7 @@ export function ReturnConfirmDialog({
                 {order.customer?.phone && <span className="text-muted-foreground">- {order.customer.phone}</span>}
               </div>
               {order.details && order.details.length > 0 && (
-                <div className="space-y-1.5 border-t border-primary/10 pt-3">
+                <div className="custom-scrollbar max-h-40 space-y-1.5 overflow-y-auto border-t border-primary/10 pt-3">
                   <p className="text-[11px] font-bold uppercase text-muted-foreground">Danh sách đồ</p>
                   {order.details.map((d, i) => (
                     <div key={d.id ?? i} className="flex justify-between gap-3 text-sm">

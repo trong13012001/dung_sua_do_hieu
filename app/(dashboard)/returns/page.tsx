@@ -34,7 +34,7 @@ import {
 } from '@/lib/orderStatusUi';
 import { vnDayStartIso, vnNextDayStartIso, vnYmd } from '@/lib/vnDate';
 import { ReturnOrderCard, type ReturnsTab } from './_components/ReturnOrderCard';
-import { ReturnConfirmDialog } from './_components/ReturnConfirmDialog';
+import { DeliverOrderDialog } from '@/components/orders/DeliverOrderDialog';
 
 const EMPTY_TEXT: Record<ReturnsTab, string> = {
   dueToday: 'Hôm nay không có đơn nào hẹn trả.',
@@ -211,7 +211,7 @@ export default function ReturnsPage() {
         />
       </div>
 
-      <ReturnConfirmDialog
+      <DeliverOrderDialog
         open={returnOpen}
         onOpenChange={setReturnOpen}
         order={returningOrder}

@@ -8,3 +8,8 @@ export const ORDER_STATUS_OPTIONS = [
   { value: 'DeliveredOwing', label: 'Trả thiếu tiền' },
   { value: 'Completed', label: 'Hoàn thành' },
 ] as const;
+
+/** value → nhãn của các lựa chọn trên (danh sách /orders cũng dùng nhãn này). */
+export const ORDER_STATUS_OPTION_LABEL: Record<string, string> = Object.fromEntries(
+  ORDER_STATUS_OPTIONS.map((o) => [o.value, o.label]),
+);
