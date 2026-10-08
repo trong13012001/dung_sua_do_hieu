@@ -21,7 +21,7 @@ export const OrderListSkeleton = memo(function OrderListSkeleton({
   return (
     <div className="space-y-3" aria-busy="true" aria-label="Đang tải danh sách đơn">
       {range(rows).map((i) => (
-        <div key={i} className="vuexy-card p-4 md:p-5 flex items-start gap-3 md:gap-4">
+        <div key={i} className="rounded-xl border border-border bg-card shadow-sm p-4 md:p-5 flex items-start gap-3 md:gap-4">
           {withCheckbox && <Skeleton className="size-5 rounded mt-1 shrink-0" />}
           <Skeleton className="size-11 rounded-lg shrink-0" />
           <div className="flex-1 min-w-0 space-y-2">
@@ -64,7 +64,7 @@ export const CardGridSkeleton = memo(function CardGridSkeleton({
     <>
       {range(count).map((i) =>
         variant === 'profile' ? (
-          <div key={i} className="vuexy-card p-4 md:p-6 flex flex-col items-center gap-3" aria-busy="true">
+          <div key={i} className="rounded-xl border border-border bg-card shadow-sm p-4 md:p-6 flex flex-col items-center gap-3" aria-busy="true">
             <Skeleton className="size-16 rounded-full" />
             <Skeleton className="h-4 w-32" />
             <Skeleton className="h-3 w-40" />
@@ -72,7 +72,7 @@ export const CardGridSkeleton = memo(function CardGridSkeleton({
             <Skeleton className="h-3 w-28" />
           </div>
         ) : (
-          <div key={i} className="vuexy-card p-5 md:p-6 space-y-4" aria-busy="true">
+          <div key={i} className="rounded-xl border border-border bg-card shadow-sm p-5 md:p-6 space-y-4" aria-busy="true">
             <div className="flex justify-between items-start">
               <Skeleton className="size-11 rounded-lg" />
               <Skeleton className="h-5 w-24" />
@@ -157,7 +157,7 @@ export const KanbanSkeleton = memo(function KanbanSkeleton({ columns = 4 }: { co
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
       {range(columns).map((i) => (
-        <div key={i} className="vuexy-card p-4 rounded-xl">
+        <div key={i} className="rounded-xl border border-border bg-card shadow-sm p-4 rounded-xl">
           <Skeleton className="h-4 w-24 mb-4" />
           <TaskCardsSkeleton />
         </div>
@@ -203,7 +203,7 @@ export const TextLinesSkeleton = memo(function TextLinesSkeleton({ lines = 3 }: 
 /** Form cài đặt / hồ sơ: các cặp nhãn + ô nhập. */
 export const FormSkeleton = memo(function FormSkeleton({ fields = 4 }: { fields?: number }) {
   return (
-    <div className="vuexy-card p-5 md:p-6 space-y-5" aria-busy="true">
+    <div className="rounded-xl border border-border bg-card shadow-sm p-5 md:p-6 space-y-5" aria-busy="true">
       <Skeleton className="h-5 w-40" />
       {range(fields).map((i) => (
         <div key={i} className="space-y-2">
@@ -268,7 +268,7 @@ export const CustomerOrdersPageSkeleton = memo(function CustomerOrdersPageSkelet
         <Skeleton className="h-6 w-56" />
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        <div className="vuexy-card p-5 space-y-4">
+        <div className="rounded-xl border border-border bg-card shadow-sm p-5 space-y-4">
           <Skeleton className="size-14 rounded-full" />
           <Skeleton className="h-4 w-3/4" />
           <Skeleton className="h-3 w-1/2" />

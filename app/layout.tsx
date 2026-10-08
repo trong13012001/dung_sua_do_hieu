@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
-import { Public_Sans } from "next/font/google";
+import { Montserrat } from "next/font/google";
 import "./globals.css";
 
-const publicSans = Public_Sans({
-  variable: "--font-public-sans",
+const montserrat = Montserrat({
+  variable: "--font-montserrat",
   subsets: ["latin", "vietnamese"],
 });
 
@@ -24,7 +24,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="vi">
-      <body className={`${publicSans.variable} antialiased`}>
+      <body className={`${montserrat.variable} antialiased`}>
         <QueryProvider>
           <TooltipProvider delayDuration={200}>
             {children}

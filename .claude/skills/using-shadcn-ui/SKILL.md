@@ -33,8 +33,25 @@ shadcn sinh tên chữ thường (`button.tsx`, `dialog.tsx`). Các component ri
 PascalCase (`Modal.tsx`, `Pagination.tsx`, `OrderDetailModal.tsx`). Không đổi tên file
 PascalCase cũ — nhiều nơi đang import.
 
-`Modal.tsx` và `Toast.tsx` là **lớp tương thích** bọc `Dialog` / `sonner` để chuyển dần.
-Code mới dùng thẳng `Dialog` và `toast()`.
+`Modal.tsx` là **lớp tương thích** bọc `Dialog`, chỉ còn dùng cho các khung in
+(`OrderPrintDialogs`, `BatchPrintDialog`, hàng đợi in ở POS). Code mới dùng thẳng `Dialog` và
+`toast()` của sonner.
+
+## Khối dùng chung (`components/common/`)
+
+| Cần | Dùng |
+| --- | --- |
+| Tiêu đề trang + nút | `PageHeader` |
+| Form trong hộp thoại | `FormDialog` + `FormField` |
+| Xác nhận xoá / hành động | `ConfirmDialog` (đóng khi `onConfirm` xong) |
+| Không có dữ liệu | `EmptyState` |
+| Nút icon ở mỗi dòng | `IconAction` (có tooltip + aria-label) |
+| Đang tải lần đầu | skeleton trong `components/ui/loading-skeletons.tsx` |
+| Tiền / số | `formatVnd`, `formatNumber` (`lib/format.ts`) |
+
+Hộp thoại giữ nội dung thêm một nhịp animation khi đóng → tách cờ `open` khỏi dữ liệu
+(`const [open, setOpen]` + `const [editing, setEditing]`), khi đóng chỉ tắt cờ. Form cần bắt đầu
+lại mỗi lần mở thì đổi `key`.
 
 ## Màu
 
@@ -57,6 +74,7 @@ nhiệt 80mm/60mm với CSS `@media print` riêng. Không thay bằng `Card`/`Ba
 
 ## Common mistakes
 
+- `Button`/`Badge` variant `secondary`: token `secondary` của dự án là xám đậm `#82868b` → trông nặng; dùng `outline`/`ghost`.
 - Viết `<div className="fixed inset-0 bg-black/50">` làm modal → mất focus trap, Esc, scroll lock. Dùng `Dialog`.
 - Mở `Dialog` lồng `Dialog` bằng z-index tay → Radix tự xếp chồng; bỏ `z-[110]`.
 - `Select` của Radix không nhận `value=""` → dùng giá trị sentinel (`"all"`) cho "Tất cả".

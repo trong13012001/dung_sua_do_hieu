@@ -88,7 +88,7 @@ Optional (all print-related; every `NEXT_PUBLIC_*` is inlined at build time, so 
 
 ### Routing & pages
 
-App Router. Real screens live under `app/(dashboard)/` (orders, pos, customers, returns, tasks, my-tasks, employees, roles, permissions, settings, dashboard, profile). `app/login` and `app/reset-password` are outside the group. The only server endpoint is `app/api/users/create/route.ts` (uses the admin client to create an auth user + `users` row). `components/` holds shared UI (`ui/`, `layout/`, `auth/`, `settings/`, `print/`, `providers/`).
+App Router. Real screens live under `app/(dashboard)/` (orders, pos, customers, returns, tasks, my-tasks, employees, roles, permissions, settings, dashboard, profile). `app/login` and `app/reset-password` are outside the group. The only server endpoint is `app/api/users/create/route.ts` (uses the admin client to create an auth user + `users` row). `components/` holds shared UI (`ui/`, `common/`, `orders/`, `customers/`, `tasks/`, `layout/`, `auth/`, `settings/`, `print/`, `providers/`).
 
 ### Printing (the non-obvious subsystem)
 
@@ -106,6 +106,8 @@ The invoice job is an 80mm-wide `@page`, left-aligned (1.25mm margin, ~71.5mm co
 ## Conventions
 
 - Path alias `@/*` → repo root (`tsconfig.json`). TypeScript `strict` is on.
+- **UI is shadcn/ui** (Radix + Tailwind v4, `components.json`). Primitives live in `components/ui/<lowercase>.tsx`; shared blocks in `components/common/` (`PageHeader`, `FormDialog`, `FormField`, `ConfirmDialog`, `EmptyState`, `IconAction`); per-domain pieces in `components/orders|customers|tasks/`; page-only pieces in `app/(dashboard)/<route>/_components/`. Colors come from tokens in `app/globals.css` (primary `#7367f0`); the app is **light-only** (`dark:` is pinned to an unused `.dark` class). Toasts are `sonner`. Font is Montserrat via `next/font`. See the `using-shadcn-ui` and `tailwind-v4-tokens` skills.
+- **Rows and cards in lists are `memo` components** fed stable callbacks (`useCallback`, or one `useMemo` actions object); React Compiler is not enabled. See `memoizing-react-components`.
 - Comments and UI copy are in Vietnamese; match that when editing existing files.
 - **No silent caps.** Where a hard `.limit()` is unavoidable (`TASK_STATUS_LIMIT`, `EXPORT_MAX_ORDERS`), the UI must say so — a column badge, a toast, a note under the list. A cap the user cannot see reads as "that is all the data".
 - `README.md` is untouched `create-next-app` boilerplate; nothing project-specific lives there.
