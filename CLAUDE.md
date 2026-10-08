@@ -32,6 +32,13 @@ Project skills live in `.claude/skills/` and load automatically when relevant. T
 | `paginating-lists` | Any list, table, report, export or aggregate — see the PostgREST caps below |
 | `changing-supabase-schema` | New SQL: table, column, function, trigger, permission |
 | `changing-thermal-printing` | Invoice / label printing |
+| `using-shadcn-ui` | Any screen, form, dialog, table, badge, toast; adding to `components/ui/` |
+| `tailwind-v4-tokens` | Colors, radius, fonts, `app/globals.css`; looking for `tailwind.config` |
+| `react-query-patterns` | `useQuery`/`useMutation`, query keys, `staleTime`, optimistic updates |
+| `optimizing-supabase-queries` | `.select()`/`.rpc()`, multi-table mutations, realtime, slow screens / request waterfalls |
+| `memoizing-react-components` | Lists/rows/cards, callbacks passed to children, derived data during render |
+| `nextjs-app-router` | Splitting pages, `_components/`, `"use client"`, `next/dynamic`, fonts, `NEXT_PUBLIC_*` |
+| `charts-and-kanban` | recharts on the dashboard, `@hello-pangea/dnd` boards on `/tasks`, `/my-tasks` |
 
 [superpowers](https://github.com/obra/superpowers) (brainstorming, writing-plans, systematic-debugging, code review) is a **per-machine** plugin, not committed here — install it with `/plugin install superpowers@claude-plugins-official`. Note that `superpowers:test-driven-development` assumes a test runner, which this repo does not have; here RED-GREEN means reproducing the bug against real data first, fixing, then re-proving it the same way.
 
