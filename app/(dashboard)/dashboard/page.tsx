@@ -17,13 +17,13 @@ import {
     CalendarClock,
     AlertTriangle,
 } from "lucide-react";
-import { useOrders, useReturnsDueCounts } from "@/api/orders";
+import { useRecentOrders, useReturnsDueCounts } from "@/api/orders";
 import {
     useDashboardStats,
     useDashboardPeriodAnalytics,
     useMonthlyRevenue,
 } from "@/api/stats";
-import type { DashboardPeriodMode, Order } from "@/lib/types";
+import type { DashboardPeriodMode } from "@/lib/types";
 import {
     CartesianGrid,
     Tooltip,
@@ -239,7 +239,7 @@ export default function DashboardPage() {
         );
     }, [periodData, listTab, periodOrderStatusFilter]);
 
-    const { data: orders, isLoading: ordersLoading } = useOrders();
+    const { data: orders, isLoading: ordersLoading } = useRecentOrders(8);
     const { data: stats } = useDashboardStats();
     const { data: monthlyData } = useMonthlyRevenue();
 
@@ -1536,7 +1536,7 @@ export default function DashboardPage() {
                     <div className="space-y-5 overflow-y-auto max-h-[300px] pr-2 custom-scrollbar">
                         {ordersLoading && <TextLinesSkeleton lines={6} />}
                         {!ordersLoading &&
-                            (orders as Order[])?.slice(0, 8).map((order) => (
+                            orders?.slice(0, 8).map((order) => (
                                 <div
                                     key={order.id}
                                     className="flex gap-3 relative"
@@ -1598,7 +1598,7 @@ export default function DashboardPage() {
                             {ordersLoading ? (
                                 <TableRowsSkeleton rows={5} cols={4} />
                             ) : orders && orders.length > 0 ? (
-                                (orders as Order[]).slice(0, 5).map((order) => (
+                                orders.slice(0, 5).map((order) => (
                                     <tr
                                         key={order.id}
                                         className="hover:bg-muted/10 transition-colors"
@@ -1651,7 +1651,7 @@ export default function DashboardPage() {
                     {ordersLoading ? (
                         <ListRowsSkeleton rows={4} />
                     ) : orders && orders.length > 0 ? (
-                        (orders as Order[]).slice(0, 5).map((order) => (
+                        orders.slice(0, 5).map((order) => (
                             <div
                                 key={order.id}
                                 className="p-4 flex items-center justify-between gap-3"

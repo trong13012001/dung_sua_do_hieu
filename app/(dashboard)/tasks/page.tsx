@@ -57,11 +57,11 @@ interface TaskItem {
     id: number;
     order_id: number;
     item_name: string;
-    description: string;
+    description: string | null;
     unit_price: number;
     status: string;
     assigned_tailor_id: string | null;
-    tailor?: { id: number; name: string } | null;
+    tailor?: { id: string; name: string } | null;
     orderNumber: number;
     customerName: string;
     orderCreatedAt: string;

@@ -65,8 +65,9 @@ const statusOptions = [
 ];
 
 function OrderLogSection({ orderId }: { orderId: number | null }) {
-  const { data: logs, isLoading } = useOrderLogs(orderId);
   const [open, setOpen] = useState(false);
+  // Chỉ tải lịch sử khi mở ra.
+  const { data: logs, isLoading } = useOrderLogs(orderId, { enabled: open });
   if (!orderId) return null;
   return (
     <div className="mb-4 border border-border rounded-lg overflow-hidden">
