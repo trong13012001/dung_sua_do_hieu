@@ -25,6 +25,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Toast, useToast } from "@/components/ui/Toast";
 import { useDebounce } from "@/hooks/useDebounce";
 import { OrderDetail, User, Role } from "@/lib/types";
+import { TaskCardsSkeleton } from '@/components/ui/loading-skeletons';
 
 const COLUMNS = [
     { id: "New", label: "Mới", color: "bg-info/10 text-info border-info/20" },
@@ -222,14 +223,7 @@ export default function TasksPage() {
                             >
                                 {col.label}
                             </p>
-                            <div className="space-y-2">
-                                {[1, 2, 3].map((i) => (
-                                    <div
-                                        key={i}
-                                        className="h-24 bg-muted/20 rounded-lg animate-pulse"
-                                    />
-                                ))}
-                            </div>
+                            <TaskCardsSkeleton count={3} />
                         </div>
                     ))}
                 </div>

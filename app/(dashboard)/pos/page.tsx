@@ -39,6 +39,7 @@ import { printTargetElementSmart } from '@/lib/printSmart';
 import { PRINT_TARGET_LABEL_XP235B, PRINT_TARGET_INVOICE_XP80C } from '@/lib/printTargets';
 import { orderStatusBadgeClass, orderStatusLabelVi } from '@/lib/orderStatusUi';
 import { dateInputToReturnTime } from '@/lib/canPrintInvoice';
+import { OrderListSkeleton } from '@/components/ui/loading-skeletons';
 
 interface PosItem {
   name: string;
@@ -908,11 +909,7 @@ export default function POSPage() {
               <span className="font-medium text-foreground">{selectedCustomer.phone || 'N/A'}</span>
             </p>
             {isLoadingCustomerOrders ? (
-              <div className="space-y-3">
-                {[0, 1, 2].map((i) => (
-                  <div key={i} className="h-24 animate-pulse rounded-lg border border-border bg-muted/20" />
-                ))}
-              </div>
+              <OrderListSkeleton rows={3} />
             ) : customerOrdersList.length > 0 ? (
               <div className="space-y-3">
                 {customerOrdersList.map((order: Order) => (

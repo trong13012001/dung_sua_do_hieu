@@ -37,6 +37,7 @@ import {
   orderDetailStatusLabelVi,
   orderDetailStatusSelectOptions,
 } from '@/lib/orderDetailStatusUi';
+import { OrderDetailSkeleton } from '@/components/ui/loading-skeletons';
 
 interface OrderDetailModalProps {
   isOpen: boolean;
@@ -332,9 +333,7 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
       stackOnTop={stackOnTop}
     >
       {isLoading ? (
-        <div className="flex justify-center py-20">
-          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
-        </div>
+        <OrderDetailSkeleton />
       ) : error ? (
         <div className="text-center py-10 text-danger">
           <p>Có lỗi xảy ra khi tải thông tin đơn hàng.</p>

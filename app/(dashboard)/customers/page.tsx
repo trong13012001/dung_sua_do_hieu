@@ -23,6 +23,7 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { useRouter } from 'next/navigation';
 import { Customer } from '@/lib/types';
 import { validateRequired, validatePhone, validateMaxLength } from '@/lib/validation';
+import { CardGridSkeleton } from '@/components/ui/loading-skeletons';
 
 export default function CustomersPage() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -146,9 +147,7 @@ export default function CustomersPage() {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
         {isLoading ? (
-          Array(3).fill(0).map((_, i) => (
-            <div key={i} className="vuexy-card h-56 animate-pulse"></div>
-          ))
+          <CardGridSkeleton count={6} />
         ) : customers && customers.length > 0 ? (
           customers.map((customer: Customer) => (
             <div key={customer.id} className="vuexy-card p-6 flex flex-col justify-between hover:shadow-md transition-shadow group">

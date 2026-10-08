@@ -6,6 +6,7 @@ import { usePermissions, useCreatePermission, useUpdatePermission, useDeletePerm
 import { Modal } from '@/components/ui/Modal';
 import { Toast, useToast } from '@/components/ui/Toast';
 import { Permission } from '@/lib/types';
+import { ListRowsSkeleton, TableRowsSkeleton } from '@/components/ui/loading-skeletons';
 
 export default function PermissionsPage() {
   const { data: permissions, isLoading } = usePermissions();
@@ -79,7 +80,7 @@ export default function PermissionsPage() {
             </thead>
             <tbody className="divide-y divide-border text-sm">
               {isLoading ? (
-                Array.from({ length: 3 }).map((_, i) => <tr key={i} className="animate-pulse"><td colSpan={4} className="px-6 py-6 bg-muted/10" /></tr>)
+                <TableRowsSkeleton rows={6} cols={4} />
               ) : permissions && permissions.length > 0 ? (
                 permissions.map(perm => (
                   <tr key={perm.id} className="hover:bg-muted/10 transition-colors">
@@ -106,7 +107,7 @@ export default function PermissionsPage() {
         {/* Mobile list */}
         <div className="md:hidden divide-y divide-border">
           {isLoading ? (
-            Array.from({ length: 3 }).map((_, i) => <div key={i} className="p-4 h-16 animate-pulse bg-muted/10" />)
+            <ListRowsSkeleton rows={5} />
           ) : permissions && permissions.length > 0 ? (
             permissions.map(perm => (
               <div key={perm.id} className="p-4 flex items-center justify-between">

@@ -18,6 +18,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Toast, useToast } from '@/components/ui/Toast';
 import { User, Role } from '@/lib/types';
 import { validateRequired, validateEmail, validatePassword, validatePhone } from '@/lib/validation';
+import { CardGridSkeleton } from '@/components/ui/loading-skeletons';
 
 export default function EmployeesPage() {
   const { data: employees, isLoading } = useEmployees();
@@ -122,7 +123,7 @@ export default function EmployeesPage() {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
         {isLoading ? (
-          Array.from({ length: 3 }).map((_, i) => <div key={i} className="vuexy-card h-56 animate-pulse" />)
+          <CardGridSkeleton count={6} variant="profile" />
         ) : employees && employees.length > 0 ? (
           employees.map((emp) => (
             <div key={emp.id} className="vuexy-card p-4 md:p-6 flex flex-col items-center text-center relative group hover:-translate-y-1 transition-transform">

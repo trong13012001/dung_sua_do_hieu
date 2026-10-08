@@ -4,7 +4,6 @@ import React, { useCallback } from 'react';
 import {
   Calendar,
   Package,
-  Loader2,
   ClipboardList,
   GripVertical,
   CheckCircle2,
@@ -16,6 +15,7 @@ import { Toast, useToast } from '@/components/ui/Toast';
 import { useCurrentUserId } from '@/hooks/useCurrentUserId';
 import { useEmployees } from '@/api/users';
 import { OrderDetail } from '@/lib/types';
+import { KanbanSkeleton } from '@/components/ui/loading-skeletons';
 
 const COLUMNS = [
   { id: 'New', label: 'Mới', color: 'bg-info/10 text-info border-info/20' },
@@ -80,8 +80,9 @@ export default function MyTasksPage() {
 
   if (employeesLoading || tasksLoading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="animate-spin text-primary" size={32} />
+      <div className="space-y-6">
+        <h4 className="text-lg md:text-xl font-bold text-foreground">Việc của tôi</h4>
+        <KanbanSkeleton />
       </div>
     );
   }

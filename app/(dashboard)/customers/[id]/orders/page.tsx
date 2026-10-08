@@ -52,6 +52,7 @@ import {
   dateInputToReturnTime,
   returnTimeToDateInputValue,
 } from '@/lib/canPrintInvoice';
+import { CustomerOrdersPageSkeleton, OrderListSkeleton, TextLinesSkeleton } from '@/components/ui/loading-skeletons';
 
 const statusOptions = [
   { value: 'New', label: 'Mới' },
@@ -83,7 +84,7 @@ function OrderLogSection({ orderId }: { orderId: number | null }) {
       {open && (
         <div className="max-h-40 overflow-y-auto p-3 space-y-2 text-xs">
           {isLoading ? (
-            <p className="text-muted-foreground italic">Đang tải...</p>
+            <TextLinesSkeleton lines={3} />
           ) : logs && logs.length > 0 ? (
             logs.map((log: any) => (
               <div
@@ -353,11 +354,7 @@ export default function CustomerOrdersPage() {
   };
 
   if (isLoadingCustomer) {
-    return (
-      <div className="flex justify-center py-20">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
-      </div>
-    );
+    return <CustomerOrdersPageSkeleton />;
   }
 
   return (
@@ -448,9 +445,7 @@ export default function CustomerOrdersPage() {
         {/* Orders List Content */}
         <div className="lg:col-span-3 space-y-4">
           {isLoadingOrders ? (
-            Array(3).fill(0).map((_, i) => (
-              <div key={i} className="vuexy-card h-32 animate-pulse"></div>
-            ))
+            <OrderListSkeleton rows={4} />
           ) : orders && orders.length > 0 ? (
             filteredOrders.length > 0 ? (
             filteredOrders.map((order: Order) => (

@@ -12,7 +12,6 @@ import {
     Package,
     PackageCheck,
     Shirt,
-    Loader2,
     DollarSign,
     Scale,
     CalendarClock,
@@ -47,6 +46,8 @@ import {
 import { Can } from "@/components/auth/Can";
 import { ROUTE_PERMISSIONS } from "@/lib/permissions";
 import { vnYmd } from "@/lib/vnDate";
+import { Skeleton } from '@/components/ui/skeleton';
+import { BlockSkeleton, ListRowsSkeleton, StatGridSkeleton, TableRowsSkeleton, TextLinesSkeleton } from '@/components/ui/loading-skeletons';
 
 /** Số đơn chưa trả hẹn hôm nay / quá hạn — bấm mở tab tương ứng ở màn Trả đồ. */
 function ReturnsDueCard() {
@@ -56,7 +57,8 @@ function ReturnsDueCard() {
     );
     const dueToday = data?.dueToday ?? 0;
     const overdue = data?.overdue ?? 0;
-    const value = (n: number) => (isLoading ? "…" : n);
+    const value = (n: number) =>
+        isLoading ? <Skeleton className="inline-block h-6 w-8 align-middle" /> : n;
     return (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
             <Link
@@ -352,9 +354,9 @@ export default function DashboardPage() {
                 </p>
 
                 {periodLoading ? (
-                    <div className="flex items-center justify-center gap-2 py-12 text-muted-foreground">
-                        <Loader2 className="animate-spin" size={22} />
-                        <span>Đang tải số liệu…</span>
+                    <div className="space-y-4">
+                        <StatGridSkeleton count={4} />
+                        <BlockSkeleton className="h-56" />
                     </div>
                 ) : periodError ? (
                     <p className="text-sm text-danger py-6 text-center">
@@ -1532,6 +1534,7 @@ export default function DashboardPage() {
                         Hoạt động gần đây
                     </h4>
                     <div className="space-y-5 overflow-y-auto max-h-[300px] pr-2 custom-scrollbar">
+                        {ordersLoading && <TextLinesSkeleton lines={6} />}
                         {!ordersLoading &&
                             (orders as Order[])?.slice(0, 8).map((order) => (
                                 <div
@@ -1593,14 +1596,7 @@ export default function DashboardPage() {
                         </thead>
                         <tbody className="divide-y divide-border text-sm">
                             {ordersLoading ? (
-                                Array.from({ length: 3 }).map((_, i) => (
-                                    <tr key={i} className="animate-pulse">
-                                        <td
-                                            colSpan={4}
-                                            className="px-6 py-6 bg-muted/10"
-                                        />
-                                    </tr>
-                                ))
+                                <TableRowsSkeleton rows={5} cols={4} />
                             ) : orders && orders.length > 0 ? (
                                 (orders as Order[]).slice(0, 5).map((order) => (
                                     <tr
@@ -1653,12 +1649,7 @@ export default function DashboardPage() {
 
                 <div className="md:hidden divide-y divide-border">
                     {ordersLoading ? (
-                        Array.from({ length: 3 }).map((_, i) => (
-                            <div
-                                key={i}
-                                className="p-4 h-20 animate-pulse bg-muted/10"
-                            />
-                        ))
+                        <ListRowsSkeleton rows={4} />
                     ) : orders && orders.length > 0 ? (
                         (orders as Order[]).slice(0, 5).map((order) => (
                             <div

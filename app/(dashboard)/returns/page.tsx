@@ -40,6 +40,7 @@ import {
   vnNextDayStartIso,
   vnYmd,
 } from '@/lib/vnDate';
+import { OrderListSkeleton } from '@/components/ui/loading-skeletons';
 
 const DELIVERED_STATUSES = ['Delivered', 'DeliveredOwing'] as const;
 
@@ -186,7 +187,7 @@ export default function ReturnsPage() {
       {/* Order list */}
       <div className="space-y-3">
         {isLoading ? (
-          Array.from({ length: 3 }).map((_, i) => <div key={i} className="vuexy-card h-28 animate-pulse" />)
+          <OrderListSkeleton rows={4} />
         ) : displayedOrders.length > 0 ? (
           displayedOrders.map(order => {
             const debt = order.total_amount - (order.paid_amount || 0);

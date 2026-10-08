@@ -7,6 +7,7 @@ import { usePermissions } from '@/api/permissions';
 import { Modal } from '@/components/ui/Modal';
 import { Toast, useToast } from '@/components/ui/Toast';
 import { Role } from '@/lib/types';
+import { CardGridSkeleton } from '@/components/ui/loading-skeletons';
 
 export default function RolesPage() {
   const { data: roles, isLoading } = useRoles();
@@ -101,7 +102,7 @@ export default function RolesPage() {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
         {isLoading ? (
-          Array.from({ length: 3 }).map((_, i) => <div key={i} className="vuexy-card h-32 animate-pulse" />)
+          <CardGridSkeleton count={3} />
         ) : roles && roles.length > 0 ? (
           roles.map(role => (
             <div key={role.id} className="vuexy-card p-5 md:p-6 group hover:-translate-y-1 transition-transform">

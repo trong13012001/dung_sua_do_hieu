@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Save, Store, Printer, Loader2 } from 'lucide-react';
+import { Save, Store, Printer } from 'lucide-react';
 import { Toast, useToast } from '@/components/ui/Toast';
 import { useShopSettings, useUpdateShopSettings, type ShopSettings } from '@/api/shopSettings';
 import { syncThermalPrintersFromShop } from '@/lib/print/shopPrinterCache';
@@ -11,6 +11,7 @@ import {
   type WindowsPrinterOption,
 } from '@/lib/print/electronPrintClient';
 import { WindowsPrinterPicker } from '@/components/settings/WindowsPrinterPicker';
+import { FormSkeleton } from '@/components/ui/loading-skeletons';
 
 export default function SettingsPage() {
   const { data: settings, isLoading } = useShopSettings();
@@ -73,8 +74,9 @@ export default function SettingsPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="animate-spin text-primary" size={32} />
+      <div className="space-y-6 max-w-3xl">
+        <FormSkeleton fields={3} />
+        <FormSkeleton fields={2} />
       </div>
     );
   }

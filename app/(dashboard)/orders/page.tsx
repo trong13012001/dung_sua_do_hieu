@@ -68,6 +68,7 @@ import {
     orderDetailStatusBadgeClass,
     orderDetailStatusLabelVi,
 } from "@/lib/orderDetailStatusUi";
+import { OrderListSkeleton, TextLinesSkeleton } from '@/components/ui/loading-skeletons';
 
 const statusOptions = [
     { value: "New", label: "Mới", color: "bg-info/10 text-info" },
@@ -160,9 +161,7 @@ function OrderLogSection({ orderId }: { orderId: number | null }) {
             {open && (
                 <div className="max-h-40 overflow-y-auto p-3 space-y-2 text-xs">
                     {isLoading ? (
-                        <p className="text-muted-foreground italic">
-                            Đang tải...
-                        </p>
+                        <TextLinesSkeleton lines={3} />
                     ) : logs && logs.length > 0 ? (
                         logs.map((log: any) => (
                             <div
@@ -865,12 +864,7 @@ export default function OrdersPage() {
             {/* Orders list */}
             <div className="space-y-3">
                 {isLoading ? (
-                    Array.from({ length: 5 }).map((_, i) => (
-                        <div
-                            key={i}
-                            className="vuexy-card h-24 animate-pulse"
-                        />
-                    ))
+                    <OrderListSkeleton rows={6} withCheckbox />
                 ) : orders.length > 0 ? (
                     <>
                         {orders.map((order) => {
