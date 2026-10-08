@@ -8,6 +8,13 @@ export const INVOICE_PAGE_MARGIN_MM = 2 as const;
 export const THERMAL_INVOICE_HTML_PAGE_MARGIN_MM = 1.25 as const;
 
 /**
+ * Lề TRÁI của @page job in nhiệt: 0 — máy đã có lề cứng ~4mm mỗi bên (đầu in 72mm trên giấy 80mm),
+ * thêm lề trái chỉ đẩy nội dung sang phải và làm lẹm mép phải. Bề rộng nội dung không đổi
+ * (vẫn tính theo `invoiceThermalPaperInnerMm`), nên cả khối dịch sang trái đúng 1.25mm.
+ */
+export const THERMAL_INVOICE_HTML_PAGE_MARGIN_LEFT_MM = 0 as const;
+
+/**
  * Chiều cao một @page hóa đơn nhiệt (mm). Cố định cao: máy in cuộn render 1:1 (chữ rõ) rồi
  * cắt theo nội dung. KHÔNG đặt @page ngắn vừa nội dung — driver XP-80C khi đó "co cho vừa
  * trang" làm chữ li ti. Đơn quá dài (vượt giới hạn cắt của máy) được chia thành nhiều LỆNH
