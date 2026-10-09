@@ -49,11 +49,12 @@ function invoiceThermalExtraTrimMm(): number {
 
 /**
  * Max-width khối `.invoice-print-area` trong HTML job + preview iframe.
- * Trừ thêm ~3mm so với vùng sau @page: vùng in thực XP-80C thường hẹp hơn viewport Chrome.
+ * Trừ thêm ~6mm so với vùng sau @page: driver XP-80C ở quầy đặt trang lệch vào ~3.5mm so với
+ * mép đầu in 72mm, nên phần in được chỉ tới khoảng 68.5mm tính từ mép trái trang (đo trên bill thật 10/2026).
  * Tinh chỉnh: NEXT_PUBLIC_THERMAL_INVOICE_EXTRA_TRIM_MM (vd. 1) nếu vẫn lẹm.
  */
 export function invoiceThermalLayoutMaxWidthMm(paperWidthMm: number): number {
-  const safetyMm = 3 + invoiceThermalExtraTrimMm();
+  const safetyMm = 6 + invoiceThermalExtraTrimMm();
   return Math.max(32, invoiceThermalPaperInnerMm(paperWidthMm) - safetyMm);
 }
 

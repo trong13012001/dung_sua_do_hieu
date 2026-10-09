@@ -183,9 +183,9 @@ body.sidebar-open {
     box-shadow: none !important;
   }
 
-  /* Hóa đơn 80mm: đồng bộ invoiceThermalLayoutMaxWidthMm(80) ≈ 74.5mm — tránh lẹm phải trên nhiệt */
+  /* Hóa đơn 80mm: đồng bộ invoiceThermalLayoutMaxWidthMm(80) ≈ 71.5mm — tránh lẹm phải trên nhiệt */
   .invoice-print-area:not(.item-labels-print) {
-    max-width: 71.5mm !important;
+    max-width: 68.5mm !important;
     margin-left: 0 !important;
     margin-right: 0 !important;
     padding-right: 3mm !important;
