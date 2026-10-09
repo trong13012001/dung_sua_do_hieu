@@ -733,7 +733,6 @@ export default function POSPage() {
         isOpen={posHistoryOrderDetailId != null}
         onClose={() => setPosHistoryOrderDetailId(null)}
         orderId={posHistoryOrderDetailId}
-        stackOnTop
       />
 
       {/* Hàng đợi in: hóa đơn XP-80C → tem XP-235B */}

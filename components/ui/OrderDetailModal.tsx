@@ -37,8 +37,6 @@ interface OrderDetailModalProps {
   orderId: number | string | null;
   /** In tem barcode XP-235B cho một dòng (STT món 1-based, khớp mã quét). */
   onPrintItemBarcode?: (order: Order, lineIndex1Based: number) => void;
-  /** Mở chồng lên modal khác (vd. lịch sử đơn ở POS). */
-  stackOnTop?: boolean;
 }
 
 /** Nhãn + màu + icon trạng thái đơn ở đầu modal (nhãn riêng của màn này). */
@@ -303,7 +301,6 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
   onClose,
   orderId,
   onPrintItemBarcode,
-  stackOnTop = false,
 }) => {
   const { data: order, isLoading, error } = useGetOrder(orderId);
 
@@ -311,7 +308,7 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent
         aria-describedby={undefined}
-        className={cn('max-h-[90vh] gap-4 overflow-y-auto p-5 sm:max-w-3xl md:p-6', stackOnTop && 'z-[60]')}
+        className="max-h-[90vh] gap-4 overflow-y-auto p-5 sm:max-w-3xl md:p-6"
       >
         <DialogHeader>
           <DialogTitle>Chi tiết đơn hàng: #{orderId}</DialogTitle>
